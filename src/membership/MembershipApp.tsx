@@ -57,6 +57,8 @@ export const MembershipApp: React.FC = () => {
   const [selected, setSelected] = useState('celano-standard');
   const [notice, setNotice] = useState('');
   const [membershipPlans, setMembershipPlans] = useState<MembershipPlanConfig[]>(DEFAULT_MEMBERSHIP_PLANS);
+  const [membershipCode, setMembershipCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
 
   useEffect(() => {
     if (membership.active) { setMode('recharge'); setSelected('recharge-1500'); }
@@ -87,6 +89,24 @@ export const MembershipApp: React.FC = () => {
     if (!user) { setNotice('请先登录后再开通或充值'); return; }
     const label = mode === 'membership' ? `${active.name} · ${billingPeriods.find(item => item.id === billingPeriod)?.label}（${displayActive.points.toLocaleString()} 点）` : `${active.name}充值`;
     setNotice(`${label}已选中，当前账户余额 ${user.credits ?? 0} 点。支付通道配置后即可完成支付。`);
+  };
+  const redeemMembershipCode = async () => {
+    const code = membershipCode.trim();
+    if (!code || redeeming) return;
+    if (!user) { setNotice('请先登录后再兑换会员兑换码'); return; }
+    setRedeeming(true); setNotice('');
+    try {
+      const response = await fetch('/api/wallet/redeem-membership', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ code }) });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) throw new Error(result?.error || '兑换失败');
+      setMembershipCode('');
+      setNotice(`会员已开通：${result.planName} ${result.months} 个月${result.granted > 0 ? `，赠送 ${result.granted} 点` : ''}`);
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '兑换失败');
+    } finally {
+      setRedeeming(false);
+    }
   };
 
   return <div className="membership-page celano-page-surface">
@@ -122,6 +142,13 @@ export const MembershipApp: React.FC = () => {
       </section>
       <section className="membership-action"><div><strong>当前选择：{displayActive?.name}</strong><span>{mode === 'membership' ? `${billingPeriods.find(item => item.id === billingPeriod)?.label} · ${(displayActive as DisplayPlan).price}${(displayActive as DisplayPlan).priceUnit} · ${(displayActive as DisplayPlan).points.toLocaleString()} ${(displayActive as DisplayPlan).pointsUnit}` : `${(active as RechargePlan)?.points?.toLocaleString()} 点 · ${(active as RechargePlan)?.note}`}</span></div><button onClick={startPayment}><CreditCard size={16} /> {mode === 'membership' ? membership.active ? '续费 / 升级' : '立即开通' : '立即充值'}</button></section>
       {notice ? <div className="membership-notice" role="status">{notice}</div> : null}
+      <section className="membership-redeem" aria-label="会员兑换码" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', maxWidth: 640, margin: '18px auto 0', padding: '14px 16px', border: '1px solid rgba(255,255,255,.12)', borderRadius: 14, background: 'rgba(255,255,255,.03)' }}>
+        <div style={{ minWidth: 0 }}><strong style={{ display: 'block', fontSize: 13, fontWeight: 600 }}>有会员兑换码？</strong><span style={{ fontSize: 12, color: '#8A9299' }}>输入兑换码，立即开通对应会员</span></div>
+        <div style={{ display: 'flex', gap: 8, flex: '1 1 260px' }}>
+          <input value={membershipCode} onChange={e => setMembershipCode(e.target.value.toUpperCase())} placeholder="输入会员兑换码" maxLength={100} style={{ flex: 1, minWidth: 0, height: 38, padding: '0 12px', borderRadius: 9, border: '1px solid rgba(255,255,255,.14)', background: 'transparent', color: '#F4F6F7', fontSize: 13, outline: 'none' }} />
+          <button onClick={() => void redeemMembershipCode()} disabled={redeeming || !membershipCode.trim()} style={{ height: 38, padding: '0 16px', borderRadius: 9, border: 0, background: '#F4F6F7', color: '#0B0E10', fontWeight: 600, fontSize: 13, cursor: 'pointer', opacity: redeeming || !membershipCode.trim() ? .5 : 1 }}>{redeeming ? '兑换中…' : '兑换会员'}</button>
+        </div>
+      </section>
       <p className="membership-footnote">CELANO 的点数、作品和使用记录均归属于当前账号。实际支付通道将在配置商户号和支付回调后启用。</p>
     </main>
   </div>;
