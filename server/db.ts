@@ -274,7 +274,7 @@ class Database {
         apiKey: DEFAULT_IMAGE_CONFIG.apiKey,
         modelName: 'gpt-6.1-sol',
         reasoningEffort: 'xhigh',
-        visionModelName: 'gpt-5.6-sol'
+        visionModelName: 'gpt-6-luna'
       };
     } else {
       if (!this.data.planningConfig.baseUrl) this.data.planningConfig.baseUrl = DEFAULT_PIAO_CONFIG.baseUrl;
@@ -282,7 +282,7 @@ class Database {
       if (!this.data.planningConfig.modelName) this.data.planningConfig.modelName = 'gpt-6.1-sol';
       if (!this.data.planningConfig.reasoningEffort) this.data.planningConfig.reasoningEffort = 'xhigh';
       if (!this.data.planningConfig.optimizeReasoningEffort) this.data.planningConfig.optimizeReasoningEffort = 'medium';
-      if (!this.data.planningConfig.visionModelName) this.data.planningConfig.visionModelName = 'gpt-5.6-sol';
+      if (!this.data.planningConfig.visionModelName) this.data.planningConfig.visionModelName = 'gpt-6-luna';
     }
 
     // 生图接口由管理员分别配置 2K、4K，发行版不保存已有接口。
