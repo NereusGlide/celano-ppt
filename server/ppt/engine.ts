@@ -289,7 +289,7 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     const addCover = () => {
       if (cover && cover.id !== slide.id && cover.status === 'done' && cover.storageKey) {
         const dataUrl = loadImageDataUrl(cover.storageKey);
-        if (dataUrl) { references.push(dataUrl); referenceLabels.push('已生成封面，仅辅助系列一致性；原始模版优先'); }
+        if (dataUrl) { references.push(dataUrl); referenceLabels.push('已生成封面，仅辅助系列一致性'); }
       }
     };
     const addReference = (ref: PptReferenceImage) => {
@@ -326,7 +326,7 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       editInstruction: instruction,
     });
     const prompt = buildPrompt(refs.length);
-    console.log('[ppt] 页面参考:', deckId, slideId, faithfulReference ? '模版深度还原' : '原生创作', referenceLabels.slice(0, refs.length));
+    console.log('[ppt] 页面参考:', deckId, slideId, faithfulReference ? '风格延申' : '原生创作', referenceLabels.slice(0, refs.length));
     const signal = controller.signal;
     let dataUrl: string;
     if (!references.length) {
