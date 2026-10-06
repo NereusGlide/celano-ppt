@@ -48,9 +48,10 @@ NODE_ENV=production npm start
 - `node_modules/`：运行依赖；此包不包含，安装时通过 `npm ci` 创建。
 - `package.json`、`package-lock.json`：主站依赖定义与 npm 锁定文件；画布子项目使用自身的 `package-lock.json`。
 - `public/tutorials/`：技术支持的流程概览与详细操作图。
-- `docs/`：教程图片提示词和代码维护规范。
+- `docs/`：教程图片提示词和代码维护规范；`docs/deploy.md` 为腾讯云服务器部署与更新指南。
 - `design/celano-ui-spec.html`：现行设计规范，代码维护规范仍会引用它。
 - `LICENSE`：主项目许可证（MIT）；智能画布的 MIT 许可证见 `integrations/infinite-canvas/LICENSE`。
+- `deploy/`：生产部署资产（systemd 服务单元、Nginx 反向代理配置）；引导脚本见 `scripts/server-bootstrap.sh`。
 - `.github/`：CI 工作流、PR 模板与 CODEOWNERS；`.gitattributes` 统一跨平台的 LF 行尾。
 - `index.html`、`tsconfig.json`、`vite.config.ts`：页面入口和编译配置。
 

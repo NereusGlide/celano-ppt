@@ -1,0 +1,53 @@
+# CELANO PPT 生产服务单元
+# 安装：sudo cp deploy/systemd/celano-ppt.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now celano-ppt
+
+[Unit]
+Description=CELANO PPT (Express + React 静态产物)
+Documentation=https://github.com/NereusGlide/celano-ppt
+# 网络就绪后再启动，避免拉取上游接口时 DNS 未就绪
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=celano
+Group=celano
+WorkingDirectory=/opt/celano-ppt
+
+# 密钥与初始口令集中放在 .env（不入库），权限建议 600
+EnvironmentFile=-/opt/celano-ppt/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# prestart 钩子会在画布产物缺失时自动补建；产物已随构建生成时该钩子为秒级空操作
+ExecStart=/usr/bin/npm start
+
+# 代码里有 SIGTERM 优雅关闭（等待在途请求，最多 10s），超时后才强杀
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=always
+RestartSec=3
+
+# 日志进 journald：journalctl -u celano-ppt -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=celano-ppt
+
+# ── 安全加固 ──────────────────────────────────────────────
+# 服务只需要写 data/（账号、积分、任务、作品与上传文件）与临时目录
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/celano-ppt/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
