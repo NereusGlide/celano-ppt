@@ -1,6 +1,9 @@
-# 腾讯云服务器部署指南
+# Linux 云服务器部署指南
 
-面向「腾讯云 CVM + 私有 GitHub 仓库 + 手动 git pull 更新」的生产部署。空白服务器从零到可访问约需 20–40 分钟。
+面向「云服务器（CVM / 宁美云等）+ 私有 GitHub 仓库 + 手动 git pull 更新」的生产部署。空白服务器从零到可访问约需 20–40 分钟。
+
+> 文中「安全组」泛指云厂商安全组或主机商提供的防火墙面板，规则都是放行 22 / 80 / 443，3000 只对本机开放。
+> 若服务器位于香港或海外节点：域名无需备案，Let's Encrypt 可直接签发；拉取 GitHub 顺畅；但**务必实测上游 AI 接口的连通性**（见 §4）。
 
 > ⚠ 本文档中的自动化脚本尚未在真实服务器上跑通，请在首次执行时留意终端输出；每一步都给出了手工等价命令，便于逐段验证。
 
@@ -141,6 +144,16 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://ppt.example.com/ # 期望 200
 
 登录后台 `https://ppt.example.com/admin`，用脚本输出的初始口令登录，**立刻修改密码**，然后进入「AI 接口配置」填写 2K / 4K 生图接口与内容规划模型。
 
+**海外/香港节点必做：上游连通性与时延实测。** 生图与内容规划走第三方中转，往返多轮请求对延迟敏感，先确认网络可达再调模型：
+
+```bash
+# 401 说明网络通、只是没带 Key；超时或 DNS 失败才需要处理出口
+curl -sS -o /dev/null -w 'piao.world: %{http_code}  握手 %{time_connect}s  总计 %{time_total}s\n' https://piao.world/v1/models
+curl -sS -o /dev/null -w 'xiaoyiapi:  %{http_code}  握手 %{time_connect}s  总计 %{time_total}s\n' https://image.xiaoyiapi.xyz/v1/models
+```
+
+连通但偏慢（>1s）属正常；连接超时优先怀疑服务器出口线路，此时可考虑在 `.env` 里改 `PIAO_BASE_URL` 指向自建或更近的转发节点。
+
 日志里出现下面这行属正常提示，表示仍在使用初始口令，改密后重启即消失：
 
 ```
@@ -210,4 +223,4 @@ sudo find /var/backups -name 'celano-*.tar.gz' -mtime +14 -delete
 - [ ] 仓库 Deploy Key 为只读；服务器不使用个人 PAT
 - [ ] `.env` 权限 600、属主 `celano`
 - [ ] `data/` 已纳入每日备份并验证过恢复流程
-- [ ] 腾讯云安全组定期复核，删除无用的来源 IP 白名单
+- [ ] 云厂商安全组 / 主机防火墙定期复核，删除无用的来源 IP 白名单
