@@ -26,8 +26,8 @@ export const CHINESE_TEXT_QUALITY_RULE = '所有可见中文必须使用准确�
 export const PPT_PLAN_MODEL = 'gpt-5.6-sol';
 export const PPT_PLAN_EFFORT = 'xhigh';
 
-/** 单次规划请求最多产出的页数，超过则分批规划。 */
-export const PLAN_BATCH_SIZE = 25;
+/** 规划改为一次性输出全部页数（页数上限 100），不再分批；分批会引入「第 N 页」序号污染标题。 */
+export const PLAN_BATCH_SIZE = 100;
 
 /** 内容编排（逐页规划）提示词：先输出整套提案结构与逐页画面描述。 */
 export function buildPlanPrompts(input: { topic: string; pageCount: number; references?: string; faithfulReference?: boolean; batch?: { from: number; to: number; total: number; planned: Array<string | { title: string; pageType?: string; summary?: string }> } }) {
@@ -78,6 +78,7 @@ function cleanPlanText(value: unknown, max: number) {
   return String(value || '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/^\s*[#>*-]+\s*/gm, '')
+    .replace(/^\s*\d{1,3}\s*[.、)）:：]\s*/gm, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
