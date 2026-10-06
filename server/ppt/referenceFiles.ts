@@ -1,11 +1,35 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { MAX_REFERENCE_TEXT, type ReferenceParseStatus } from '../../src/shared/referenceFiles.js';
 
 const runFile = promisify(execFile);
 const commandOptions = { encoding: 'utf8' as const, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 };
 type ReferenceFile = { filename: string; contentType: string; data: Buffer };
 type Extraction = { extractedText: string; parseStatus: ReferenceParseStatus; parseError?: string };
+
+/** 扫描版 PDF 无文字层时，转图片后用 tesseract OCR（中英混排）。 */
+async function ocrPdf(savedPath: string): Promise<string> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-ocr-'));
+  try {
+    await runFile('pdftoppm', ['-png', '-r', '150', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
+    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    if (!files.length) throw new Error('OCR 图片转换失败');
+    if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
+    const parts: string[] = [];
+    for (const file of files) {
+      const out = (await runFile('tesseract', [path.join(tmpDir, file), '-', '-l', 'chi_sim+eng', '--psm', '6'], { ...commandOptions, timeout: 90_000 })).stdout;
+      const clean = out.replace(/\f/g, '').replace(/\s+$/gm, '').trim();
+      if (clean) parts.push(clean);
+      if (parts.join('\n').length > MAX_REFERENCE_TEXT) break;
+    }
+    return parts.join('\n\n');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
 
 function decodeEntities(value: string): string {
   return value.replace(/&#(x[\da-f]+|\d+);/gi, (_all, code: string) => {
@@ -44,10 +68,19 @@ export async function extractReferenceFile(file: ReferenceFile, savedPath: strin
       try { text = new TextDecoder(utf16 ? 'utf-16le' : 'utf-8', { fatal: true }).decode(file.data); }
       catch { text = new TextDecoder('gb18030', { fatal: true }).decode(file.data); }
     } else if (/\.pdf$/i.test(name)) {
-      try { text = (await runFile('pdftotext', ['-layout', savedPath, '-'], commandOptions)).stdout; }
+      let pdfText = '';
+      try { pdfText = (await runFile('pdftotext', ['-layout', savedPath, '-'], commandOptions)).stdout; }
       catch {
-        const script = "import sys, fitz; d=fitz.open(sys.argv[1]); print('\\n'.join(p.get_text() for p in d))";
-        text = (await runFile('python3', ['-c', script, savedPath], commandOptions)).stdout;
+        try {
+          const script = "import sys, fitz; d=fitz.open(sys.argv[1]); print('\\n'.join(p.get_text() for p in d))";
+          pdfText = (await runFile('python3', ['-c', script, savedPath], commandOptions)).stdout;
+        } catch { /* 保留为空，走 OCR 兜底 */ }
+      }
+      // 扫描版 PDF 无文字层：转图片后 OCR
+      if (pdfText.trim()) text = pdfText;
+      else {
+        try { text = await ocrPdf(savedPath); }
+        catch { throw new Error('扫描版 PDF 未识别到文字，请上传可复制文字的 PDF'); }
       }
     } else if (/\.doc$/i.test(name)) {
       // 旧版 Word 97-2003（OLE 复合文档），用 antiword 提取，缺工具时退回 catdoc
