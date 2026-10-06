@@ -111,6 +111,8 @@ export interface User {
     planId: string;
     status: 'active' | 'cancelled';
     expiresAt: number;
+    /** 最近一次自动发放月点数的时间（每月到账的周期起点） */
+    lastGrantAt?: number;
   };
 }
 

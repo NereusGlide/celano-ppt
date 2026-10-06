@@ -700,6 +700,40 @@ async function startServer(){const isProd=process.env.NODE_ENV==='production';if
   const httpServer = app.listen(PORT,'0.0.0.0',()=>{console.log('[CELANO PPT] 重构基线服务已启动: http://0.0.0.0:'+PORT);assertNotDefaultAdminPassword(isProd);});
   installGracefulShutdown(httpServer);
   installWorksCleanup();
+  installMembershipGrant();
+}
+
+/** 会员每月自动到账：每 30 天给有效会员发放套餐对应月点数，并记录流水。 */
+function installMembershipGrant() {
+  const GRANT_INTERVAL_MS = 30 * 24 * 3600 * 1000;
+  const sweep = () => {
+    const now = Date.now();
+    let granted = 0;
+    for (const user of db.getUsers()) {
+      const m = user.membership;
+      if (!m || m.status !== 'active' || !(Number(m.expiresAt) > now)) continue;
+      const plan = db.getMembershipPlans().find(p => p.id === m.planId);
+      if (!plan || plan.points <= 0) continue;
+      if (now - (Number(m.lastGrantAt) || 0) < GRANT_INTERVAL_MS) continue;
+      db.updateUser(user.id, { credits: (Number(user.credits) || 0) + plan.points, membership: { ...m, lastGrantAt: now } });
+      db.addUsageRecord({
+        id: 'use_' + now + '_' + Math.random().toString(36).slice(2, 7),
+        userId: user.id,
+        username: user.username,
+        type: 'membership_grant',
+        detail: '会员每月到账「' + plan.name + '」' + plan.points + ' 点',
+        credits: plan.points,
+        createdAt: now,
+      });
+      granted++;
+    }
+    if (granted > 0) console.log('[CELANO PPT] 会员每月到账已发放 ' + granted + ' 人');
+  };
+  const timer = setInterval(sweep, 3600 * 1000);
+  timer.unref();
+  // 启动 2 分钟后先跑一次，尽快补齐到账周期
+  const first = setTimeout(sweep, 120 * 1000);
+  first.unref();
 }
 
 /** 作品保留 7 天：从生成完成时间算起，到期自动删除 PPT deck 与画布素材。 */

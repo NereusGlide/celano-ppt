@@ -254,8 +254,13 @@ adminRouter.patch('/users/:id', requireAdmin, (req, res) => {
     const wasActive = existing.membership?.status === 'active' && Number(existing.membership.expiresAt) > Date.now();
     const isActive = updates.membership?.status === 'active';
     if (isActive && !wasActive && updates.membership?.planId) {
+      // 开通即首月到账，并记录发放时间作为后续每月到账的周期起点
+      updates.membership = { ...updates.membership, lastGrantAt: Date.now() };
       const plan = db.getMembershipPlans().find(p => p.id === updates.membership.planId);
       if (plan && plan.points > 0) { membershipGrant = plan.points; grantPlanName = plan.name; }
+    } else if (isActive && existing.membership?.status === 'active' && existing.membership.planId === updates.membership?.planId && existing.membership.lastGrantAt && !updates.membership.lastGrantAt) {
+      // 同套餐续费或改到期时间：保留已发放时间，不重置每月到账周期
+      updates.membership = { ...updates.membership, lastGrantAt: existing.membership.lastGrantAt };
     }
   }
   if (body.status === 'active' || body.status === 'disabled') {
