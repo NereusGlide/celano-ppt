@@ -101,7 +101,8 @@ export async function chatVision(
   const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
     method: 'POST',
     headers: { 'Authorization': 'Bearer ' + String(cfg.apiKey).trim(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, messages }),
+    // max_tokens 给转录输出设上限，避免模型输出冗长拖慢每批耗时（3 页转录远小于 4096）。
+    body: JSON.stringify({ model, messages, max_tokens: 4096 }),
     signal: timeoutSignal(signal, timeoutMs),
   });
   if (!resp.ok) throw new Error('视觉模型接口 HTTP ' + resp.status + '：' + await readApiError(resp));

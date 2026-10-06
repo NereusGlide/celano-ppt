@@ -118,18 +118,22 @@ export const PptGenerateApp: React.FC = () => {
     const setter = style ? setStyleReferences : setReferences;
     const limit = style ? 3 : 6;
     const selected = Array.from(files).slice(0, limit);
-    let okCount = 0; let pendingCount = 0; const errors: string[] = [];
-    for (const file of selected) {
-      if (file.size > 100 * 1024 * 1024) { errors.push(`${file.name}：文件过大（单个不能超过 100MB）`); continue; }
+    // 并行上传，缩短多文件上传耗时；每个文件独立返回成功或具体错误。
+    const results = await Promise.all(selected.map(async (file): Promise<{ file?: UploadedFile; error?: string }> => {
+      if (file.size > 100 * 1024 * 1024) return { error: `${file.name}：文件过大（单个不能超过 100MB）` };
       try {
         const result = await uploadFile('/api/upload-reference', file);
-        const uploaded: UploadedFile = result.file;
-        setter(prev => [...prev, uploaded].slice(-limit));
-        okCount++;
-        if (uploaded.parseStatus === 'pending') { pendingCount++; void analyzeReference(uploaded, style); }
+        return { file: result.file };
       } catch (error) {
-        errors.push(`${file.name}：${error instanceof Error ? error.message : '上传失败'}`);
+        return { error: `${file.name}：${error instanceof Error ? error.message : '上传失败'}` };
       }
+    }));
+    let okCount = 0; let pendingCount = 0; const errors: string[] = [];
+    for (const { file, error } of results) {
+      if (error || !file) { errors.push(error!); continue; }
+      setter(prev => [...prev, file].slice(-limit));
+      okCount++;
+      if (file.parseStatus === 'pending') { pendingCount++; void analyzeReference(file, style); }
     }
     const parts: string[] = [];
     if (okCount) parts.push(`已上传 ${okCount} 个文件${pendingCount ? '，正在分析正文…' : ''}`);

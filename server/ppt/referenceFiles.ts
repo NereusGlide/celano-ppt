@@ -37,13 +37,14 @@ async function ocrPdf(savedPath: string): Promise<string> {
 async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Promise<string> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-vision-'));
   try {
-    // 扫描件用 JPEG + 120 DPI，体积远小于 PNG（约 1/5），避免批量请求体超出上游限制
-    await runFile('pdftoppm', ['-jpeg', '-r', '120', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
+    // 扫描件用 JPEG + 120 DPI + 75 质量，体积远小于 PNG（约 1/5~1/8），
+    // 减小批量请求体、加快上游传输，且 75 质量对文字转录可读性几乎无影响。
+    await runFile('pdftoppm', ['-jpeg', '-r', '120', '-jpegopt', 'quality=75', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
     const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('视觉读取图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
     const BATCH = 3;
-    const CONCURRENCY = 3;
+    const CONCURRENCY = 5;
     const batches: string[][] = [];
     for (let i = 0; i < files.length; i += BATCH) batches.push(files.slice(i, i + BATCH));
     const results: string[] = new Array(batches.length).fill('');
