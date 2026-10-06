@@ -20,7 +20,7 @@ const go = (route: string) => { window.location.hash = route; };
 
 export const Nav = PrimaryNav;
 
-function BrandPill() { return <div className="celano-brand-pill"><BrandLogo height={15} /> 青澜集团旗下 AI 产品</div>; }
+function BrandPill() { return <div className="celano-brand-pill"><BrandLogo height={16} /> 青澜集团旗下 AI 产品</div>; }
 
 function ProductCard({ icon, title, text, action, onClick }: { icon: React.ReactNode; title: string; text: string; action: string; onClick: () => void }) {
   return <button className="celano-product-card" onClick={onClick}><div className="celano-card-icon">{icon}</div><div><strong>{title}</strong><p>{text}</p></div><span className="celano-card-arrow">{action}<ArrowRight size={14} /></span></button>;

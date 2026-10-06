@@ -135,7 +135,7 @@ export const AdminApp: React.FC = () => {
     <div className="ws-root">
       <header className="ws-topbar">
         <div className="ws-brand">
-          <span className="ws-brand-mark"><BrandLogo height={28} /></span>
+          <span className="ws-brand-mark"><BrandLogo height={26} /></span>
           <span><strong>管理后台</strong><small>用户与 AI 接口维护</small></span>
         </div>
         <div className="ws-header-tools">
