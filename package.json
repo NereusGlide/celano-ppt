@@ -1,0 +1,45 @@
+{
+  "name": "celano-ppt",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "start": "tsx server.ts",
+    "build": "npm run build:canvas && vite build",
+    "preview": "vite preview",
+    "clean": "node --eval \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('server.js',{force:true})\"",
+    "lint": "tsc --noEmit",
+    "build:canvas": "cd integrations/infinite-canvas/web && npm run build",
+    "predev": "node scripts/ensure-canvas.mjs",
+    "prestart": "node scripts/ensure-canvas.mjs",
+    "postinstall": "cd integrations/infinite-canvas/web && npm ci --include=dev",
+    "test:canvas": "node --import tsx --test server/canvasRoutes.test.ts server/canvasAssetRoutes.test.ts",
+    "test:image": "node --import tsx --test server/imageSpecs.test.ts server/ppt/aiClient.test.ts server/ppt/engine.test.ts server/ppt/referenceAnalysis.test.ts server/ppt/promptOptimization.test.ts server/ppt/referenceFiles.test.ts server/canvasRoutes.test.ts server/canvasAssetRoutes.test.ts src/workspace/draw.test.ts src/services/imageGeneration.test.ts",
+    "test:server": "node --import tsx --test server/billing.test.ts server/canvasRoutes.test.ts server/canvasAssetRoutes.test.ts server/imageSpecs.test.ts server/ppt/aiClient.test.ts server/ppt/engine.test.ts server/ppt/referenceAnalysis.test.ts server/ppt/promptOptimization.test.ts server/ppt/referenceFiles.test.ts src/services/imageGeneration.test.ts src/shared/membership.test.ts"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "compression": "^1.8.2",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "lucide-react": "^0.546.0",
+    "pptxgenjs": "^3.12.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.8.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  }
+}

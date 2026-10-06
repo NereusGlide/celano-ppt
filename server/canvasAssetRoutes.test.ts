@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { once } from 'node:events';
+import { db } from './db.js';
+import { createCanvasAssetRouter } from './canvasAssetRoutes.js';
+import type { User } from '../src/types.js';
+
+test('shared canvas assets persist images and text, isolate accounts and preserve inserted images on deletion', async t => {
+  const stored: any[] = [];
+  t.mock.method(db, 'getCanvasAssets', (userId: string) => stored.filter(asset => asset.userId === userId && !asset.deletedAt));
+  t.mock.method(db, 'getCanvasAsset', (userId: string, id: string, includeDeleted = false) => stored.find(asset => asset.userId === userId && asset.id === id && (includeDeleted || !asset.deletedAt)));
+  t.mock.method(db, 'putCanvasAsset', (asset: any) => { const index = stored.findIndex(item => item.userId === asset.userId && item.id === asset.id); if (index < 0) stored.push(asset); else stored[index] = asset; return asset; });
+  t.mock.method(db, 'deleteCanvasAsset', (userId: string, id: string) => { stored.find(asset => asset.userId === userId && asset.id === id).deletedAt = 'deleted'; });
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-assets-test-'));
+  const app = express(); app.use(express.json());
+  app.use('/assets', createCanvasAssetRouter((req, res) => { const user = req.headers.cookie; if (!user) { res.sendStatus(401); return null; } return { id: user } as User; }, directory));
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}/assets`;
+  const headers = { Cookie: 'A', 'Content-Type': 'application/json' };
+  const imageData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1e0AAAAASUVORK5CYII=';
+  try {
+    assert.equal((await fetch(base)).status, 401);
+    assert.equal((await fetch(base + '/wrong-owner', { method: 'PUT', headers, body: JSON.stringify({ expectedOwnerId: 'B', kind: 'image', imageData }) })).status, 409);
+    assert.equal(stored.length, 0, 'a completed image must never be saved into a different account');
+    const text = await fetch(base + '/text', { method: 'PUT', headers, body: JSON.stringify({ kind: 'text', title: 'Shared text', data: { content: 'one\ntwo' }, userId: 'B' }) });
+    assert.equal(text.status, 200);
+    const image = await fetch(base + '/image', { method: 'PUT', headers, body: JSON.stringify({ kind: 'image', title: 'Shared image', imageData, metadata: { source: 'canvas', projectId: 'project', nodeId: 'node', imageId: 'result' } }) });
+    assert.equal(image.status, 200);
+    const payload = await image.json(); assert.equal(payload.asset.data.width, 1); assert.equal(payload.asset.userId, undefined); assert.equal(payload.asset.imageFile, undefined);
+    assert.equal(payload.asset.metadata.nodeId, 'node');
+    assert.equal(payload.asset.metadata.projectId, 'project');
+    const mine = await (await fetch(base, { headers })).json(); assert.equal(mine.assets.length, 2); assert.equal(mine.assets[0].data.content, 'one\ntwo');
+    const other = await (await fetch(base, { headers: { Cookie: 'B' } })).json(); assert.equal(other.assets.length, 0);
+    assert.equal((await fetch(base + '/image/image', { headers: { Cookie: 'B' } })).status, 404);
+    assert.equal((await fetch(base + '/image', { method: 'DELETE', headers: { Cookie: 'B' } })).status, 404);
+    assert.equal((await fetch(base + '/video', { method: 'PUT', headers, body: JSON.stringify({ kind: 'video', title: 'not allowed' }) })).status, 400);
+    assert.equal((await fetch(base + '/image/image', { headers })).status, 200);
+    const originalFile = path.join(directory, stored.find(asset => asset.id === 'image').imageFile);
+    await fetch(base + '/image', { method: 'DELETE', headers });
+    assert.equal((await (await fetch(base, { headers })).json()).assets.length, 1);
+    assert.equal((await fetch(base + '/image/image', { headers })).status, 404);
+    assert.ok(fs.existsSync(originalFile), 'other inserted copies must not lose their original backing file');
+    assert.equal((await fetch(base + '/image', { method: 'DELETE', headers })).status, 200);
+    assert.equal((await fetch(base + '/image', { method: 'PUT', headers, body: JSON.stringify({ kind: 'image', title: 'Stale tab', imageData }) })).status, 409);
+  } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); }
+});

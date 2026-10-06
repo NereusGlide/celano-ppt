@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: 类型 / 规范 / 测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # postinstall 会安装无限画布子项目依赖；构建产物由 ensure-canvas 在 build 前兜底
+      # 两份 lock 已含 Linux/Windows/macOS 的原生二进制条目，可直接 npm ci
+      - run: npm ci
+
+      # 目前 lint 只包含 tsc --noEmit；ESLint 接入属于 docs/code-review/TOOLING.md 的 Wave 1 未完成项，
+      # 接入前不要把它写成 ESLint 步骤，避免形成「已有静态门禁」的错觉。
+      - name: 类型检查
+        run: npm run lint
+
+      - name: 单元测试
+        run: npm run test:image
+
+  windows:
+    name: Windows 环境校验
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # 校验两份 lock 在 Windows 上同样可以直接安装（含画布 postinstall）
+      - run: npm ci
+      - run: npm run lint
+
+  build:
+    name: 生产构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build

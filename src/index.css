@@ -1,0 +1,542 @@
+@import "tailwindcss";
+@source not "../integrations";
+@source not "../public/infinite-canvas";
+
+/* =========================================================================
+   CELANO PPT · 设计系统 v2.0
+   -------------------------------------------------------------------------
+   黑白为骨，彩色为标点。
+
+   · 中性阶 Graphite 14 级（N0–N1000，带 2% 冷调）承担全部层级
+   · 「强调阶梯」用填充度表达主次：E4 反转 > E3 实心 > E2 描边 > E1 弱底 > E0 纯文字
+   · 唯一品牌点缀色「澜青 · 青瓷」只出现在交互状态（焦点 / 当前项 / 进度 / 进行中）
+   · 主行动永远保持黑白反转，绝不着色
+   · 暗色底不用纯黑 #000，用 N950 #0B0E10 留出层级空间
+   · 完整规范见 design/celano-ui-spec.html
+   ========================================================================= */
+
+@theme {
+  /* ---------- 字体 ----------
+     Display 栈把拉丁衬线（Didot）放在最前、中文衬线放在其后：
+     拉丁字形走 Didot，汉字自动回退到宋体，中英混排都有衬线气质。 */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "WenQuanYi Micro Hei", sans-serif;
+  --font-display: "Didot", "Bodoni MT", "Playfair Display", "Noto Serif SC", "Source Han Serif SC",
+    "Songti SC", "STSong", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ---------- 中性阶 Graphite（14 级，主色体系） ---------- */
+  --color-n-0: #FFFFFF;
+  --color-n-25: #FAFBFB;
+  --color-n-50: #F4F6F7;
+  --color-n-100: #EDEFF1;
+  --color-n-200: #E2E5E8;
+  --color-n-300: #C9CED3;
+  --color-n-400: #8A9299;
+  --color-n-500: #6E767D;
+  --color-n-600: #4D555C;
+  --color-n-700: #343B42;
+  --color-n-800: #21262A;
+  --color-n-900: #14181B;
+  --color-n-950: #0B0E10;
+  --color-n-1000: #050708;
+
+  /* ---------- 品牌点缀色 澜青 · 青瓷（低饱和青绿） ---------- */
+  --color-accent-50: #EAF4F1;
+  --color-accent-100: #CBE6DE;
+  --color-accent-200: #9FD2C5;
+  --color-accent-300: #63D6BC;
+  --color-accent-400: #41A28C;
+  --color-accent-500: #248A73;
+  --color-accent-600: #1B7A68;
+  --color-accent-700: #146155;
+  --color-accent-800: #0F4C43;
+  --color-accent-900: #0B3A33;
+  --color-accent-950: #062420;
+
+  /* ---------- 危险语义 朱砂 ---------- */
+  --color-danger-300: #F2A08C;
+  --color-danger-400: #E8836F;
+  --color-danger-600: #B33A2B;
+
+  /* ---------- 数据可视化（唯一彩色出口，遵循中国惯例：涨红跌绿） ---------- */
+  --color-up: #C0272B;
+  --color-up-dark: #E8836F;
+  --color-down: #17864A;
+  --color-down-dark: #6DD69A;
+
+  /* ---------- 向后兼容重映射 ----------
+     历史组件若使用 slate / indigo / cyan / brand 等命名空间，
+     直接落到新色阶上，无需逐个改动。 */
+  --color-brand-50: #EAF4F1;
+  --color-brand-100: #CBE6DE;
+  --color-brand-200: #9FD2C5;
+  --color-brand-300: #63D6BC;
+  --color-brand-400: #41A28C;
+  --color-brand-500: #248A73;
+  --color-brand-600: #1B7A68;
+  --color-brand-700: #146155;
+  --color-brand-800: #0F4C43;
+  --color-brand-900: #0B3A33;
+  --color-brand-950: #062420;
+
+  --color-ink-50: #F4F6F7;
+  --color-ink-100: #EDEFF1;
+  --color-ink-200: #E2E5E8;
+  --color-ink-300: #C9CED3;
+  --color-ink-400: #8A9299;
+  --color-ink-500: #6E767D;
+  --color-ink-600: #4D555C;
+  --color-ink-700: #343B42;
+  --color-ink-800: #21262A;
+  --color-ink-900: #14181B;
+  --color-ink-950: #0B0E10;
+
+  --color-slate-50: #F4F6F7;
+  --color-slate-100: #EDEFF1;
+  --color-slate-200: #E2E5E8;
+  --color-slate-300: #C9CED3;
+  --color-slate-400: #8A9299;
+  --color-slate-500: #6E767D;
+  --color-slate-600: #4D555C;
+  --color-slate-700: #343B42;
+  --color-slate-800: #21262A;
+  --color-slate-900: #14181B;
+  --color-slate-950: #0B0E10;
+
+  --color-indigo-50: #EAF4F1;
+  --color-indigo-100: #CBE6DE;
+  --color-indigo-200: #9FD2C5;
+  --color-indigo-300: #63D6BC;
+  --color-indigo-400: #41A28C;
+  --color-indigo-500: #248A73;
+  --color-indigo-600: #1B7A68;
+  --color-indigo-700: #146155;
+  --color-indigo-800: #0F4C43;
+  --color-indigo-900: #0B3A33;
+  --color-indigo-950: #062420;
+
+  --color-cyan-50: #EAF4F1;
+  --color-cyan-100: #CBE6DE;
+  --color-cyan-200: #9FD2C5;
+  --color-cyan-300: #63D6BC;
+  --color-cyan-400: #41A28C;
+  --color-cyan-500: #248A73;
+  --color-cyan-600: #1B7A68;
+  --color-cyan-700: #146155;
+  --color-cyan-800: #0F4C43;
+  --color-cyan-900: #0B3A33;
+  --color-cyan-950: #062420;
+
+  /* ---------- 圆角阶 ---------- */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-4xl: 2rem;
+}
+
+/* =========================================================================
+   语义令牌 · 暗色创作场（默认主题）
+   浅色文档场在 [data-theme="light"] 下覆盖同名变量，组件结构零改动。
+   ========================================================================= */
+:root {
+  --bg-canvas: #0B0E10;
+  --bg-surface: #14181B;
+  --bg-subtle: #21262A;
+  --bg-raised: #21262A;
+
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-default: rgba(255, 255, 255, 0.18);
+  --border-control: rgba(255, 255, 255, 0.28);
+
+  --text-primary: #F4F6F7;
+  --text-secondary: #8A9299;
+  --text-tertiary: #8A9299;
+  --text-inverse: #0B0E10;
+
+  /* E4 反转填充：暗色主题为白底黑字 */
+  --fill-primary: #F4F6F7;
+  --fill-primary-hover: #FFFFFF;
+  --on-fill-primary: #0B0E10;
+  /* E3 实心填充 */
+  --fill-emphasis: #21262A;
+
+  /* 唯一品牌点缀色：只用于交互状态 */
+  --accent: #63D6BC;
+  --accent-soft: rgba(99, 214, 188, 0.14);
+  --on-accent: #04241E;
+
+  --danger-text: #E8836F;
+  --danger-soft: rgba(232, 131, 111, 0.12);
+  --danger-line: rgba(232, 131, 111, 0.32);
+
+  --data-up: #E8836F;
+  --data-down: #6DD69A;
+
+  --focus-ring: #63D6BC;
+
+  /* ---------- 动效 ---------- */
+  --m-instant: 100ms;
+  --m-fast: 160ms;
+  --m-base: 220ms;
+  --m-slow: 320ms;
+  --m-page: 420ms;
+  --m-loop: 1400ms;
+  --m-breathe: 1600ms;
+
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(.05, .7, .1, 1);
+  --ease-exit: cubic-bezier(.3, 0, .8, .15);
+  --ease-overshoot: cubic-bezier(.34, 1.3, .64, 1);
+}
+
+/* 浅色文档场（个人中心 / 会员 / 后台）—— 为后续接入预留，当前不影响暗色页面 */
+[data-theme="light"] {
+  --bg-canvas: #F4F6F7;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #EDEFF1;
+  --bg-raised: #FFFFFF;
+
+  --border-subtle: #E2E5E8;
+  --border-default: #C9CED3;
+  --border-control: #8A9299;
+
+  --text-primary: #0B0E10;
+  --text-secondary: #4D555C;
+  --text-tertiary: #6E767D;
+  --text-inverse: #FFFFFF;
+
+  --fill-primary: #14181B;
+  --fill-primary-hover: #343B42;
+  --on-fill-primary: #FFFFFF;
+  --fill-emphasis: #EDEFF1;
+
+  --accent: #1B7A68;
+  --accent-soft: #EAF4F1;
+  --on-accent: #FFFFFF;
+
+  --danger-text: #B33A2B;
+  --danger-soft: #F7E9E6;
+  --danger-line: #E4B7AE;
+
+  --data-up: #C0272B;
+  --data-down: #17864A;
+
+  --focus-ring: #1B7A68;
+}
+
+@layer base {
+  html {
+    background-color: var(--bg-canvas);
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* 数字统一等宽对齐，避免点数 / 页数变化时整行抖动 */
+  .celano-num,
+  [data-num] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* 极简滚动条 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--bg-raised);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-control);
+  }
+
+  /* 选中态使用点缀色的极弱底，而不是浏览器默认蓝 */
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+  }
+
+  input, textarea, select, button {
+    font-family: inherit;
+  }
+
+  /* 全局键盘焦点环：2px 点缀色 + 2px 偏移。
+     只在键盘导航时出现（:focus-visible），鼠标点击不触发。 */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* 滑块：轨道用中性阶，滑块与焦点用点缀色 */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    height: 20px;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--bg-raised);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 9999px;
+    background: var(--fill-primary);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  input[type="range"]:focus-visible::-webkit-slider-thumb {
+    background: var(--accent);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 9999px;
+    background: var(--bg-raised);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: none;
+    border-radius: 9999px;
+    background: var(--fill-primary);
+  }
+
+  /* 尊重系统「减少动效」偏好：
+     把时长压到 0.01ms、位移与缩放归零，但保留透明度变化与状态反馈。
+     循环动画改为静态中间态，而不是直接消失（消失会让用户以为卡住了）。 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .celano-spin {
+      animation: none !important;
+      opacity: 0.7;
+    }
+  }
+}
+
+@layer components {
+  /* 品牌字标：高对比衬线巨标 */
+  .celano-wordmark {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.005em;
+    line-height: 1;
+  }
+
+  /* E4 反转 —— 主行动的唯一形态。每屏只允许出现一个。 */
+  .celano-cta {
+    background-image: none;
+    background-color: var(--fill-primary);
+    color: var(--on-fill-primary);
+    transition: background-color var(--m-fast) var(--ease-standard);
+  }
+  .celano-cta:hover {
+    background-image: none;
+    background-color: var(--fill-primary-hover);
+  }
+
+  /* E1 弱底胶囊 */
+  .celano-pill {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-subtle);
+    border-radius: 9999px;
+    transition: background-color var(--m-fast) var(--ease-standard);
+  }
+  .celano-pill:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  /* 悬浮面板 */
+  .celano-panel {
+    background-color: var(--bg-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 1rem;
+    box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.9);
+    backdrop-filter: blur(24px);
+  }
+
+  /* 当前状态：点缀色唯一的常规用法 */
+  .celano-current {
+    background-color: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  /* ---------- 路由分包加载占位 ---------- */
+  .celano-route-loading {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background-color: var(--bg-canvas);
+    color: var(--text-tertiary);
+    font-size: 13px;
+  }
+  .celano-route-loading-dot {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-control);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: celano-route-spin 800ms linear infinite;
+  }
+  @keyframes celano-route-spin { to { transform: rotate(360deg); } }
+
+  /* ---------- 渲染异常降级界面 ---------- */
+  .celano-crash {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+  }
+  .celano-crash-card {
+    width: min(520px, 100%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 18px;
+    background-color: var(--bg-surface);
+    padding: 28px;
+    text-align: center;
+  }
+  .celano-crash-mark {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 16px;
+    border: 1px dashed var(--danger-line);
+    border-radius: 12px;
+    color: var(--danger-text);
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .celano-crash-card h1 {
+    margin: 0 0 8px;
+    font-size: 19px;
+    font-weight: 600;
+  }
+  .celano-crash-card p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--text-secondary);
+  }
+  .celano-crash-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 22px;
+  }
+  .celano-crash-primary,
+  .celano-crash-ghost {
+    height: 38px;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color var(--m-fast) var(--ease-standard), border-color var(--m-fast) var(--ease-standard);
+  }
+  .celano-crash-primary {
+    border: 0;
+    background-color: var(--fill-primary);
+    color: var(--on-fill-primary);
+    font-weight: 600;
+  }
+  .celano-crash-primary:hover { background-color: var(--fill-primary-hover); }
+  .celano-crash-ghost {
+    border: 1px solid var(--border-default);
+    background-color: transparent;
+    color: var(--text-secondary);
+  }
+  .celano-crash-ghost:hover { border-color: var(--border-control); color: var(--text-primary); }
+  .celano-crash-detail {
+    margin-top: 18px;
+    padding: 12px;
+    border-radius: 10px;
+    background-color: var(--bg-subtle);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    text-align: left;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  /* ---------- 404 ---------- */
+  .celano-notfound {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+  }
+  .celano-notfound-card { text-align: center; max-width: 420px; }
+  .celano-notfound-code {
+    margin: 0 0 12px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: .3em;
+    color: var(--accent);
+  }
+  .celano-notfound-card h1 { margin: 0 0 10px; font-size: 22px; font-weight: 600; }
+  .celano-notfound-card p { margin: 0; font-size: 13px; line-height: 1.75; color: var(--text-secondary); }
+  .celano-notfound-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 26px;
+  }
+  .celano-notfound-primary,
+  .celano-notfound-ghost {
+    height: 40px;
+    padding: 0 20px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color var(--m-fast) var(--ease-standard), border-color var(--m-fast) var(--ease-standard);
+  }
+  .celano-notfound-primary { border: 0; background: var(--fill-primary); color: var(--on-fill-primary); font-weight: 600; }
+  .celano-notfound-primary:hover { background: var(--fill-primary-hover); }
+  .celano-notfound-ghost { border: 1px solid var(--border-default); background: transparent; color: var(--text-secondary); }
+  .celano-notfound-ghost:hover { border-color: var(--border-control); color: var(--text-primary); }
+  .celano-crash-hint { margin-top: 16px !important; font-size: 11.5px !important; color: var(--text-tertiary) !important; }
+
+}

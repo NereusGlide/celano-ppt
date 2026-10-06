@@ -1,0 +1,88 @@
+/* 全站交互基线：页面切换、按钮按压、焦点和卡片反馈保持一致。 */
+:root { --celano-ease: var(--ease-standard); --celano-fast: var(--m-fast); --celano-normal: var(--m-base); }
+*, *::before, *::after { box-sizing: border-box; }
+.celano-route-root { min-height: 100vh; isolation: isolate; }
+.celano-route-enter { animation: celano-page-enter var(--m-page) var(--ease-enter) both; }
+@keyframes celano-page-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+button, a, input, textarea, select { transition: background-color var(--celano-fast) ease, border-color var(--celano-fast) ease, color var(--celano-fast) ease, box-shadow var(--celano-fast) ease, transform var(--celano-fast) var(--celano-ease), opacity var(--celano-fast) ease; }
+button:not(:disabled), a { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled):active { transform: scale(.985); }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; }
+/* 路由容器负责唯一一次入场动画；页面自身不再重复淡入，避免不同页面切换节奏不一致。 */
+.celano-home-app, .celano-ppt-app, .image-app, .canvas-app, .membership-page, .support-app, .ws-root { animation: none; }
+
+/* 所有创作页共享同一套页面骨架。PPT 和文生图的编辑控件保持相同的视觉尺寸，
+   画布/支持/会员/个人中心则共享顶部导航和内容边界。 */
+.image-topbar, .support-topbar, .canvas-topbar, .membership-topbar, .pc-topbar,
+.celano-home-topbar {
+  height: 70px;
+}
+.image-topbar, .support-topbar, .canvas-topbar, .membership-topbar, .pc-topbar {
+  background: rgba(11, 14, 16, .86);
+  backdrop-filter: blur(18px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.image-main, .support-main, .celano-ppt-main {
+  width: min(1060px, 100%);
+  max-width: 1060px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+.image-main, .support-main { padding-top: 72px; padding-bottom: 90px; }
+.celano-ppt-main { padding-top: 72px; padding-bottom: 90px; }
+.celano-feature-main { width: min(1060px, 100%); margin: 0 auto; }
+.pc-layout { min-height: calc(100dvh - 70px); }
+.celano-nav-extra {
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 9px;
+  background: rgba(255,255,255,.06);
+  color: #8A9299;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.celano-nav-extra:hover { background: rgba(255,255,255,.12); color: #fff; }
+.canvas-primary-nav { justify-content: center; min-width: 0; margin: 0 8px; }
+.canvas-primary-nav button { color: #8A9299; }
+.canvas-primary-nav button:hover, .canvas-primary-nav button.active { color: #fff; background: rgba(255,255,255,.06); }
+
+.celano-compose-card, .image-card {
+  width: 100%;
+  border-radius: 23px;
+}
+.celano-compose-card > textarea, .image-card > textarea,
+.celano-composer-input {
+  min-height: 194px;
+  padding: 22px;
+}
+.celano-compose-toolbar, .image-options, .celano-composer-toolbar {
+  min-height: 62px;
+  gap: 9px;
+}
+.celano-select-pill, .celano-tool-pill, .image-upload, .celano-composer-control {
+  height: 42px;
+}
+.image-options select { height: 42px; }
+.celano-generate-button, .celano-optimize-button, .image-generate, .celano-composer-primary {
+  min-height: 42px;
+  height: 42px;
+  border-radius: 11px;
+}
+.celano-compose-card, .image-card { box-shadow: 0 24px 70px rgba(0, 0, 0, .5); }
+
+/* 页面内容淡入由外层路由容器统一处理，交互反馈仍保留。 */
+.celano-product-card, .celano-work-card, .membership-plan, .support-grid article, .canvas-node, .ws-panel { transition: border-color var(--celano-normal) ease, box-shadow var(--celano-normal) ease, transform var(--celano-normal) var(--celano-ease), background-color var(--celano-normal) ease; }
+@media(max-width:768px) {
+  .image-topbar, .support-topbar, .canvas-topbar, .membership-topbar, .pc-topbar,
+  .celano-home-topbar { height: 62px; }
+  .image-main, .support-main, .celano-ppt-main { padding-left: 15px; padding-right: 15px; }
+  .image-main, .support-main, .celano-ppt-main { padding-top: 58px; padding-bottom: 64px; }
+  .celano-compose-card > textarea, .image-card > textarea, .celano-composer-input { min-height: 168px; }
+  .canvas-primary-nav { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }

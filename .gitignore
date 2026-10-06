@@ -1,0 +1,21 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# 本地运行数据与临时检查产物
+data/
+.tmp-*/
+screenshots/
+.preview/
+.workbuddy/
+.workbuddy-ai/
+*.tsbuildinfo
+
+# 智能画布构建产物：outDir 指向此处且 emptyOutDir=true，全部由 npm run build:canvas 重建
+# 首次 dev/start 由 scripts/ensure-canvas.mjs 自动补齐，不需要入库
+/public/infinite-canvas/

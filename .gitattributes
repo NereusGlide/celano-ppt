@@ -1,0 +1,21 @@
+# 统一行尾：避免 Windows 开发者的 CRLF 造成全量 diff 与 shell 脚本失效
+* text=auto eol=lf
+
+# 二进制资源不做行尾转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.node binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+
+# 生成物不参与 diff 与语言统计
+package-lock.json     linguist-generated=true -diff
+public/infinite-canvas/** -diff
+
+# 画布第三方源码保留归属，不计入本仓库语言统计
+integrations/infinite-canvas/ linguist-vendored=true

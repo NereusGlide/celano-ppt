@@ -1,0 +1,2144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CELANO PPT · 界面设计方案 v2.0</title>
+<style>
+:root{
+  --f-sans:'Inter',-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  --f-serif:'Noto Serif SC','Songti SC','Source Han Serif SC',Didot,'Times New Roman',Georgia,serif;
+  --f-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+
+  --paper:#FFFFFF;
+  --canvas:#F4F6F7;
+  --ink:#0B0E10;
+  --ink2:#4D555C;
+  --ink3:#6E767D;
+  --line:#E3E6E9;
+  --line2:#C9CED3;
+  --brand:#14181B;
+  --brand2:#000000;
+  --brand-soft:#EDEFF1;
+  --amber:#4D555C;
+  --amber-soft:#F7F8F9;
+  --up:#C0272B;
+  --down:#17864A;
+
+  --sh-xs:0 1px 2px rgba(16,24,24,.06);
+  --sh-sm:0 2px 8px -2px rgba(16,24,24,.09);
+  --sh-md:0 12px 28px -8px rgba(16,24,24,.14);
+  --sh-lg:0 28px 64px -16px rgba(16,24,24,.22);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{
+  margin:0;background:var(--canvas);color:var(--ink);
+  font-family:var(--f-sans);font-size:14px;line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{margin:0;font-weight:600;letter-spacing:-.01em;line-height:1.25}
+p{margin:0}
+a{color:var(--brand);text-decoration:none}
+code{font-family:var(--f-mono);font-size:12px;background:#EFF1F3;padding:2px 5px;border-radius:5px;color:#343B42}
+
+.shell{display:grid;grid-template-columns:248px minmax(0,1fr);gap:0;max-width:1560px;margin:0 auto}
+.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:26px 18px 40px 26px;border-right:1px solid var(--line);background:var(--paper)}
+.toc-brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:13px;letter-spacing:.14em;margin-bottom:4px}
+.toc-mark{width:24px;height:24px;border-radius:7px;background:var(--brand);display:grid;place-items:center;color:#fff;font-size:12px}
+.toc-sub{font-size:11px;color:var(--ink3);margin-bottom:22px;letter-spacing:.06em}
+.toc ol{list-style:none;margin:0;padding:0;counter-reset:s}
+.toc li{counter-increment:s}
+.toc a{display:flex;gap:9px;padding:6px 8px;border-radius:7px;color:var(--ink2);font-size:12.5px;line-height:1.45}
+.toc a::before{content:counter(s,decimal-leading-zero);font-family:var(--f-mono);font-size:10.5px;color:var(--ink3);padding-top:2px}
+.toc a:hover{background:#EFF1F3;color:var(--ink)}
+
+main{padding:0 clamp(20px,3.4vw,52px) 120px;min-width:0;background:var(--canvas)}
+
+.hero{padding:64px 0 40px;border-bottom:1px solid var(--line)}
+.hero .kicker{font-family:var(--f-mono);font-size:11px;letter-spacing:.2em;color:var(--brand);margin-bottom:16px}
+.hero h1{font-family:var(--f-serif);font-weight:400;font-size:clamp(34px,4.6vw,54px);letter-spacing:-.03em;line-height:1.1;max-width:19em}
+.hero h1 em{font-style:italic;color:var(--brand)}
+.hero .lede{margin-top:18px;font-size:15.5px;color:var(--ink2);max-width:44em;line-height:1.75}
+.hero-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.tag{font-size:12px;padding:5px 11px;border-radius:999px;border:1px solid var(--line2);background:var(--paper);color:var(--ink2)}
+.tag.on{border-color:#14181B;background:#14181B;color:#FFFFFF}
+
+section{padding:56px 0 8px;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+.sec-num{font-family:var(--f-mono);font-size:12px;color:var(--brand);padding-top:6px}
+.sec-head h2{font-size:clamp(22px,2.4vw,29px);letter-spacing:-.02em}
+.sec-lede{color:var(--ink2);max-width:52em;font-size:14.5px;line-height:1.75;margin-bottom:30px}
+h3.blk{font-size:16px;margin:34px 0 12px;display:flex;align-items:center;gap:8px}
+h3.blk::before{content:'';width:3px;height:14px;border-radius:2px;background:var(--brand)}
+h4.blk{font-size:13.5px;margin:22px 0 8px;color:var(--ink2)}
+.note{font-size:12.5px;color:var(--ink3);line-height:1.7}
+
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(216px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--sh-xs)}
+.card h4{font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.card p{font-size:12.8px;color:var(--ink2);line-height:1.7}
+.card .idx{font-family:var(--f-mono);font-size:11px;color:#fff;background:var(--brand);width:19px;height:19px;border-radius:6px;display:grid;place-items:center;flex:none}
+.card.warn{background:#F7F8F9;border-color:#8A9299;border-left-width:3px}
+.card.warn h4{color:#0B0E10}
+.card.warn p{color:#4D555C}
+.card.warn .idx{background:#0B0E10}
+
+table{width:100%;border-collapse:collapse;font-size:12.8px;background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.table-wrap{overflow-x:auto;border-radius:12px;margin:10px 0 6px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:#F7FAFA;font-weight:600;font-size:12px;color:var(--ink2);white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.tb-tight td,.tb-tight th{padding:7px 10px}
+
+ul.clean{list-style:none;padding:0;margin:8px 0}
+ul.clean li{position:relative;padding-left:18px;margin:7px 0;font-size:13px;color:var(--ink2);line-height:1.7}
+ul.clean li::before{content:'';position:absolute;left:4px;top:9px;width:5px;height:5px;border-radius:2px;background:var(--brand);opacity:.6}
+ul.clean li strong{color:var(--ink)}
+
+.kbd{display:inline-block;font-family:var(--f-mono);font-size:11px;padding:2px 6px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;background:var(--paper);color:var(--ink);white-space:nowrap}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px}
+.pill.p0{background:#FBE9E9;color:#9E1F23}
+.pill.p1{background:#E2E5E8;color:#343B42}
+.pill.p2{background:#E6F1FB;color:#1B5488}
+.pill.ok{background:#EDEFF1;color:#21262A}
+
+/* ============ 组件实况预览沙箱 ============ */
+.pv{
+  --p-bg:#0B0E10;--p-surface:#14181B;--p-surface2:#1C2023;--p-surface3:#262B2F;
+  --p-line:rgba(255,255,255,.09);--p-line2:rgba(255,255,255,.28);
+  --p-text:#F2F4F5;--p-text2:#A6ADB3;--p-text3:#7C848B;
+  --p-primary:#F2F4F5;--p-primary-hover:#FFFFFF;--p-on-primary:#0B0E10;
+  --p-soft:rgba(255,255,255,.12);
+  --p-accent:#63D6BC;--p-accent-soft:rgba(99,214,188,.14);--p-on-accent:#04241E;
+  --p-ok:#A6ADB3;--p-warn:#63D6BC;--p-danger:#E8836F;
+  --p-shadow:0 18px 40px -12px rgba(0,0,0,.7);
+  background:var(--p-bg);color:var(--p-text);
+  border-radius:16px;padding:20px;border:1px solid var(--p-line);
+  font-size:13px;overflow:hidden;
+}
+.pv[data-theme="light"]{
+  --p-bg:#F4F6F7;--p-surface:#FFFFFF;--p-surface2:#EDEFF1;--p-surface3:#E2E5E8;
+  --p-line:#E3E6E9;--p-line2:#C9CED3;
+  --p-text:#0B0E10;--p-text2:#4D555C;--p-text3:#6E767D;
+  --p-primary:#14181B;--p-primary-hover:#2A3136;--p-on-primary:#FFFFFF;
+  --p-soft:rgba(20,24,27,.10);
+  --p-accent:#1B7A68;--p-accent-soft:#EAF4F1;--p-on-accent:#FFFFFF;
+  --p-ok:#4D555C;--p-warn:#1B7A68;--p-danger:#B33A2B;
+  --p-shadow:0 18px 40px -14px rgba(11,14,16,.18);
+}
+.pv-label{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.14em;color:var(--p-text3);margin-bottom:14px;text-transform:uppercase}
+.pv-row{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+.pv-col{display:flex;flex-direction:column;gap:12px}
+.pv-sep{height:1px;background:var(--p-line);margin:16px 0}
+.pv-cap{font-size:11px;color:var(--p-text3);margin-top:7px}
+
+.pv-btn{height:36px;padding:0 15px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--p-text);font:inherit;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .16s,border-color .16s,color .16s}
+.pv-btn--primary{background:var(--p-primary);color:var(--p-on-primary);font-weight:600}
+.pv-btn--primary:hover{background:var(--p-primary-hover)}
+.pv-btn--secondary{background:var(--p-surface);border-color:var(--p-line2)}
+.pv-btn--secondary:hover{background:var(--p-surface2)}
+.pv-btn--ghost{color:var(--p-text2)}
+.pv-btn--ghost:hover{background:var(--p-surface2);color:var(--p-text)}
+.pv-btn--danger{background:transparent;border-color:var(--p-line2);color:var(--p-danger)}
+.pv-btn--danger:hover{background:transparent;border-color:var(--p-danger)}
+.pv-btn--sm{height:28px;padding:0 11px;font-size:12px;border-radius:8px}
+.pv-btn--lg{height:44px;padding:0 20px;font-size:14px;border-radius:12px}
+.pv-btn[disabled]{opacity:.4;cursor:not-allowed}
+.pv-btn--focus{box-shadow:0 0 0 2px var(--p-bg),0 0 0 4px var(--p-accent)}
+.pv-btn--loading{color:var(--p-text2)}
+
+.pv-field{display:flex;flex-direction:column;gap:6px}
+.pv-field label{font-size:12px;color:var(--p-text2);font-weight:500}
+.pv-input{height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--p-line2);background:var(--p-surface);color:var(--p-text);font:inherit;font-size:13px;outline:none}
+.pv-input::placeholder{color:var(--p-text3)}
+.pv-input--err{border-color:var(--p-danger)}
+.pv-input--focus{border-color:var(--p-accent);box-shadow:0 0 0 3px var(--p-accent-soft)}
+.pv-hint{font-size:11.5px;color:var(--p-text3)}
+.pv-hint.err{color:var(--p-danger)}
+
+.pv-pill{height:32px;padding:0 11px;border-radius:9px;border:1px solid var(--p-line2);background:var(--p-surface);color:var(--p-text2);font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.pv-pill:hover{border-color:var(--p-primary);color:var(--p-text)}
+.pv-pill--on{border-color:var(--p-accent);background:var(--p-accent-soft);color:var(--p-accent)}
+.pv-seg{display:inline-flex;padding:3px;gap:2px;border-radius:11px;background:var(--p-surface2);border:1px solid var(--p-line)}
+.pv-seg button{height:28px;padding:0 13px;border:0;border-radius:8px;background:transparent;color:var(--p-text2);font:inherit;font-size:12.5px;cursor:pointer}
+.pv-seg button[aria-pressed="true"]{background:var(--p-surface);color:var(--p-text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+
+.pv-card{background:var(--p-surface);border:1px solid var(--p-line);border-radius:13px;padding:14px}
+.pv-card--elev{box-shadow:var(--p-shadow)}
+.pv-slide{width:150px;border-radius:11px;overflow:hidden;border:1px solid var(--p-line);background:var(--p-surface)}
+.pv-slide-img{aspect-ratio:16/9;background:var(--p-surface3);display:grid;place-items:center;font-family:var(--f-mono);font-size:10px;color:var(--p-text3);position:relative}
+.pv-slide-meta{padding:8px 10px;display:flex;justify-content:space-between;align-items:center;gap:6px}
+.pv-slide-meta b{font-size:11.5px;font-weight:500}
+.pv-dot{width:7px;height:7px;border-radius:50%;flex:none}
+.pv-dot--idle{background:transparent;box-shadow:inset 0 0 0 1.5px var(--p-text3)}
+.pv-dot--run{background:var(--p-accent)}
+.pv-dot--done{background:var(--p-ok)}
+.pv-dot--fail{background:var(--p-danger)}
+.pv-slide--run{animation:pvBreathe 1.6s ease-in-out infinite}
+.pv-slide--fail{border-style:dashed;border-color:var(--p-danger)}
+.pv-slide--sel{box-shadow:0 0 0 2px var(--p-bg),0 0 0 4px var(--p-accent)}
+
+.pv-bar{height:6px;border-radius:99px;background:var(--p-surface2);overflow:hidden}
+.pv-bar>span{display:block;height:100%;border-radius:99px;background:var(--p-accent)}
+.pv-bar--warn>span{background:var(--p-warn)}
+.pv-bar--indet>span{width:36%;animation:indet 1.3s cubic-bezier(.6,0,.4,1) infinite}
+@keyframes indet{0%{transform:translateX(-100%)}100%{transform:translateX(310%)}}
+@keyframes pvBreathe{0%,100%{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--p-accent) 45%,transparent)}50%{box-shadow:inset 0 0 0 2px var(--p-accent)}}
+@media (prefers-reduced-motion: reduce){.pv-slide--run{animation:none;box-shadow:inset 0 0 0 2px var(--p-accent)}}
+
+.pv-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;background:var(--p-surface2);color:var(--p-text2);border:1px solid transparent}
+.pv-badge--ok{background:transparent;border-color:var(--p-line2);color:var(--p-text2)}
+.pv-badge--warn{background:var(--p-accent);border-color:var(--p-accent);color:var(--p-on-accent)}
+.pv-badge--danger{background:transparent;border-color:var(--p-danger);color:var(--p-danger)}
+.pv-badge--brand{background:var(--p-accent-soft);border-color:transparent;color:var(--p-accent)}
+
+.pv-toast{display:flex;gap:10px;align-items:flex-start;background:var(--p-surface);border:1px solid var(--p-line);border-left:3px solid var(--p-accent);border-radius:11px;padding:11px 13px;box-shadow:var(--p-shadow)}
+.pv-toast--warn{border-left-color:var(--p-accent)}
+.pv-toast--danger{border-left-color:var(--p-danger)}
+.pv-toast b{font-size:12.5px;font-weight:600;display:block}
+.pv-toast span{font-size:11.8px;color:var(--p-text2);line-height:1.6}
+
+.pv-empty{border:1px dashed var(--p-line2);border-radius:13px;padding:26px 18px;text-align:center}
+.pv-empty b{font-size:13px;display:block;margin-bottom:5px}
+.pv-empty span{font-size:12px;color:var(--p-text3)}
+
+.pv-skel{background:linear-gradient(90deg,var(--p-surface2) 25%,var(--p-surface3) 37%,var(--p-surface2) 63%);background-size:400% 100%;animation:sk 1.4s ease infinite;border-radius:7px}
+@keyframes sk{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+.pv-topbar{display:flex;align-items:center;gap:18px;height:52px;padding:0 14px;border:1px solid var(--p-line);border-radius:12px;background:var(--p-surface)}
+.pv-topbar nav{display:flex;gap:2px;flex:1}
+.pv-topbar nav button{height:30px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--p-text2);font:inherit;font-size:12.5px;cursor:pointer}
+.pv-topbar nav button.on{background:var(--p-accent-soft);color:var(--p-accent);font-weight:600}
+.pv-avatar{width:28px;height:28px;border-radius:50%;background:var(--p-surface2);border:1px solid var(--p-line);display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--p-text2)}
+
+/* ============ 动效语汇库 · 实况演示 ============ */
+.motion-lab{display:grid;grid-template-columns:repeat(auto-fit,minmax(188px,1fr));gap:12px}
+.mtile{padding:0;border:1px solid var(--line);border-radius:13px;overflow:hidden;background:var(--paper);cursor:pointer;text-align:left;font:inherit;display:block;transition:border-color .16s cubic-bezier(.2,0,0,1),transform .16s cubic-bezier(.2,0,0,1)}
+.mtile:hover{border-color:var(--line2);transform:translateY(-2px)}
+.mtile:focus-visible{outline:2px solid #14181B;outline-offset:2px}
+.mtile-stage{display:grid;place-items:center;height:106px;background:#14181B;position:relative;overflow:hidden}
+.mtile-cap{display:block;padding:10px 12px 12px}
+.mtile-cap b{display:block;font-size:12.5px;font-weight:600;margin-bottom:3px;color:var(--ink)}
+.mtile-cap span{display:block;font-size:11.2px;line-height:1.5;color:var(--ink3)}
+.mtile-obj{width:62px;height:38px;border-radius:8px;background:#F2F4F5;display:block;position:relative;
+  transition:transform .16s cubic-bezier(.2,0,0,1),box-shadow .16s cubic-bezier(.2,0,0,1),opacity .16s}
+
+@keyframes mEnter{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes mPress{0%{transform:scale(1)}45%{transform:scale(.94)}100%{transform:scale(1)}}
+@keyframes mBreathe{0%,100%{box-shadow:inset 0 0 0 1px rgba(255,255,255,.28)}50%{box-shadow:inset 0 0 0 2px rgba(255,255,255,.92)}}
+@keyframes mShimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
+@keyframes mToast{from{opacity:0;transform:translate(14px,10px)}to{opacity:1;transform:none}}
+@keyframes mModal{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+@keyframes mRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.mtile[data-motion="enter"].is-run .mtile-obj{animation:mEnter 320ms cubic-bezier(.05,.7,.1,1)}
+.mtile[data-motion="press"].is-run .mtile-obj{animation:mPress 240ms cubic-bezier(.2,0,0,1)}
+.mtile[data-motion="lift"]:hover .mtile-obj{transform:translateY(-6px);box-shadow:0 14px 26px -8px rgba(0,0,0,.95)}
+.mtile[data-motion="zoom"] .mtile-obj{background:#2A3136;overflow:hidden}
+.mtile[data-motion="zoom"] .mtile-obj>span{display:block;width:100%;height:100%;background:#8A9299;transition:transform .32s cubic-bezier(.2,0,0,1)}
+.mtile[data-motion="zoom"]:hover .mtile-obj>span{transform:scale(1.06)}
+.mtile[data-motion="breathe"] .mtile-obj{background:transparent;animation:mBreathe 1.6s ease-in-out infinite}
+.mtile[data-motion="shimmer"] .mtile-obj{background:linear-gradient(90deg,#1C2023 25%,#394248 37%,#1C2023 63%);background-size:400% 100%;animation:mShimmer 1.4s linear infinite}
+.mtile[data-motion="progress"] .mtile-obj{width:150px;height:6px;border-radius:99px;background:#262B2F;overflow:hidden}
+.mtile[data-motion="progress"] .mtile-obj>span{display:block;height:100%;width:12%;background:#F2F4F5;border-radius:99px;transition:width .32s cubic-bezier(.2,0,0,1)}
+.mtile[data-motion="progress"].is-run .mtile-obj>span{width:78%}
+.mtile[data-motion="tick"] .mtile-obj{background:transparent;width:auto;height:auto;font-family:var(--f-mono);font-size:30px;font-weight:600;color:#F2F4F5;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mtile[data-motion="toast"] .mtile-obj{width:152px;height:auto;padding:9px 11px;border-radius:9px;background:#1C2023;border:1px solid rgba(255,255,255,.14);border-left:3px solid #F2F4F5}
+.mtile[data-motion="toast"] .mtile-obj::after{content:'';display:block;height:5px;width:70%;border-radius:3px;background:rgba(255,255,255,.34)}
+.mtile[data-motion="toast"].is-run .mtile-obj{animation:mToast 220ms cubic-bezier(.05,.7,.1,1)}
+.mtile[data-motion="modal"] .mtile-obj{width:122px;height:66px;border-radius:10px;background:#1C2023;border:1px solid rgba(255,255,255,.14)}
+.mtile[data-motion="modal"].is-run .mtile-obj{animation:mModal 220ms cubic-bezier(.05,.7,.1,1)}
+.mtile[data-motion="stagger"] .mtile-obj{width:150px;height:auto;background:transparent;display:flex;flex-direction:column;gap:6px}
+.mtile[data-motion="stagger"] .mtile-obj i{display:block;height:10px;border-radius:4px;background:#3A4247}
+.mtile[data-motion="stagger"] .mtile-obj i:nth-child(2){width:82%}
+.mtile[data-motion="stagger"] .mtile-obj i:nth-child(3){width:62%}
+.mtile[data-motion="stagger"] .mtile-obj i:nth-child(4){width:74%}
+.mtile[data-motion="stagger"].is-run .mtile-obj i{animation:mRise 320ms cubic-bezier(.05,.7,.1,1) backwards}
+.mtile[data-motion="stagger"].is-run .mtile-obj i:nth-child(1){animation-delay:0ms}
+.mtile[data-motion="stagger"].is-run .mtile-obj i:nth-child(2){animation-delay:30ms}
+.mtile[data-motion="stagger"].is-run .mtile-obj i:nth-child(3){animation-delay:60ms}
+.mtile[data-motion="stagger"].is-run .mtile-obj i:nth-child(4){animation-delay:90ms}
+.mtile-stage--spot::after{content:'';position:absolute;inset:0;opacity:0;transition:opacity .2s;pointer-events:none;
+  background:radial-gradient(220px circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.11),transparent 70%)}
+.mtile-stage--spot:hover::after{opacity:1}
+@media (prefers-reduced-motion: reduce){
+  .mtile,.mtile-obj,.mtile-obj>span,.mtile-obj i{animation:none!important;transition:none!important}
+  .mtile-stage--spot::after{display:none}
+}
+
+/* ============ 点缀色试穿台 ============ */
+@keyframes alBreathe{0%,100%{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--acc-dk) 45%,transparent)}50%{box-shadow:inset 0 0 0 2px var(--acc-dk)}}
+.accent-lab{--acc:#1B7A68;--acc-soft:#EAF4F1;--acc-dk:#63D6BC;--acc-soft-dk:rgba(99,214,188,.14);
+  border:1px solid var(--line);border-radius:14px;background:var(--paper);padding:14px;box-shadow:var(--sh-xs)}
+.accent-lab[data-accent="blue"]{--acc:#16707F;--acc-soft:#E7F1F3;--acc-dk:#5ECEDC;--acc-soft-dk:rgba(94,206,220,.14)}
+.accent-lab[data-accent="vermilion"]{--acc:#B33A2B;--acc-soft:#F7E9E6;--acc-dk:#E8836F;--acc-soft-dk:rgba(232,131,111,.14)}
+.accent-lab[data-accent="amber"]{--acc:#96650F;--acc-soft:#F7EFDD;--acc-dk:#D9A94E;--acc-soft-dk:rgba(217,169,78,.14)}
+.al-switch{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.al-switch button{font:inherit;font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--paper);color:var(--ink2);cursor:pointer;transition:all .16s cubic-bezier(.2,0,0,1)}
+.al-switch button:hover{border-color:var(--line2)}
+.al-switch button.on{background:#14181B;border-color:#14181B;color:#fff;font-weight:600}
+.al-pane{border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:12px}
+.al-dark{background:#0B0E10}
+.al-light{background:#F4F6F7;border:1px solid var(--line);margin-top:10px}
+.al-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.al-nav{display:inline-flex;gap:3px;padding:3px;border-radius:10px}
+.al-nav i{font-style:normal;font-size:12px;padding:6px 11px;border-radius:7px;transition:all .16s cubic-bezier(.2,0,0,1)}
+.al-input{font:inherit;font-size:12.5px;padding:8px 11px;border-radius:9px;width:200px;outline:none;transition:all .16s cubic-bezier(.2,0,0,1)}
+.al-bar{display:inline-block;width:132px;height:6px;border-radius:99px;overflow:hidden}
+.al-bar i{display:block;height:100%;width:62%;border-radius:99px}
+.al-chip{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:6px;font-family:var(--f-mono)}
+.al-slide{font-size:12px;padding:10px 15px;border-radius:10px;transition:box-shadow .16s cubic-bezier(.2,0,0,1)}
+.al-btn{font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:9px}
+.al-link{font-size:12.5px;text-decoration:underline;text-underline-offset:3px}
+.al-dark .al-nav{background:#14181B}
+.al-dark .al-nav i{color:#A6ADB3}
+.al-dark .al-nav i.on{background:var(--acc-soft-dk);color:var(--acc-dk);font-weight:600}
+.al-dark .al-input{background:#14181B;border:1px solid var(--acc-dk);color:#F2F4F5;box-shadow:0 0 0 3px var(--acc-soft-dk)}
+.al-dark .al-bar{background:#262B2F}
+.al-dark .al-bar i{background:var(--acc-dk)}
+.al-dark .al-chip{background:var(--acc-soft-dk);color:var(--acc-dk)}
+.al-dark .al-slide{background:#14181B;border:1px solid rgba(255,255,255,.09);color:#A6ADB3}
+.al-dark .al-slide.sel{box-shadow:0 0 0 2px #0B0E10,0 0 0 4px var(--acc-dk);color:#F2F4F5}
+.al-dark .al-slide.run{animation:alBreathe 1.6s ease-in-out infinite;color:#F2F4F5}
+.al-dark .al-btn.pri{background:#F2F4F5;color:#0B0E10}
+.al-dark .al-btn.ghost{border:1px solid rgba(255,255,255,.18);color:#A6ADB3}
+.al-dark .al-danger{font-size:12.5px;color:#E8836F}
+.al-dark .al-link{color:var(--acc-dk)}
+.al-light .al-nav{background:#fff}
+.al-light .al-nav i{color:#4D555C}
+.al-light .al-nav i.on{background:var(--acc-soft);color:var(--acc);font-weight:600}
+.al-light .al-input{background:#fff;border:1px solid var(--acc);color:#0B0E10;box-shadow:0 0 0 3px var(--acc-soft)}
+.al-light .al-bar{background:#E2E5E8}
+.al-light .al-bar i{background:var(--acc)}
+.al-light .al-chip{background:var(--acc-soft);color:var(--acc)}
+.al-light .al-slide{background:#fff;border:1px solid var(--line);color:#4D555C}
+.al-light .al-slide.sel{box-shadow:0 0 0 2px #F4F6F7,0 0 0 4px var(--acc);color:#0B0E10}
+.al-light .al-slide.run{box-shadow:inset 0 0 0 2px var(--acc);color:#0B0E10}
+.al-light .al-btn.pri{background:#14181B;color:#fff}
+.al-light .al-btn.ghost{border:1px solid var(--line2);color:#4D555C}
+.al-light .al-danger{font-size:12.5px;color:#B33A2B}
+.al-light .al-link{color:var(--acc)}
+@media (prefers-reduced-motion: reduce){.al-slide.run{animation:none!important}}
+
+
+.wire{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--sh-xs)}
+.wire-frame{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#FAFBFB}
+.wf{display:grid;font-family:var(--f-mono);font-size:10px;color:#5C6B6B;text-align:center}
+.wf>div{border:1px solid #DCE4E4;border-radius:6px;padding:7px 5px;background:#fff;display:grid;place-items:center;min-height:30px;line-height:1.35}
+.wf .f-brand{background:#EDEFF1;border-color:#C9CED3;color:#0B0E10;font-weight:600}
+.wf .f-act{background:#14181B;border-color:#14181B;color:#FFFFFF}
+.wf .f-mute{background:#F7F8F9;border-color:#E3E6E9;color:#6E767D}
+.wf .f-tall{min-height:70px}
+.wf .f-xtall{min-height:112px}
+.wf .sp{background:transparent;border:0;min-height:0;padding:0}
+.wire-cap{margin-top:11px;font-size:12.3px;color:var(--ink2);line-height:1.7}
+.wire-cap b{color:var(--ink)}
+
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.flow-step{flex:1 1 132px;min-width:132px;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:11px 12px;position:relative}
+.flow-step b{display:block;font-size:12.5px;margin-bottom:3px}
+.flow-step span{font-size:11.3px;color:var(--ink3);line-height:1.55;display:block}
+.flow-step .n{font-family:var(--f-mono);font-size:10px;color:var(--brand);display:block;margin-bottom:5px}
+.flow-step.hot{border-color:#C9CED3;background:#EDEFF1}
+
+.sw{display:flex;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--paper)}
+.sw>div{flex:1;padding:12px 8px;text-align:center;font-size:11px;color:var(--ink2);border-right:1px solid var(--line)}
+.sw>div:last-child{border-right:0}
+.sw .lbl{display:block;font-family:var(--f-mono);font-size:9.5px;color:var(--ink3);margin-bottom:5px}
+.sw .val{font-size:11.5px;color:var(--ink)}
+
+.ramp{display:flex;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.ramp>div{flex:1;height:56px;display:flex;flex-direction:column;justify-content:flex-end;padding:6px 5px;font-family:var(--f-mono);font-size:9px;line-height:1.3}
+
+.type-row{display:flex;align-items:baseline;gap:16px;padding:11px 0;border-bottom:1px solid var(--line)}
+.type-row:last-child{border-bottom:0}
+.type-meta{flex:none;width:186px;font-family:var(--f-mono);font-size:10.5px;color:var(--ink3);line-height:1.5}
+.type-demo{flex:1;min-width:0;overflow:hidden}
+
+.tok-row{display:grid;grid-template-columns:180px 44px 1fr;gap:12px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.3px}
+.tok-row:last-child{border-bottom:0}
+.tok-chip{width:34px;height:22px;border-radius:6px;border:1px solid rgba(0,0,0,.12)}
+.tok-name{font-family:var(--f-mono);font-size:11.3px;color:var(--ink)}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.two{grid-template-columns:1fr}}
+@media(max-width:1000px){
+  .shell{grid-template-columns:1fr}
+  .toc{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:18px}
+  .toc ol{display:flex;flex-wrap:wrap;gap:4px}
+  .toc a::before{content:''}
+  main{padding-bottom:70px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="toc">
+  <div class="toc-brand"><span class="toc-mark">C</span>CELANO PPT</div>
+  <div class="toc-sub">UI 设计方案 v2.0 · 2026-10</div>
+  <ol>
+    <li><a href="#s1">目标用户群体与核心使用场景</a></li>
+    <li><a href="#s2">交互习惯与通用约定</a></li>
+    <li><a href="#s3">布局结构与栅格系统</a></li>
+    <li><a href="#s4">色彩规范</a></li>
+    <li><a href="#s5">字体与排版规范</a></li>
+    <li><a href="#s6">间距 · 圆角 · 层级</a></li>
+    <li><a href="#s7">动效规范</a></li>
+    <li><a href="#s8">导航体系设计</a></li>
+    <li><a href="#s9">关键组件设计</a></li>
+    <li><a href="#s10">主要页面设计</a></li>
+    <li><a href="#s11">核心操作流程</a></li>
+    <li><a href="#s12">一致性 · 可访问性 · 响应式</a></li>
+    <li><a href="#s13">设计理由与可用性改进建议</a></li>
+  </ol>
+</aside>
+<main>
+
+<div class="hero">
+  <div class="kicker">UI SYSTEM REDESIGN / CELANO PPT</div>
+  <h1>把「AI 生成」的不确定性，<br>收进一套<em>确定、可预期</em>的界面里。</h1>
+  <p class="lede">
+    本方案针对现有 CELANO PPT（智绘演示文稿生成系统）重建整套界面体系。产品能力已经完整——主题成稿、2K/4K 原生画面、模版深度参考、多线程并发生图、无限画布、点数计费与后台运营——但界面层仍停留在复刻式的黑白皮肤：只有两三级灰阶、层级全靠阴影、主行动与次要行动无法区分、生成状态只能靠文字辨认、点数消耗藏在弹窗里、对比度多处不足 4.5:1。
+    <strong>方案以黑白为骨、彩色为标点</strong>：<strong>14 级中性阶</strong>建立层级，<strong>「强调阶梯」</strong>用填充度表达主次，<strong>「状态形态语言」</strong>用边框样式表达状态，再引入<strong>唯一一个低饱和品牌点缀色（澜青·青瓷）</strong>——只出现在焦点环、当前项、进度条这些"交互状态"上，主行动永远保持黑白反转。最后配一套 <strong>12 条的动效语汇库</strong>：黑白界面里，动效与那 5% 的彩色，共同承担了高级感。
+  </p>
+  <div class="hero-tags">
+    <span class="tag on">黑白为骨 · 5% 彩色点缀</span>
+    <span class="tag on">14 级中性阶 + 1 个点缀色</span>
+    <span class="tag on">5 级强调阶梯</span>
+    <span class="tag on">12 条动效语汇</span>
+    <span class="tag on">浅色 + 深色双主题</span>
+    <span class="tag on">WCAG 2.2 AA</span>
+    <span class="tag">11 个路由页面</span>
+    <span class="tag">13 章 / 可映射到 index.css @theme</span>
+  </div>
+</div>
+
+<!-- ================= 1 ================= -->
+<section id="s1">
+  <div class="sec-head"><span class="sec-num">01</span><h2>目标用户群体与核心使用场景</h2></div>
+  <p class="sec-lede">
+    这个产品的用户不是设计师，而是"临时要交一份好看材料"的人。他们的共同特征是：<strong>时间压力大、没有排版能力、对结果有审美要求但没有审美自信</strong>。因此界面的核心任务不是"提供强大工具"，而是"降低不确定感"——让用户在生成前知道要花多少、生成中知道在做什么、生成后知道能改哪里。
+  </p>
+
+  <h3 class="blk">三类主要用户</h3>
+  <div class="grid g3">
+    <div class="card">
+      <h4><span class="idx">A</span>职场汇报者 · 高频主力</h4>
+      <p><strong>画像：</strong>市场／运营／销售岗，25–40 岁，非设计背景，每周 1–2 次汇报。<br>
+      <strong>任务：</strong>用一句话主题，在 2 小时内交出能过审的季度复盘／竞品分析／方案提案。<br>
+      <strong>真实痛点：</strong>不会排版；模版库要么土要么贵；"改一页要重来一遍"；不知道这次生成要烧掉多少点。<br>
+      <strong>界面诉求：</strong>极短路径进入生成、成本前置可见、单页可局部重做、导出后能在 PowerPoint 里继续改。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">B</span>创业者 / 商务拓展 · 质量优先</h4>
+      <p><strong>画像：</strong>创始人、BD、咨询顾问，需要对外交付品牌级材料。<br>
+      <strong>任务：</strong>打磨一份 20 页路演 BP，反复迭代同一套视觉语言。<br>
+      <strong>真实痛点：</strong>品牌一致性难保证（Logo 位置、配色、字重每页都不同）；想换风格只能整篇重来；多版本管理混乱。<br>
+      <strong>界面诉求：</strong>全局视觉方向锁定、Logo 与配色的统一控制、批量重生成、版本与导出记录。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">C</span>内容 / 教育生产者 · 批量为王</h4>
+      <p><strong>画像：</strong>讲师、自媒体运营、培训机构教研。<br>
+      <strong>任务：</strong>把一套内容拆成课件 + 社媒配图 + 长图，批量产出。<br>
+      <strong>真实痛点：</strong>每次都要重新描述风格；出图慢、排队不可见；素材散落在不同页面找不到。<br>
+      <strong>界面诉求：</strong>模版复用与"再来一批"、并发生图的进度可视化、素材库与画布打通。</p>
+    </div>
+  </div>
+
+  <h3 class="blk">核心使用场景矩阵</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>场景</th><th>频率 / 时长</th><th>成功标准</th><th>主要页面</th><th>设计侧重</th></tr></thead>
+    <tbody>
+      <tr><td><strong>临时赶工</strong><br><span class="note">会前 2 小时才动手</span></td><td>高频 / 10–20 分钟</td><td>一次生成即可用，不再二次修改</td><td>首页 → PPT 生成 → 工作台</td><td>最短路径、成本前置、默认值合理</td></tr>
+      <tr><td><strong>精细打磨</strong><br><span class="note">对外正式材料</span></td><td>中频 / 1–3 小时</td><td>视觉统一、每页都可控</td><td>工作台（三栏）</td><td>单页重生成、批量操作、撤销栈、自动保存</td></tr>
+      <tr><td><strong>系列复用</strong><br><span class="note">同一套版式做多期</span></td><td>低频 / 30 分钟</td><td>新旧材料视觉一致</td><td>模版库 → PPT 生成</td><td>模版预览、深度参考、"套用并生成"</td></tr>
+      <tr><td><strong>批量出图</strong><br><span class="note">配图与长图</span></td><td>中频 / 5–15 分钟</td><td>一批图风格统一、可下载</td><td>文生图 → 智能画布</td><td>并发进度可视化、失败单张重试、批量导出</td></tr>
+      <tr><td><strong>额度与团队</strong></td><td>低频 / 2 分钟</td><td>知道自己还剩多少、怎么充</td><td>个人中心 → 会员</td><td>余额常驻可见、消耗明细可追溯</td></tr>
+      <tr><td><strong>运营管理</strong></td><td>低频 / 按需</td><td>能配置模型、发码、看数据</td><td>管理后台</td><td>信息密度高、表格可批量、操作有审计</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">五条必须被满足的用户任务（JTBD）</h3>
+  <div class="grid g2">
+    <div class="card"><h4><span class="idx">1</span>30 秒内开始一次生成</h4><p>首页到"点下生成"之间，认知负担必须极低：一个输入框、三个默认值、一个主按钮。</p></div>
+    <div class="card"><h4><span class="idx">2</span>生成前知道要花多少点</h4><p>成本不能只出现在确认弹窗里，应在配置区实时联动显示（页数 × 画质单价）。</p></div>
+    <div class="card"><h4><span class="idx">3</span>生成中知道在做什么、是否卡住</h4><p>规划 → 渲染 → 完成的三段式进度，加上每页的并发状态，避免"黑盒等待"。</p></div>
+    <div class="card"><h4><span class="idx">4</span>单页不满意能只重做这一页</h4><p>这是留存的关键：局部重生成必须比整篇重来更显眼、更容易。</p></div>
+    <div class="card"><h4><span class="idx">5</span>成品能带品牌标识导出</h4><p>Logo、配色、16:9 画幅在预览与导出之间必须完全一致（所见即所得）。</p></div>
+    <div class="card warn"><h4>⚠ 当前最大的体验缺口</h4><p>成本确认弹窗、点数余额、生成进度三者分散在不同页面，用户在一次生成中要做 3 次"上下文切换"才能拼出完整信息。</p></div>
+  </div>
+</section>
+
+<!-- ================= 2 ================= -->
+<section id="s2">
+  <div class="sec-head"><span class="sec-num">02</span><h2>交互习惯与通用约定</h2></div>
+  <p class="sec-lede">
+    一个原则：<strong>不发明新范式</strong>。用户对 PPT 工具和 AI 生成工具的预期已经被 PowerPoint、Figma、Canva、Midjourney 训练完成，界面应当尽量贴合这些既有肌肉记忆，把创新预算花在"AI 生成"这件事本身的表达上。
+  </p>
+
+  <h3 class="blk">A. 平台级通用约定</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4>导航与位置感</h4>
+      <ul class="clean">
+        <li>全局导航固定在顶部，品牌标记始终可点，点击<strong>回到首页</strong>。</li>
+        <li>当前所在位置必须有可见的"选中态"，且<strong>可被 URL 直接访问</strong>（当前 hash 路由需保证刷新与分享不丢状态）。</li>
+        <li>深层页面（工作台、账户）显示<strong>面包屑 + 返回</strong>，返回指向逻辑父级而非浏览器历史。</li>
+        <li>浏览器后退键必须有效——这是用户检查"我刚才那步"的默认动作。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>操作与反馈</h4>
+      <ul class="clean">
+        <li>每个视图<strong>只有一个主行动按钮</strong>（E4 反转填充：暗色主题白底黑字、浅色主题黑底白字），其余一律降为 E2 描边或 E0 纯文字。</li>
+        <li>主行动位于内容流右下或表单右下，符合"从左到右、从上到下"的阅读终点。</li>
+        <li>破坏性操作（删除作品、清空画布、重置配置）→ <strong>二次确认 + 说明后果 + 提供撤销</strong>。</li>
+        <li>任何超过 400ms 的等待都要有反馈：骨架屏 / 进度条 / 按钮内联 loading。</li>
+        <li>Toast 只承载"已完成的轻量结果"，<strong>不得承载唯一关键信息</strong>，3 秒自动消失且可关闭。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>表单与输入</h4>
+      <ul class="clean">
+        <li>标签在字段上方（不用占位符代替标签）；占位符只做示例。</li>
+        <li>校验在<strong>失焦后</strong>触发，不打断输入；错误信息紧贴字段并说明如何修复。</li>
+        <li><span class="kbd">Enter</span> 提交单行表单，<span class="kbd">Esc</span> 取消；多行文本框内 <span class="kbd">⌘</span>+<span class="kbd">Enter</span> 才提交。</li>
+        <li>长表单分组，每组有标题；不隐藏必填项。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>列表与选择</h4>
+      <ul class="clean">
+        <li>整行可点击，行内操作按钮用图标 + tooltip，避免与行点击冲突。</li>
+        <li>批量选择用复选框 + 顶部浮动操作条（"已选 3 项 · 重新生成 · 删除"）。</li>
+        <li>空态必须给出<strong>下一步动作</strong>，不能只有一句"暂无数据"。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="blk">B. 编辑器与画布的专属约定</h3>
+  <div class="grid g3">
+    <div class="card"><h4>三栏心智模型</h4><p>左＝结构（页列表），中＝对象（画布），右＝属性（检查器）。这是 Figma / Keynote 的共同模型，用户无需学习。</p></div>
+    <div class="card"><h4>选择语义</h4><p>单击＝选中，双击＝进入编辑，空白处点击＝取消选中，<span class="kbd">Shift</span>+点击＝多选，拖拽＝排序或移动。</p></div>
+    <div class="card"><h4>永不丢失工作</h4><p>编辑即自动保存，顶栏常驻"已保存 / 保存中 / 保存失败"状态；失败时给出重试，而不是静默丢弃。</p></div>
+    <div class="card"><h4>撤销是安全网</h4><p>所有破坏性编辑进入撤销栈（<span class="kbd">⌘Z</span> / <span class="kbd">⇧⌘Z</span>），至少保留 20 步；批量重生成视为一步。</p></div>
+    <div class="card"><h4>消耗类操作前置告知</h4><p>任何扣点操作（重生成、提升画质、批量导出）在触发点显示单价与总额，二次确认只在总额超过阈值时出现。</p></div>
+    <div class="card"><h4>等待不阻塞</h4><p>生图期间界面必须可交互：能切页、能看其他作品、能离开页面（任务在服务端继续）。</p></div>
+  </div>
+
+  <h3 class="blk">C. 全局键盘地图</h3>
+  <div class="table-wrap">
+  <table class="tb-tight">
+    <thead><tr><th>快捷键</th><th>动作</th><th>作用范围</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><span class="kbd">⌘</span><span class="kbd">K</span></td><td>打开命令面板</td><td>全局</td><td>搜索页面、作品、模版，执行"新建 PPT"等动作</td></tr>
+      <tr><td><span class="kbd">⌘</span><span class="kbd">Enter</span></td><td>提交生成 / 确认</td><td>生成页、弹窗</td><td>避免鼠标离开输入区</td></tr>
+      <tr><td><span class="kbd">⌘</span><span class="kbd">S</span></td><td>立即保存</td><td>工作台、画布</td><td>自动保存之外的显式确认</td></tr>
+      <tr><td><span class="kbd">⌘</span><span class="kbd">Z</span> / <span class="kbd">⇧</span><span class="kbd">⌘</span><span class="kbd">Z</span></td><td>撤销 / 重做</td><td>工作台、画布</td><td>批量操作记为一步</td></tr>
+      <tr><td><span class="kbd">←</span> <span class="kbd">→</span></td><td>上一页 / 下一页</td><td>工作台</td><td>翻页预览，不改选中</td></tr>
+      <tr><td><span class="kbd">R</span></td><td>重新生成本页</td><td>工作台</td><td>选中页后生效，需确认扣点</td></tr>
+      <tr><td><span class="kbd">Space</span> + 拖拽</td><td>平移画布</td><td>智能画布</td><td>滚轮缩放、<span class="kbd">⌘0</span> 适配</td></tr>
+      <tr><td><span class="kbd">⌘</span><span class="kbd">B</span></td><td>折叠 / 展开侧栏</td><td>工作台、后台</td><td>为画布让出宽度</td></tr>
+      <tr><td><span class="kbd">⌘</span><span class="kbd">E</span></td><td>导出 PPTX</td><td>工作台</td><td>导出中显示进度与文件名</td></tr>
+      <tr><td><span class="kbd">Esc</span></td><td>关闭 / 取消选中</td><td>全局</td><td>优先级：弹窗 &gt; 面板 &gt; 选中</td></tr>
+      <tr><td><span class="kbd">?</span></td><td>快捷键帮助</td><td>全局</td><td>以浮层列出全部可用快捷键</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">移动端不要求键盘，但必须保证同等功能通过可见控件可达——键盘快捷方式是"加速器"而非"唯一入口"。</p>
+</section>
+
+<!-- ================= 3 ================= -->
+<section id="s3">
+  <div class="sec-head"><span class="sec-num">03</span><h2>布局结构与栅格系统</h2></div>
+  <p class="sec-lede">
+    采用 <strong>8pt 基线网格 + 12 列弹性栅格</strong>。所有间距、尺寸、圆角都取自有限的 token 阶，禁止出现 7px、13px、19px 这类"手工微调值"——这是当前样式表里最影响一致性的问题。
+  </p>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">间距阶（4 的倍数）</h3>
+      <div class="sw">
+        <div><span class="lbl">2xs</span><span class="val">4</span></div>
+        <div><span class="lbl">xs</span><span class="val">8</span></div>
+        <div><span class="lbl">sm</span><span class="val">12</span></div>
+        <div><span class="lbl">md</span><span class="val">16</span></div>
+        <div><span class="lbl">lg</span><span class="val">24</span></div>
+        <div><span class="lbl">xl</span><span class="val">32</span></div>
+        <div><span class="lbl">2xl</span><span class="val">48</span></div>
+        <div><span class="lbl">3xl</span><span class="val">64</span></div>
+      </div>
+      <p class="note" style="margin-top:10px">组件内间距用 8/12/16；区块间距用 24/32/48；页面级留白用 48/64。同一层级必须用同一个值。</p>
+    </div>
+    <div>
+      <h3 class="blk">内容宽度与边距</h3>
+      <div class="table-wrap">
+      <table class="tb-tight">
+        <thead><tr><th>页面类型</th><th>最大内容宽</th><th>页面边距</th></tr></thead>
+        <tbody>
+          <tr><td>首页 / 营销页</td><td>1200px</td><td><code>clamp(20px,4vw,56px)</code></td></tr>
+          <tr><td>生成器 / 模版库</td><td>1120px</td><td><code>clamp(20px,3.4vw,48px)</code></td></tr>
+          <tr><td>工作台 / 画布</td><td>不设上限（占满）</td><td>16px</td></tr>
+          <tr><td>阅读型（协议、帮助）</td><td>760px</td><td>24px</td></tr>
+          <tr><td>管理后台</td><td>1440px</td><td>24px</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="blk">断点与栅格</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>断点</th><th>范围</th><th>列数 / 槽宽</th><th>边距</th><th>典型形态</th></tr></thead>
+    <tbody>
+      <tr><td><code>xs</code></td><td>0 – 639px</td><td>4 列 / 16px</td><td>16px</td><td>单列堆叠，底部标签栏导航</td></tr>
+      <tr><td><code>sm</code></td><td>640 – 767px</td><td>6 列 / 16px</td><td>20px</td><td>双列卡片，横向滚动导航</td></tr>
+      <tr><td><code>md</code></td><td>768 – 1023px</td><td>8 列 / 20px</td><td>24px</td><td>三栏工作台收为两栏，检查器变为抽屉</td></tr>
+      <tr><td><code>lg</code></td><td>1024 – 1279px</td><td>12 列 / 24px</td><td>32px</td><td>完整三栏工作台（页列表可折叠）</td></tr>
+      <tr><td><code>xl</code></td><td>1280 – 1535px</td><td>12 列 / 24px</td><td>48px</td><td>推荐设计基准宽度</td></tr>
+      <tr><td><code>2xl</code></td><td>≥ 1536px</td><td>12 列 / 32px</td><td>56px</td><td>内容居中，画布区域留白增加</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">页面骨架：三区框架</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-brand" style="min-height:38px">Global TopBar · 64px · 品牌 / 主导航 / 点数余额 / ⌘K / 账户</div>
+      </div>
+      <div class="wf" style="grid-template-columns:200px 1fr;gap:1px;padding:1px">
+        <div class="f-mute f-xtall">Context SideNav<br>240px（折叠 64px）<br>仅工作台 / 后台出现</div>
+        <div class="wf" style="grid-template-columns:1fr;gap:1px">
+          <div class="f-act f-xtall">Content Area · 12 列栅格<br><span style="font-family:var(--f-sans);color:#8A7A50">页面标题 / 主行动 / 内容</span></div>
+          <div class="f-mute">Breadcrumb + 页面级操作条</div>
+        </div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>三区框架：</b>顶栏全局共享，侧栏按上下文出现，内容区承载页面。侧栏在 <code>md</code> 以下折叠为图标条、在 <code>sm</code> 以下变为抽屉——<b>不做底部标签栏以外的移动端导航创新</b>。</p>
+  </div>
+
+  <h3 class="blk">工作台：三栏编辑器布局</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-brand" style="min-height:34px">工作台顶栏 · 作品名（可改） / 保存状态 / 撤销重做 / 导出 PPTX</div>
+      </div>
+      <div class="wf" style="grid-template-columns:150px 1fr 190px;gap:1px;padding:1px">
+        <div class="f-mute f-xtall">① 页列表<br>216px<br>缩略图 + 状态点<br>拖拽排序</div>
+        <div class="f-act f-xtall">② 画布<br>flex · 最小 480px<br>16:9 等比，含安全区与 Logo 叠层</div>
+        <div class="f-mute f-xtall">③ 检查器<br>296px<br>提示词 / 版式 / 画质 / 重新生成</div>
+      </div>
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-mute">状态栏 · 已生成 5/8 · 并发 3 线程 · 本次已消耗 15 点</div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>设计要点：</b>① 与 ③ 都可折叠，把宽度让给画布；状态栏常驻底部，把"进度、并发、消耗"三个最焦虑的信息集中在一处——这正是当前版本最缺失的。</p>
+  </div>
+</section>
+
+<!-- ================= 4 ================= -->
+<section id="s4">
+  <div class="sec-head"><span class="sec-num">04</span><h2>色彩规范（无彩色体系）</h2></div>
+  <p class="sec-lede">
+    <strong>黑白为骨，彩色为标点。</strong>整站 95% 以上是黑 / 白 / 灰，只引入<strong>一个低饱和品牌点缀色</strong>（澜青·青瓷），且严格限定它只能出现在"交互状态"上——焦点环、当前项、进度条、进行中卡片。主行动永远是黑白反转，绝不着色。
+    为什么要这样分？因为当前的"黑白"之所以显得平，问题不在"没有颜色"，而在<strong>只有 2–3 级灰阶、层级全靠阴影</strong>——纯黑 <code>#000</code> 打底、深灰 <code>#1c1c1c</code> 做面，中间没有过渡，于是所有卡片都贴在同一个平面上。而反过来，无节制地加彩色又会滑向廉价。
+    这一节给出 <strong>14 级中性阶 + 强调阶梯 + 彩色点缀系统 + 状态形态语言</strong> 四件套：层级交给明度，主次交给填充度，当前状态交给那 5% 的彩色，出错交给边框形态。四者职责互不重叠。
+  </p>
+
+  <h3 class="blk">4.1 中性阶 · Graphite（14 级，带 2% 冷调）</h3>
+  <div class="ramp">
+    <div style="background:#FFFFFF;color:#21262A;border-right:1px solid #E3E6E9">N0<br>#FFFFFF</div>
+    <div style="background:#FAFBFB;color:#21262A">N25<br>#FAFBFB</div>
+    <div style="background:#F4F6F7;color:#21262A">N50<br>#F4F6F7</div>
+    <div style="background:#EDEFF1;color:#21262A">N100<br>#EDEFF1</div>
+    <div style="background:#E2E5E8;color:#21262A">N200<br>#E2E5E8</div>
+    <div style="background:#C9CED3;color:#21262A">N300<br>#C9CED3</div>
+    <div style="background:#8A9299;color:#fff">N400<br>#8A9299</div>
+    <div style="background:#6E767D;color:#fff">N500<br>#6E767D</div>
+    <div style="background:#4D555C;color:#fff">N600<br>#4D555C</div>
+    <div style="background:#343B42;color:#fff">N700<br>#343B42</div>
+    <div style="background:#21262A;color:#fff">N800<br>#21262A</div>
+    <div style="background:#14181B;color:#fff">N900<br>#14181B</div>
+    <div style="background:#0B0E10;color:#fff">N950<br>#0B0E10</div>
+    <div style="background:#050708;color:#fff">N1000<br>#050708</div>
+  </div>
+  <p class="note" style="margin-top:10px">
+    <strong>三个关键决定：</strong>
+    ① <strong>不用纯黑打底</strong>——暗色主题底用 <code>N950 #0B0E10</code> 而非 <code>#000</code>。纯黑与深灰面板之间会形成"黑洞"，阴影完全失效，白字也过于刺眼（对比度 21:1，长时间阅读会累）。<code>#0B0E10</code> 保留了"黑"的观感，但留出了层级空间。
+    ② <strong>灰阶要密</strong>——14 级里真正高频使用的大约是 N25 / N50 / N100 / N200 / N400 / N600 / N800 / N900 / N950 这 9 级，足以支撑页面底 / 卡片 / 悬浮层 / 分割线 / 三种文字 / 两种填充。
+    ③ <strong>带 2% 冷调</strong>——所有灰阶偏向青灰（如 N950 的 R11 G14 B16），肉眼几乎察觉不到色相，只感觉到"干净、不脏"。这是黑白体系显得高级的关键细节，纯中性灰（R=G=B）反而容易显得发黄发脏。
+  </p>
+
+  <h3 class="blk">4.2 强调阶梯（用填充度替代强调色）</h3>
+  <p class="note" style="margin-bottom:14px">让用户找到"下一步"的第一手段是<strong>填充度差异</strong>，不是颜色。填充度越高的元素越重要——这套五级阶梯负责"哪里是主行动"。点缀色（见 4.3）只负责"哪里是当前状态"，两者职责不重叠。<strong>主行动永远是黑白反转，绝不用彩色。</strong>这是一个刻意的选择：一旦主按钮变成彩色，彩色就失去了"点缀"的身份，整站会立刻变得吵。</p>
+  <div class="pv" data-theme="dark" style="margin-bottom:16px">
+    <div class="pv-label">Dark · 强调阶梯实况</div>
+    <div class="pv-row" style="gap:10px">
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--p-text3)"><button class="pv-btn pv-btn--primary">E4 反转</button></span>
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--p-text3)"><button class="pv-btn" style="background:var(--p-surface3)">E3 实心</button></span>
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--p-text3)"><button class="pv-btn pv-btn--secondary">E2 描边</button></span>
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--p-text3)"><span class="pv-badge pv-badge--brand">E1 弱底</span></span>
+      <span style="display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--p-text3)"><button class="pv-btn pv-btn--ghost">E0 纯文字</button></span>
+    </div>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>层级</th><th>手法</th><th>暗色主题</th><th>浅色主题</th><th>用在哪</th></tr></thead>
+    <tbody>
+      <tr><td><strong>E4 反转</strong></td><td>前景色填充 + 底色文字</td><td>白底 <code>N100</code> + 黑字 <code>N950</code></td><td>黑底 <code>N900</code> + 白字 <code>N0</code></td><td>主行动按钮、当前导航项、选中页、关键数据</td></tr>
+      <tr><td><strong>E3 实心</strong></td><td>中性高对比填充</td><td><code>N800</code> 底 + <code>N100</code> 字</td><td><code>N200</code> 底 + <code>N900</code> 字</td><td>次级按钮、活跃徽标、进度条</td></tr>
+      <tr><td><strong>E2 描边</strong></td><td>1px 边框，透明底</td><td><code>border-default</code></td><td><code>border-default</code></td><td>二级按钮、卡片、输入框</td></tr>
+      <tr><td><strong>E1 弱底</strong></td><td>浅填充，无描边</td><td><code>N800</code></td><td><code>N100</code></td><td>标签、代码、分段控件底、悬停态</td></tr>
+      <tr><td><strong>E0 纯文字</strong></td><td>无底无框</td><td>—</td><td>—</td><td>幽灵按钮、链接、取消</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>为什么"反转"是黑白体系里最强的强调</h4>
+    <p>在满屏深灰的界面里，一个<strong>白底黑字</strong>的按钮，比任何彩色按钮都更醒目——因为它占据了明度光谱的另一端。当前实现把主按钮做成"白底黑字"其实方向是对的，问题在于<strong>次要按钮也几乎是白色</strong>（<code>rgba(255,255,255,.06)</code> 底 + 白字），两者填充度差距不够，于是强调失效。<br>
+    解法不是换颜色，而是<strong>把其余按钮压低</strong>：次要按钮退回 E2 描边、幽灵按钮退回 E0，让 E4 的反转真正"孤零零"地站着。</p>
+    <p style="margin-top:10px">配合 4.3 的点缀色之后，一个界面里的三级关系就非常清楚了：<strong>主行动</strong>＝黑白反转（E4）、<strong>当前状态</strong>＝澜青弱底 + 澜青文字、<strong>其余一切</strong>＝中性描边与纯文字。三者用三种完全不同的视觉手段，谁也不会被误认成谁。</p>
+  </div>
+
+  <h3 class="blk">4.3 彩色点缀系统（黑白做骨，彩色做标点）</h3>
+  <p class="note" style="margin-bottom:14px">
+    纯黑白做久了会有两个问题：<strong>焦点态和当前态只能靠明度区分，长时间使用会疲劳</strong>；<strong>产品缺少一个能被记住的颜色锚点</strong>。
+    解法不是加一套彩色主题，而是引入<strong>极少量、低饱和、严格限定职责</strong>的点缀色。关键从来不是"选哪个好看的色"，而是<strong>给每个颜色分配互不重叠的语境</strong>。
+  </p>
+
+  <h4 class="blk">三套色，三个语境，永不越界</h4>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>角色</th><th>浅色主题</th><th>深色主题</th><th>只出现在</th><th>面积</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>品牌点缀</strong><br>澜青 · 青瓷调</td>
+        <td><code>#1B7A68</code></td>
+        <td><code>#63D6BC</code></td>
+        <td><strong>交互状态</strong>：键盘焦点环、当前导航项、选中的页、进度条、进行中卡片、链接</td>
+        <td>3–5%</td>
+      </tr>
+      <tr>
+        <td><strong>危险语义</strong><br>朱砂 · 暖红调</td>
+        <td><code>#B33A2B</code></td>
+        <td><code>#E8836F</code></td>
+        <td><strong>不可逆操作</strong>：删除、失败、余额耗尽。只做文字与描边，不做填充</td>
+        <td>&lt; 1%</td>
+      </tr>
+      <tr>
+        <td><strong>数据色</strong><br>涨红跌绿</td>
+        <td>涨 <code>#C0272B</code><br>跌 <code>#17864A</code></td>
+        <td>涨 <code>#E8836F</code><br>跌 <code>#6DD69A</code></td>
+        <td><strong>数据可视化</strong>：图表、消耗记录的增减、后台指标趋势</td>
+        <td>仅图表内</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note" style="margin-top:10px">
+    <strong>三者永不出现在同一视觉单元里。</strong>这是整节最重要的一条规则——它让"有颜色"这件事不会变吵。
+    青色只出现在控件上，红色只出现在破坏性动作上，红绿只出现在数字上。用户在任何一个局部画面里，最多只会看到一种彩色。
+  </p>
+
+  <h4 class="blk">为什么是青瓷绿，而不是红 / 金 / 蓝 / 紫</h4>
+  <div class="grid g3">
+    <div class="card"><h4>红 / 金 / 蓝 / 紫 为什么都不合适</h4><p><strong>红</strong>在 UI 里天然带"危险"联想，做通用强调会让用户误判；<strong>金</strong>容易滑向"土豪"，且与点数（钱）的语义混淆；<strong>蓝</strong>是 AI 产品的重灾区，与"科技蓝"的廉价感绑定；<strong>紫</strong>同质化最严重，且已经被当前代码里的残留值证明过不合适。</p></div>
+    <div class="card"><h4>青瓷绿好在哪</h4><p>① 与品牌名「青澜」同源，不需要额外解释；② 低饱和带灰，天然温润，在黑白底上既有存在感又不抢戏；③ 是"人眼最不容易疲劳"的色相区间之一，适合长时间驻留的编辑器；④ 与朱砂红构成冷暖对比，但两者语境完全隔离，不会打架。</p></div>
+    <div class="card warn"><h4>⚠ 一个必须说明的冲突</h4><p>青瓷绿 <code>#1B7A68</code> 与跌绿 <code>#17864A</code> 色相只差约 22°，在极少数场景（消耗记录里同时有选中行和绿色数值）可能混淆。<br><strong>处理方式：</strong>靠语境隔离——青色只出现在控件（焦点环、选中底、进度条），绿色只出现在数值文本；两者从不在同一个视觉单元里。若你更在意图表清晰度，试穿台里的<strong>「青蓝 · 靛青」<code>#16707F</code></strong> 与跌绿色相差 41°，是更保险的备选。</p></div>
+  </div>
+
+  <h4 class="blk">试穿台 · 点击切换，看同一套组件在不同点缀色下的效果</h4>
+  <p class="note" style="margin-bottom:12px">注意观察：无论换哪种点缀色，<strong>「生成 · 24 点」这个主按钮始终是黑白反转</strong>，颜色永远只出现在焦点环、当前项、进度条、进行中卡片和链接上。</p>
+  <div class="accent-lab" data-accent="teal" id="accentLab">
+    <div class="al-switch" role="group" aria-label="点缀色方案切换">
+      <button type="button" data-set="teal" class="on">澜青 · 青瓷（推荐）</button>
+      <button type="button" data-set="blue">青蓝 · 靛青</button>
+      <button type="button" data-set="vermilion">朱砂 · 暖红</button>
+      <button type="button" data-set="amber">琥珀 · 暖金</button>
+    </div>
+    <div class="al-pane al-dark">
+      <div class="al-row">
+        <span class="al-nav"><i class="on">PPT 生成</i><i>文生图</i><i>智能画布</i><i>模版库</i></span>
+        <span class="al-link">查看全部作品 →</span>
+      </div>
+      <div class="al-row">
+        <input class="al-input" value="2026 年度招商方案" readonly>
+        <span class="al-bar"><i></i></span><span class="al-chip">62%</span>
+      </div>
+      <div class="al-row">
+        <span class="al-slide sel">选中的页</span>
+        <span class="al-slide run">生成中</span>
+        <span class="al-slide">已完成</span>
+      </div>
+      <div class="al-row">
+        <span class="al-btn pri">生成 · 24 点</span>
+        <span class="al-btn ghost">取消</span>
+        <span class="al-danger">删除作品</span>
+      </div>
+    </div>
+    <div class="al-pane al-light">
+      <div class="al-row">
+        <span class="al-nav"><i class="on">作品库</i><i>素材</i><i>消耗记录</i></span>
+        <span class="al-link">查看全部记录 →</span>
+      </div>
+      <div class="al-row">
+        <input class="al-input" value="搜索作品名称" readonly>
+        <span class="al-bar"><i></i></span><span class="al-chip">62%</span>
+      </div>
+      <div class="al-row">
+        <span class="al-slide sel">选中的作品</span>
+        <span class="al-slide run">生成中</span>
+        <span class="al-slide">已完成</span>
+      </div>
+      <div class="al-row">
+        <span class="al-btn pri">导出 PPTX</span>
+        <span class="al-btn ghost">取消</span>
+        <span class="al-danger">删除作品</span>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:12px">试穿台是纯前端切换的，说明这套点缀色在工程上<strong>只需替换三个 token</strong>（<code>--accent</code> / <code>--accent-soft</code> / <code>--on-accent</code>）就能整体换肤。建议把这套"换色只改三个值"的能力保留下来——将来做活动主题、企业定制版、或深浅色之外的第三套皮肤时，成本几乎为零。</p>
+
+  <h3 class="blk">4.4 状态形态语言（用形状替代语义色）</h3>
+  <p class="note" style="margin-bottom:14px">生成中 / 已完成 / 失败不再用琥珀 / 绿 / 红区分，改用<strong>边框样式 + 圆点填充 + 图标</strong>三重编码。这套语言对色觉障碍用户完全可读，而且比彩色更冷静、更符合工具气质。</p>
+  <div class="pv" data-theme="dark" style="margin-bottom:16px">
+    <div class="pv-label">Dark · 四种状态的形态差异</div>
+    <div class="pv-row" style="align-items:stretch">
+      <div class="pv-slide"><div class="pv-slide-img">占位</div><div class="pv-slide-meta"><b>待生成</b><span class="pv-dot pv-dot--idle"></span></div></div>
+      <div class="pv-slide pv-slide--run"><div class="pv-slide-img"><div class="pv-skel" style="width:64%;height:8px;margin-bottom:6px"></div><div class="pv-skel" style="width:40%;height:8px"></div></div><div class="pv-slide-meta"><b>生成中</b><span class="pv-badge pv-badge--warn">62%</span></div></div>
+      <div class="pv-slide"><div class="pv-slide-img">成品图</div><div class="pv-slide-meta"><b>已完成</b><span class="pv-dot pv-dot--done"></span></div></div>
+      <div class="pv-slide pv-slide--fail"><div class="pv-slide-img" style="color:var(--p-danger)">渲染失败</div><div class="pv-slide-meta"><b>失败</b><span class="pv-badge pv-badge--danger">重试</span></div></div>
+    </div>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>状态</th><th>边框</th><th>状态点</th><th>明度</th><th>附加线索</th></tr></thead>
+    <tbody>
+      <tr><td>待生成</td><td>1px 实线 <code>border-subtle</code></td><td>空心圆（1.5px 描边）</td><td>低（<code>N500</code>）</td><td>占位缩略图，无动画</td></tr>
+      <tr><td>生成中</td><td><strong>2px 实线</strong>，高对比</td><td>实心圆（呼吸）</td><td>最高（<code>N100</code>）</td><td>骨架屏 + 百分比 + 旋转环</td></tr>
+      <tr><td>已完成</td><td>1px 实线 <code>border-subtle</code></td><td>实心圆</td><td>中（<code>N400</code>）</td><td>对勾图标</td></tr>
+      <tr><td>失败</td><td><strong>1px 虚线</strong> + 红字</td><td>实心圆（红）</td><td>高</td><td>感叹号 + 原因 + 重试按钮</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>虚线边框 = 失败</h4><p>这是整套语言里最有用的一条：虚线在形态上就代表"未完成、断裂"，不依赖任何颜色，色盲用户同样一眼识别。</p></div>
+    <div class="card"><h4>完成态要"安静"</h4><p>已完成用中灰、细描边、无动画。把视觉重量留给"正在进行"的项——用户扫视页面时，注意力应该被引导到还需要关注的地方。</p></div>
+    <div class="card"><h4>进行态要"响亮"</h4><p>生成中用 2px 高对比描边 + 呼吸动画。这是页面里唯一允许持续运动的元素，因为它承载的是"系统正在为你工作"这一信息。</p></div>
+  </div>
+
+  <h3 class="blk">4.5 彩色语境隔离与三条禁令</h3>
+  <p class="note" style="margin-bottom:14px">加彩色之后，最容易失控的不是"颜色不好看"，而是"颜色到处跑"。下面三条是硬约束。</p>
+  <div class="grid g3">
+    <div class="card">
+      <h4>禁令一：主行动不得用彩色</h4>
+      <p>主按钮永远保持黑白反转（E4）。一旦主按钮变彩色，彩色就从"标点"变成了"底色"，整站立刻变吵，而且你会需要第二个颜色来区分不同的主按钮——这是滑坡的开始。</p>
+    </div>
+    <div class="card">
+      <h4>禁令二：同一色相不得跨语境</h4>
+      <p>澜青不得用于数据可视化（否则涨跌失去意义），朱砂不得用于普通强调（否则用户无法判断哪里危险），涨跌色不得出现在按钮或标签上。跨语境使用＝语义失效。</p>
+    </div>
+    <div class="card">
+      <h4>禁令三：不做装饰性上色</h4>
+      <p>不给标题染色、不给卡片加彩色顶边、不给图标上色、不做彩色渐变背景。彩色只出现在<strong>有信息量</strong>的位置：焦点、选中、进度、危险、数值增减。</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>与 4.4 的关系：颜色是第二编码，不是唯一编码</h4>
+    <p>引入点缀色<strong>不会推翻</strong>状态形态语言。失败卡片仍然是<strong>虚线边框</strong>，红色只是加强；当前项仍然是<strong>澜青弱底</strong>，但它同时也必须是顶栏里唯一带底色的项；生成中仍然是<strong>2px 呼吸描边</strong>，只是描边用了澜青。<br>
+    也就是说——<strong>把颜色全部去掉，界面依然完全可用</strong>。这是判断"颜色是点缀还是依赖"的唯一标准，也是能同时满足 WCAG 1.4.1（不单独依赖颜色传达信息）和"高级感"的做法。</p>
+  </div>
+
+  <h3 class="blk">4.6 双主题 Token 对照表（可直接写入 <code>index.css</code> 的 <code>@theme</code>）</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Token</th><th>浅色主题</th><th>深色主题</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>--bg-canvas</code></td><td>#F4F6F7</td><td>#0B0E10</td><td>页面底色</td></tr>
+      <tr><td><code>--bg-surface</code></td><td>#FFFFFF</td><td>#14181B</td><td>卡片 / 面板 / 顶栏</td></tr>
+      <tr><td><code>--bg-subtle</code></td><td>#EDEFF1</td><td>#1C2023</td><td>次级块、输入框、分段控件底</td></tr>
+      <tr><td><code>--bg-raised</code></td><td>#FFFFFF</td><td>#262B2F</td><td>悬浮层、下拉、弹窗</td></tr>
+      <tr><td><code>--border-subtle</code></td><td>#E3E6E9</td><td>rgba(255,255,255,.09)</td><td>装饰性分割线与卡片描边</td></tr>
+      <tr><td><code>--border-default</code></td><td>#C9CED3</td><td>rgba(255,255,255,.18)</td><td>按钮、容器边界、悬停态</td></tr>
+      <tr><td><code>--border-control</code></td><td>#8A9299</td><td>rgba(255,255,255,.28)</td><td>输入框边界（刻意加深以满足 3:1）</td></tr>
+      <tr><td><code>--text-primary</code></td><td>#0B0E10</td><td>#F2F4F5</td><td>标题与正文</td></tr>
+      <tr><td><code>--text-secondary</code></td><td>#4D555C</td><td>#A6ADB3</td><td>说明文字、标签</td></tr>
+      <tr><td><code>--text-tertiary</code></td><td>#6E767D</td><td>#7C848B</td><td>占位符、元信息</td></tr>
+      <tr><td><code>--text-inverse</code></td><td>#FFFFFF</td><td>#0B0E10</td><td>反转块上的文字</td></tr>
+      <tr><td><code>--fill-primary</code></td><td>#14181B</td><td>#F2F4F5</td><td>E4 反转填充（主行动）</td></tr>
+      <tr><td><code>--on-fill-primary</code></td><td>#FFFFFF</td><td>#0B0E10</td><td>反转块上的文字</td></tr>
+      <tr><td><code>--fill-emphasis</code></td><td>#EDEFF1</td><td>#262B2F</td><td>E3 实心填充（次级）</td></tr>
+      <tr><td><code>--focus-ring</code></td><td>#1B7A68</td><td>#63D6BC</td><td>键盘焦点环（2px + 2px 偏移）——点缀色最主要的用途</td></tr>
+      <tr><td><code>--accent</code></td><td>#1B7A68</td><td>#63D6BC</td><td>品牌点缀：焦点环、当前项、进度条、链接、进行中</td></tr>
+      <tr><td><code>--accent-soft</code></td><td>#EAF4F1</td><td>rgba(99,214,188,.14)</td><td>点缀色弱底（当前项、选中态、弱徽标）</td></tr>
+      <tr><td><code>--on-accent</code></td><td>#FFFFFF</td><td>#04241E</td><td>点缀色实心块上的文字</td></tr>
+      <tr><td><code>--data-up</code></td><td>#C0272B</td><td>#E8836F</td><td>数据可视化 · 涨（唯一彩色）</td></tr>
+      <tr><td><code>--data-down</code></td><td>#17864A</td><td>#6DD69A</td><td>数据可视化 · 跌（唯一彩色）</td></tr>
+      <tr><td><code>--danger-text</code></td><td>#B33A2B</td><td>#E8836F</td><td>破坏性操作的文字色（不做填充）</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">4.7 对比度实测</h3>
+  <div class="table-wrap">
+  <table class="tb-tight">
+    <thead><tr><th>组合</th><th>对比度</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td>#0B0E10 文字 / #FFFFFF 底</td><td>≈ 19.4 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#4D555C 文字 / #FFFFFF 底</td><td>≈ 7.6 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#6E767D 文字 / #FFFFFF 底</td><td>≈ 4.6 : 1</td><td><span class="pill ok">AA（正文可用）</span></td></tr>
+      <tr><td>#FFFFFF 文字 / #14181B 反转块</td><td>≈ 17.9 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#F2F4F5 文字 / #0B0E10 底</td><td>≈ 17.6 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#A6ADB3 文字 / #0B0E10 底</td><td>≈ 8.5 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#7C848B 文字 / #0B0E10 底</td><td>≈ 5.1 : 1</td><td><span class="pill ok">AA（正文可用）</span></td></tr>
+      <tr><td>#0B0E10 文字 / #F2F4F5 反转块（深色主题主按钮）</td><td>≈ 17.6 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#8A9299 控件边界 / #FFFFFF 底</td><td>≈ 3.2 : 1</td><td><span class="pill ok">AA（非文本 ≥3:1）</span></td></tr>
+      <tr><td>#1B7A68 点缀色 / #FFFFFF 底</td><td>≈ 5.2 : 1</td><td><span class="pill ok">AA</span></td></tr>
+      <tr><td>#63D6BC 点缀色 / #0B0E10 底</td><td>≈ 11.0 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#FFFFFF 文字 / #1B7A68 实心块</td><td>≈ 5.2 : 1</td><td><span class="pill ok">AA</span></td></tr>
+      <tr><td>#04241E 文字 / #63D6BC 实心块</td><td>≈ 9.3 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+      <tr><td>#C0272B 涨色 / #FFFFFF 底</td><td>≈ 5.9 : 1</td><td><span class="pill ok">AA</span></td></tr>
+      <tr><td>#B33A2B 危险文字 / #FFFFFF 底</td><td>≈ 5.9 : 1</td><td><span class="pill ok">AA</span></td></tr>
+      <tr><td>#E8836F 危险文字 / #0B0E10 底</td><td>≈ 7.3 : 1</td><td><span class="pill ok">AAA</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h4 class="blk">六条搭配法则（怎么加才高级）</h4>
+  <div class="grid g2">
+    <div class="card"><h4><span class="idx">1</span>一个主点缀色，其余都是语义色</h4><p>品牌色只能有一个。出现第二个"品牌色"，用户就无法判断哪个更重要，界面立刻从"克制"滑向"花哨"。语义色（危险、涨跌）不算品牌色，因为它们只在特定语境出现。</p></div>
+    <div class="card"><h4><span class="idx">2</span>饱和度压在 45–65%，避免荧光感</h4><p>青瓷色的关键在于"带灰"。纯度越高的颜色越显廉价——荧光绿、亮青、纯品红都是廉价感的来源。判断方法：把颜色截图转成灰度，如果它在中性灰阶里依然"跳"，说明饱和度过高。</p></div>
+    <div class="card"><h4><span class="idx">3</span>面积 &lt; 5%</h4><p>彩色是标点符号，不是底色。一个页面里彩色总面积超过 5%，就开始显得吵。具体到元素：焦点环 2px、进度条 6px 高、状态点 7px、当前项弱底——全部是"小尺寸"元素。</p></div>
+    <div class="card"><h4><span class="idx">4</span>彩色叠加在形态之上，不替代形态</h4><p>这是可访问性的底线。失败仍然是虚线边框、当前项仍然是唯一带底色的一项、生成中仍然是 2px 加粗描边。颜色只是"加强"，不是"唯一线索"——去掉颜色后界面必须依然完全可用。</p></div>
+    <div class="card"><h4><span class="idx">5</span>色彩只在"交互与运动"时出现</h4><p>静止时界面几乎纯黑白；鼠标移入、键盘聚焦、生成进行中才浮现颜色。这叫<strong>色彩作为反馈</strong>，比<strong>色彩作为装饰</strong>高级得多——因为它让颜色承载了信息，而不是填满了画面。</p></div>
+    <div class="card"><h4><span class="idx">6</span>不做装饰性上色</h4><p>不给标题染色、不给卡片加彩色顶边、不给图标上色、不做彩色渐变。这是最容易"看起来努力但其实廉价"的一类做法。彩色只出现在有信息量的位置。</p></div>
+  </div>
+
+  <h4 class="blk">三个进阶手法</h4>
+  <div class="grid g3">
+    <div class="card"><h4>单色 + 透明度阶</h4><p>同一个 accent 只用四档透明度：8% / 14% / 24% / 100%，而不是四个不同的颜色。这样无论出现在哪里，用户感知到的都是"同一个颜色"，整体感更强。</p></div>
+    <div class="card"><h4>优先用"线"和"点"，不用"面"</h4><p>焦点环、1px 描边、4px 圆点、6px 进度条、下划线。避免大色块——色块一出现，气质立刻从"精密工具"变成"消费级应用"。</p></div>
+    <div class="card"><h4>深色提亮降饱和，浅色加深保饱和</h4><p>同一个色相在两套主题下取不同阶：深色主题用 <code>#63D6BC</code>（提亮、降饱和，对比度 11:1），浅色主题用 <code>#1B7A68</code>（加深、保饱和，对比度 5.2:1）。因为对比度是相对背景的，一个值不可能同时适配两种底色。</p></div>
+  </div>
+
+  <h3 class="blk">4.8 搭配法则与使用规则</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4>四条硬规则</h4>
+      <ul class="clean">
+        <li><strong>E4 反转全屏只能有一个。</strong>每个视图只允许一个反转填充元素（主行动）。出现第二个，强调就失效了。</li>
+        <li><strong>层级只用明度差表达，不用阴影。</strong>暗色主题下阴影几乎不可见——当前皮肤层级混乱的根因就在这。改用 <code>bg-canvas → bg-surface → bg-subtle → bg-raised</code> 的明度递进 + 1px 描边。</li>
+        <li><strong>状态必须四重编码。</strong>明度 + 边框样式 + 图标 + 文案，缺一不可。禁止只靠颜色或只靠文字。</li>
+        <li><strong>彩色面积 &lt; 5%，且主行动永不着色。</strong>澜青只做"当前状态"，朱砂只做"不可逆操作"，涨跌只做"数值"。三者语境隔离，永不并排出现在同一视觉单元里。</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h4>⚠ 必须修掉的现状问题</h4>
+      <ul class="clean">
+        <li>底色用纯黑 <code>#000</code>（<code>index.css</code> 的 <code>html/body</code>），与 <code>#1c1c1f</code> 面板之间只有一档明度，导致卡片"浮在虚空里"、阴影完全失效。</li>
+        <li>残留紫色硬编码 <code>#8d76ff</code> / <code>#c8b9ff</code>（<code>home.css</code> 的会员按钮与 eyebrow）、焦点色 <code>#b8a1ff</code>，与"纯黑白"的设计声明自相矛盾。</li>
+        <li>灰阶文字 <code>#676771</code> 在 <code>#111114</code> 底上对比度约 4.0:1，低于 AA 正文要求。</li>
+        <li>主按钮与次按钮填充度接近（<code>#fff</code> vs <code>rgba(255,255,255,.06)</code>），E4 与 E3 的差距没有拉开。</li>
+        <li>没有任何"当前状态"的视觉锚点：选中的页、当前导航项、焦点所在，全靠明度微差，长时间使用极易丢失位置感——这正是需要那 5% 点缀色的地方。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 5 ================= -->
+<section id="s5">
+  <div class="sec-head"><span class="sec-num">05</span><h2>字体与排版规范</h2></div>
+  <p class="sec-lede">
+    保留现有设计中"高对比衬线巨标"这个最强的品牌资产（它让产品看起来像设计工具而不是后台系统），但把字族从 <code>Didot</code> 换为<strong>思源宋体 / Noto Serif SC</strong>——因为当前衬线族只对拉丁字符生效，中文标题会回退到默认黑体，导致"把想法，变成有表现力的作品"这句中文大字完全没有衬线气质，中英混排断裂。
+  </p>
+
+  <h3 class="blk">三个字族</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>角色</th><th>字族栈</th><th>使用场景</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Display<br>展示衬线</strong></td>
+        <td><code>'Noto Serif SC','Source Han Serif SC','Songti SC',Didot,Georgia,serif</code></td>
+        <td>首页主标题、空态大标题、导出封面。仅用于 28px 以上字号，字重 400。</td>
+      </tr>
+      <tr>
+        <td><strong>UI<br>界面无衬线</strong></td>
+        <td><code>'Inter',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif</code></td>
+        <td>所有界面文字。Inter 负责拉丁与数字，苹方负责中文，两者 x-height 接近，混排不跳动。</td>
+      </tr>
+      <tr>
+        <td><strong>Mono<br>等宽</strong></td>
+        <td><code>'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace</code></td>
+        <td>点数、页数、像素尺寸、快捷键、API 配置、任务 ID。等宽让数字列对齐。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">字号阶梯（8 档，实况预览）</h3>
+  <div class="card" style="padding:6px 20px">
+    <div class="type-row">
+      <div class="type-meta">Display / 44px / 400<br>LH 1.08 · LS −0.03em · Serif</div>
+      <div class="type-demo" style="font-family:var(--f-serif);font-size:44px;line-height:1.08;letter-spacing:-.03em">把想法，变成作品</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">H1 / 28px / 600<br>LH 1.25 · LS −0.02em</div>
+      <div class="type-demo" style="font-size:28px;font-weight:600;letter-spacing:-.02em">生成一份完整的演示文稿</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">H2 / 20px / 600<br>LH 1.3 · LS −0.01em</div>
+      <div class="type-demo" style="font-size:20px;font-weight:600;letter-spacing:-.01em">第 3 页 · 市场竞争格局</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">H3 / 16px / 600<br>LH 1.4</div>
+      <div class="type-demo" style="font-size:16px;font-weight:600">重新生成本页</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">Body-L / 15px / 400<br>LH 1.75 · 正文首选</div>
+      <div class="type-demo" style="font-size:15px;line-height:1.75;color:var(--ink2)">16:9 原生画面，页数与画质由你选择。排版、配图与视觉风格交给模型原生构建。</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">Body / 14px / 400<br>LH 1.6</div>
+      <div class="type-demo" style="font-size:14px;line-height:1.6;color:var(--ink2)">生成完成后会自动保存到当前账号的作品库，并进入工作台继续编辑。</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">Caption / 12.5px / 500<br>LH 1.5</div>
+      <div class="type-demo" style="font-size:12.5px;font-weight:500;color:var(--ink2)">最多 6 个参考资料、3 张风格参考图</div>
+    </div>
+    <div class="type-row">
+      <div class="type-meta">Micro / 11px / 600<br>LS +0.14em · 全大写</div>
+      <div class="type-demo" style="font-size:11px;font-weight:600;letter-spacing:.14em;color:var(--brand)">PPT CREATION</div>
+    </div>
+  </div>
+
+  <h3 class="blk">排版细则</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4>行高与字距</h4>
+      <ul class="clean">
+        <li>行高按用途固定：标题 <code>1.1–1.3</code>，正文 <code>1.6–1.75</code>，说明 <code>1.5</code>。禁止用 <code>normal</code>。</li>
+        <li>字距：展示字号负字距（<code>−0.03em</code>）收紧视觉；小号全大写标签正字距（<code>+0.14em</code>）提升可读性；正文字距为 0。</li>
+        <li>中文正文不用负字距——汉字本身字面率高，收紧会挤压笔画。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>数字与中文混排</h4>
+      <ul class="clean">
+        <li>所有数字使用 <code>font-variant-numeric: tabular-nums</code>，让点数、页数、像素在列表中纵向对齐。</li>
+        <li>数字与单位之间不断行：<code>2K · 请求 2048 × 1152 像素</code> 应作为整体换行单元。</li>
+        <li>中英混排自动插入 1/4 字宽间距（<code>text-spacing-trim</code> 或手工 <code>&amp;thinsp;</code>），避免"生成PPT"这类粘连。</li>
+        <li>金额与点数统一格式：<code>15 点</code>、<code>¥ 68.00</code>，数字在前、单位在后且字号降一级。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>可读性上限</h4>
+      <ul class="clean">
+        <li>正文行长控制在 <code>45–75</code> 字符（中文约 <code>22–38</code> 字），超宽时用 <code>max-width: 34em</code> 约束。</li>
+        <li>界面最小字号 <code>11px</code>，且只用于全大写标签或徽标，不用于正文。</li>
+        <li>段落间距 &gt; 行距，用 16px 段距配 1.6 行高，避免段落糊成一块。</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>字体加载策略</h4>
+      <ul class="clean">
+        <li>中文字体包体积大，<strong>不预加载思源宋体全量</strong>：仅在首页与空态标题使用，采用 <code>font-display: swap</code> 并配 <code>Songti SC</code> 本地兜底。</li>
+        <li>Inter 与 JetBrains Mono 建议自托管并做子集化（仅拉丁 + 数字），约 30KB。</li>
+        <li>首屏字体未就绪时用 <code>size-adjust</code> 匹配回退字体度量，避免布局跳动（CLS）。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 6 ================= -->
+<section id="s6">
+  <div class="sec-head"><span class="sec-num">06</span><h2>间距 · 圆角 · 层级</h2></div>
+  <p class="sec-lede">
+    这四类 token 决定了界面"看起来是否专业"。当前代码里大量出现 <code>9px</code>、<code>11px</code>、<code>13px</code>、<code>23px</code> 圆角与 <code>7px</code>、<code>30px</code> 间距，属于逐处手调的痕迹——它们在单页里看不出问题，但页面一多就会显得"每个页面都像不同人做的"。
+  </p>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">圆角阶</h3>
+      <div class="table-wrap">
+      <table class="tb-tight">
+        <thead><tr><th>Token</th><th>值</th><th>用于</th></tr></thead>
+        <tbody>
+          <tr><td><code>--r-xs</code></td><td>6px</td><td>徽标、标签、小按钮内嵌块</td></tr>
+          <tr><td><code>--r-sm</code></td><td>10px</td><td>输入框、次要按钮</td></tr>
+          <tr><td><code>--r-md</code></td><td>12px</td><td>主按钮、卡片内块</td></tr>
+          <tr><td><code>--r-lg</code></td><td>16px</td><td>卡片、面板、缩略图</td></tr>
+          <tr><td><code>--r-xl</code></td><td>22px</td><td>大容器、弹窗、生成器外壳</td></tr>
+          <tr><td><code>--r-full</code></td><td>999px</td><td>胶囊、头像、进度条、开关</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="note">规则：<strong>嵌套时内层圆角 = 外层圆角 − 内边距</strong>，否则会出现视觉上的"角尖"。这条规则能自动消除大部分"看起来有点歪"的问题。</p>
+    </div>
+    <div>
+      <h3 class="blk">阴影与层级</h3>
+      <div class="table-wrap">
+      <table class="tb-tight">
+        <thead><tr><th>层级</th><th>浅色主题</th><th>深色主题</th></tr></thead>
+        <tbody>
+          <tr><td>Level 0<br>页面底</td><td>无</td><td>无</td></tr>
+          <tr><td>Level 1<br>卡片</td><td>1px 描边 + <code>--sh-xs</code></td><td>1px 描边（不用阴影）</td></tr>
+          <tr><td>Level 2<br>悬浮面板</td><td><code>--sh-md</code></td><td>描边增强 + <code>--sh-lg</code></td></tr>
+          <tr><td>Level 3<br>弹窗</td><td><code>--sh-lg</code> + 遮罩</td><td><code>--sh-lg</code> + 遮罩</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p class="note"><strong>深色主题下阴影几乎不可见</strong>——这是当前暗色皮肤层级混乱的根因。深色主题必须改用<strong>描边 + 背景提亮</strong>（<code>--bg-surface</code> → <code>--bg-raised</code>）来建立层级，阴影只作为辅助。</p>
+    </div>
+  </div>
+
+  <h3 class="blk">层级建立规则</h3>
+  <div class="grid g3">
+    <div class="card"><h4>暗色：描边优先</h4><p>深色主题下阴影几乎不可见，层级必须靠 <code>--bg-surface → --bg-subtle → --bg-raised</code> 的明度递进 + 1px 半透明描边建立。这是当前暗色皮肤层级混乱的根因。</p></div>
+    <div class="card"><h4>浅色：阴影优先</h4><p>浅色主题用四级阴影 + 极浅描边。卡片用 <code>--sh-xs</code>，悬浮面板用 <code>--sh-md</code>，弹窗用 <code>--sh-lg</code>。</p></div>
+    <div class="card"><h4>同一页面只用 3 级</h4><p>层级超过 3 级就会失去意义。任何页面最多出现：页面底 / 卡片 / 悬浮层。</p></div>
+  </div>
+</section>
+
+<!-- ================= 7 ================= -->
+<section id="s7">
+  <div class="sec-head"><span class="sec-num">07</span><h2>动效规范</h2></div>
+  <p class="sec-lede">
+    在无彩色体系里，动效不再是装饰，而是<strong>承担了原本由颜色承担的职责</strong>：什么变了、哪里是当前焦点、操作有没有生效、系统是不是还活着。它也是"高级感"最直接的来源——同样一个黑白界面，动效做对了就显得精密，做错了就显得廉价。
+    当前 <code>motion.css</code> 只有少量入场动画，且未处理 <code>prefers-reduced-motion</code>。下面是完整的动效系统，含可点击重播的实况演示。
+  </p>
+
+  <h3 class="blk">7.1 三条原则</h3>
+  <div class="grid g3">
+    <div class="card"><h4>只回答三个问题</h4><p>① 元素从哪来（空间连续性）② 什么状态变了（生成进度、选中）③ 操作生效了吗（按下、保存）。<strong>回答不了这三个问题的动画，删掉。</strong></p></div>
+    <div class="card"><h4>幅度要小，时长要准</h4><p>位移 ≤ 12px，缩放 ≤ 1.04，透明度变化 ≥ 0.15（低于此值肉眼看不见，等于白做）。超过 400ms 的界面动效会开始显得拖沓。</p></div>
+    <div class="card"><h4>只动 transform 与 opacity</h4><p>这两个属性走 GPU 合成层，不触发重排。禁止动画 <code>width</code>/<code>height</code>/<code>top</code>/<code>left</code>/<code>box-shadow</code> 的数值部分——那会让 60fps 掉到 30fps。</p></div>
+  </div>
+
+  <h3 class="blk">7.2 时长与曲线 Token</h3>
+  <div class="table-wrap">
+  <table class="tb-tight">
+    <thead><tr><th>Token</th><th>时长</th><th>曲线</th><th>用于</th></tr></thead>
+    <tbody>
+      <tr><td><code>--m-instant</code></td><td>100ms</td><td><code>ease-out</code></td><td>悬停、按下、焦点环</td></tr>
+      <tr><td><code>--m-fast</code></td><td>160ms</td><td><code>--ease-standard</code></td><td>按钮、开关、标签切换、遮罩淡入</td></tr>
+      <tr><td><code>--m-base</code></td><td>220ms</td><td><code>--ease-standard</code></td><td>面板展开、抽屉、Toast 进出</td></tr>
+      <tr><td><code>--m-slow</code></td><td>320ms</td><td><code>--ease-enter</code></td><td>页面区块入场、弹窗、卡片抬升</td></tr>
+      <tr><td><code>--m-page</code></td><td>420ms</td><td><code>--ease-enter</code></td><td>路由切换（淡入 + 上移 8px）</td></tr>
+      <tr><td><code>--m-loop</code></td><td>1400ms</td><td><code>linear</code></td><td>骨架屏 shimmer（无限循环）</td></tr>
+      <tr><td><code>--m-breathe</code></td><td>1600ms</td><td><code>ease-in-out</code></td><td>生成中呼吸描边（无限循环）</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">7.3 缓动曲线的性格</h3>
+  <div class="table-wrap">
+  <table class="tb-tight">
+    <thead><tr><th>Token</th><th>值</th><th>性格</th><th>用在哪</th></tr></thead>
+    <tbody>
+      <tr><td><code>--ease-standard</code></td><td><code>cubic-bezier(.2,0,0,1)</code></td><td>快出、缓收。最中性，界面默认</td><td>按钮、开关、面板、颜色过渡</td></tr>
+      <tr><td><code>--ease-enter</code></td><td><code>cubic-bezier(.05,.7,.1,1)</code></td><td>起手快、落点稳。有"进场"的重量感</td><td>元素入场、弹窗、页面切换</td></tr>
+      <tr><td><code>--ease-exit</code></td><td><code>cubic-bezier(.3,0,.8,.15)</code></td><td>起手慢、收尾快。有"离开"的干脆</td><td>元素退场、Toast 消失、抽屉关闭</td></tr>
+      <tr><td><code>--ease-overshoot</code></td><td><code>cubic-bezier(.34,1.3,.64,1)</code></td><td>轻微回弹，只用于"确认"</td><td>点数扣除、加入收藏、保存成功</td></tr>
+      <tr><td><code>--ease-linear</code></td><td><code>linear</code></td><td>匀速，无性格</td><td>仅用于无限循环的进度与骨架屏</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note"><strong>回弹曲线是双刃剑。</strong>它只应该在"用户刚做了一个动作、系统要告诉他成功了"时出现（点扣了、保存了、加入了）。用在入场动画上会显得轻浮，用在生成进度上会显得不专业。</p>
+
+  <h3 class="blk">7.4 动效语汇库 · 实况演示</h3>
+  <p class="note" style="margin-bottom:14px">下面每张卡片都是一个真实的动效实现，<strong>点击卡片可重播</strong>；标注「悬停」的用鼠标移入触发。深色舞台就是创作场（首页 / 生成器 / 工作台）的真实底色。</p>
+
+  <div class="motion-lab">
+    <button class="mtile" data-motion="enter" type="button">
+      <span class="mtile-stage"><span class="mtile-obj"></span></span>
+      <span class="mtile-cap"><b>01 入场</b><span>淡入 + 上移 8px + 缩放 .985→1 · 320ms · ease-enter</span></span>
+    </button>
+    <button class="mtile" data-motion="lift" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--lift"></span></span>
+      <span class="mtile-cap"><b>02 悬停抬升</b><span>移入卡片：上移 2px + 描边提亮 · 160ms</span></span>
+    </button>
+    <button class="mtile" data-motion="press" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--press"></span></span>
+      <span class="mtile-cap"><b>03 按压反馈</b><span>按下缩放 .97 · 100ms · 松开即回</span></span>
+    </button>
+    <button class="mtile" data-motion="zoom" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--thumb"><span></span></span></span>
+      <span class="mtile-cap"><b>04 缩略图缩放</b><span>悬停时内部画面 scale 1→1.06 · 320ms</span></span>
+    </button>
+    <button class="mtile" data-motion="breathe" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--breathe"></span></span>
+      <span class="mtile-cap"><b>05 生成中呼吸</b><span>描边 1px→2px 明度呼吸 · 1.6s 循环</span></span>
+    </button>
+    <button class="mtile" data-motion="shimmer" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--skel"></span></span>
+      <span class="mtile-cap"><b>06 骨架屏</b><span>高光横扫 1.4s linear 循环</span></span>
+    </button>
+    <button class="mtile" data-motion="progress" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--bar"><span></span></span></span>
+      <span class="mtile-cap"><b>07 进度推进</b><span>宽度过渡 320ms ease-out，不跳变</span></span>
+    </button>
+    <button class="mtile" data-motion="tick" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--num" data-count>0</span></span>
+      <span class="mtile-cap"><b>08 数字滚动</b><span>点数变化时递增 420ms · tabular-nums 不抖宽</span></span>
+    </button>
+    <button class="mtile" data-motion="toast" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--toast"></span></span>
+      <span class="mtile-cap"><b>09 Toast 滑入</b><span>右下角 12px 位移 + 淡入 · 220ms</span></span>
+    </button>
+    <button class="mtile" data-motion="modal" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--modal"></span></span>
+      <span class="mtile-cap"><b>10 弹窗出现</b><span>遮罩淡入 160ms + 内容 scale .96→1 · 220ms</span></span>
+    </button>
+    <button class="mtile" data-motion="stagger" type="button">
+      <span class="mtile-stage"><span class="mtile-obj mtile-obj--list"><i></i><i></i><i></i><i></i></span></span>
+      <span class="mtile-cap"><b>11 列表错峰</b><span>子项依次入场，每项延迟 30ms</span></span>
+    </button>
+    <button class="mtile" data-motion="spotlight" type="button">
+      <span class="mtile-stage mtile-stage--spot"><span class="mtile-obj"></span></span>
+      <span class="mtile-cap"><b>12 光晕跟随</b><span>鼠标位置驱动的极淡高光 · 不透明度 ≤ 6%</span></span>
+    </button>
+  </div>
+
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card"><h4>动效的"高级感"从哪来</h4><p>不是动画多，而是<strong>三个一致</strong>：同一类元素用同一个时长、同一个曲线、同一个幅度。当下 <code>motion.css</code> 的问题不是动画太少，而是缺少这套统一标准，导致每次新增动画都要重新拍一次脑袋。</p></div>
+    <div class="card"><h4>光晕跟随要克制</h4><p>鼠标位置驱动的高光能显著提升"精密感"，但透明度必须压在 6% 以内、半径 ≥ 240px，并且<strong>不加过渡</strong>（直接跟随，加了过渡反而迟钝）。移动端不启用。</p></div>
+    <div class="card"><h4>数字滚动是点数产品的专属细节</h4><p>扣点、充值、进度百分比都应滚动变化而非瞬间跳变。配合 <code>tabular-nums</code> 让数字宽度恒定，避免整行文字左右抖动——这是很多产品忽略但用户能感觉到的地方。</p></div>
+  </div>
+
+  <h3 class="blk">7.5 场景映射表</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>场景</th><th>动效</th><th>时长 / 曲线</th><th>为什么</th></tr></thead>
+    <tbody>
+      <tr><td>路由切换</td><td>旧页淡出 120ms → 新页淡入 + 上移 8px</td><td>420ms / ease-enter</td><td>建立"进入了一个新空间"的感觉</td></tr>
+      <tr><td>首页区块入场</td><td>Hero → 能力卡 → 最近作品，逐块淡入上移</td><td>320ms / ease-enter，每块延迟 60ms</td><td>引导视线自上而下，首屏不"炸开"</td></tr>
+      <tr><td>生成器配置变化</td><td>成本数字滚动 + 按钮文案同步</td><td>420ms / ease-enter</td><td>让"花了多少"的变化被看见</td></tr>
+      <tr><td>提交生成</td><td>按钮内联 loading → 弹窗遮罩淡入 → 内容 scale .96→1</td><td>160ms + 220ms</td><td>把"扣点"这个不可逆动作做得有重量</td></tr>
+      <tr><td>工作台进度推进</td><td>进度条宽度过渡 + 已完成页卡片淡入</td><td>320ms / ease-standard</td><td>进度变化必须平滑，否则像卡顿</td></tr>
+      <tr><td>单页渲染中</td><td>卡片描边呼吸 + 骨架屏 shimmer + 百分比</td><td>1.6s / 1.4s 循环</td><td>证明"系统还活着"，降低等待焦虑</td></tr>
+      <tr><td>生成完成</td><td>卡片从生成态交叉淡入到成品图</td><td>320ms / ease-enter</td><td>避免"闪一下"的突兀感</td></tr>
+      <tr><td>失败</td><td>卡片描边转虚线 + 轻微左右晃动 2px×2</td><td>240ms / ease-standard</td><td>晃动是通用的"出错"语言，无需颜色</td></tr>
+      <tr><td>点数扣除</td><td>余额数字滚动 + 轻微 overshoot</td><td>420ms / ease-overshoot</td><td>用回弹确认"操作已生效"</td></tr>
+      <tr><td>保存状态</td><td>"保存中" → "已保存"，图标交叉淡入</td><td>160ms / ease-standard</td><td>自动保存必须被感知到，否则用户不放心</td></tr>
+      <tr><td>抽屉 / 侧栏</td><td>宽度或位移过渡 + 内部子项错峰 30ms</td><td>220ms / ease-standard</td><td>错峰让"里面有很多东西"变得可读</td></tr>
+      <tr><td>Toast</td><td>右下角滑入 12px + 淡入；离场反向</td><td>220ms / ease-enter，离场 ease-exit</td><td>进场要柔和，离场要干脆</td></tr>
+      <tr><td>空态</td><td>图标淡入 + 文案上移，主行动按钮最后出现</td><td>320ms，延迟 80/160ms</td><td>把用户视线引到"下一步做什么"</td></tr>
+      <tr><td>数据图表</td><td>柱形/折线绘制动画，一次性播放</td><td>640ms / ease-enter</td><td>图表入场是少数允许"略慢"的场景</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">7.6 性能与降级</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4>性能清单</h4>
+      <ul class="clean">
+        <li>只动画 <code>transform</code> / <code>opacity</code>；需要动颜色时用 <code>background-color</code> 而非 <code>background-image</code>。</li>
+        <li><code>will-change</code> 只在动画期间添加，<code>animationend</code> 后移除——常驻会创建过多合成层，反而更卡。</li>
+        <li>长列表（作品库、消耗记录）使用 <code>content-visibility: auto</code>，跳过视口外的渲染。</li>
+        <li>循环动画在 <code>document.hidden</code> 时暂停（<code>visibilitychange</code> 监听），避免后台标签页持续占用 GPU。</li>
+        <li>同一帧内不要同时启动超过 8 个独立动画。</li>
+      </ul>
+    </div>
+    <div class="card warn">
+      <h4>⚠ 必须实现的降级</h4>
+      <ul class="clean">
+        <li><code>@media (prefers-reduced-motion: reduce)</code>：把时长压到 <code>0.01ms</code>，<strong>位移与缩放归零</strong>，但保留透明度变化与进度反馈——用户需要知道状态变了，只是不需要看到它移动。</li>
+        <li>无限循环动画（骨架屏、呼吸描边）在该模式下改为静态的中间态，而不是消失——消失会让用户以为卡住了。</li>
+        <li>低端设备检测（<code>navigator.hardwareConcurrency ≤ 4</code>）时自动关闭光晕跟随与错峰入场。</li>
+        <li>当前 <code>motion.css</code> 完全没有处理这条系统偏好，属于必须补齐的可访问性缺陷。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="blk">7.7 禁止项</h3>
+  <div class="table-wrap">
+  <table class="tb-tight">
+    <thead><tr><th>禁止</th><th>原因</th></tr></thead>
+    <tbody>
+      <tr><td>弹跳 / 果冻回弹（bounce、elastic）</td><td>与"精密工具"的定位冲突，且容易显得廉价。回弹只保留 overshoot 一档，且只用于确认反馈</td></tr>
+      <tr><td>旋转（除 loading 环）</td><td>旋转是最容易做错的动效，在数据密集界面中会抢走注意力</td></tr>
+      <tr><td>视差滚动、元素随滚动缩放</td><td>在编辑器中会与画布缩放产生认知冲突</td></tr>
+      <tr><td>渐变闪烁、光斑扫过（除骨架屏）</td><td>骨架屏的高光是"信息"（表示正在加载），其他地方的扫光是纯装饰</td></tr>
+      <tr><td>缩放超过 1.06</td><td>超过这个幅度会显得像"放大镜"，破坏版面的稳定感</td></tr>
+      <tr><td>用动画掩盖加载耗时</td><td>动画时长不得长于实际加载时间；加载完成应立即呈现，不为了"看完动画"而延迟</td></tr>
+      <tr><td>自动播放的循环装饰动画</td><td>除"系统正在工作"的状态指示外，任何持续运动都会消耗用户的注意力预算</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+
+<!-- ================= 8 ================= -->
+<section id="s8">
+  <div class="sec-head"><span class="sec-num">08</span><h2>导航体系设计</h2></div>
+  <p class="sec-lede">
+    现有导航的问题不是"难看"，而是<strong>信息层级缺失</strong>：五个创作入口与"开通会员""个人中心""登录""注册"混在同一排，视觉权重相同，用户在首页的第一眼无法判断"我该点哪个"。
+  </p>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">全局顶栏 · 深色主题</h3>
+      <div class="pv" data-theme="dark">
+        <div class="pv-topbar" style="border:0;background:transparent;padding:0">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.14em">
+            <span style="width:24px;height:24px;border-radius:7px;background:var(--p-primary);color:var(--p-on-primary);display:grid;place-items:center;font-size:11px">C</span>CELANO
+          </div>
+          <nav>
+            <button class="on">PPT 生成</button>
+            <button>文生图</button>
+            <button>智能画布</button>
+            <button>模版库</button>
+            <button>技术支持</button>
+          </nav>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="pv-pill" style="height:28px"><span style="font-family:var(--f-mono)">⌘K</span></span>
+            <span class="pv-badge pv-badge--warn" style="font-family:var(--f-mono)">128 点</span>
+            <span class="pv-avatar">青</span>
+          </div>
+        </div>
+      </div>
+      <p class="pv-cap" style="color:var(--ink3)">深色主题：主行动用 E4 反转（白底黑字），当前项用澜青弱底，账户用头像圆点。注意点数徽标保持中性灰——它不属于"当前状态"。</p>
+    </div>
+    <div>
+      <h3 class="blk">全局顶栏 · 浅色主题</h3>
+      <div class="pv" data-theme="light">
+        <div class="pv-topbar" style="border:0;background:transparent;padding:0">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.14em">
+            <span style="width:24px;height:24px;border-radius:7px;background:var(--p-primary);color:var(--p-on-primary);display:grid;place-items:center;font-size:11px">C</span>CELANO
+          </div>
+          <nav>
+            <button class="on">PPT 生成</button>
+            <button>文生图</button>
+            <button>智能画布</button>
+            <button>模版库</button>
+            <button>技术支持</button>
+          </nav>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="pv-pill" style="height:28px"><span style="font-family:var(--f-mono)">⌘K</span></span>
+            <span class="pv-badge pv-badge--warn" style="font-family:var(--f-mono)">128 点</span>
+            <span class="pv-avatar">青</span>
+          </div>
+        </div>
+      </div>
+      <p class="pv-cap" style="color:var(--ink3)">浅色主题：同一套结构，仅 token 切换（黑底白字），组件结构零改动。</p>
+    </div>
+  </div>
+
+  <h3 class="blk">顶栏规格</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>区域</th><th>内容</th><th>规则</th></tr></thead>
+    <tbody>
+      <tr><td>左 · 品牌</td><td>品牌标记 + 字标</td><td>点击回首页；<code>xs</code> 断点下只保留标记</td></tr>
+      <tr><td>中 · 主导航</td><td>PPT 生成 / 文生图 / 智能画布 / 模版库 / 技术支持</td><td>5 项固定，顺序按使用频率排列；当前项用<strong>澜青弱底 + 澜青文字</strong>（<code>--accent-soft</code> / <code>--accent</code>），<strong>不使用下划线</strong>（与卡片布局冲突）。这是全站最典型的"点缀色用法"——只回答"你在哪"，不抢主行动的戏</td></tr>
+      <tr><td>右 · 工具区</td><td>⌘K 入口 · 点数余额 · 头像菜单</td><td>点数<strong>常驻可见</strong>且可点进会员页，用 E1 弱底（中性灰，<strong>不着色</strong>——点数不是"当前状态"）；余额低于 20 点时徽标升为朱砂描边并加"充值"引导</td></tr>
+      <tr><td>未登录态</td><td>登录（幽灵）+ 注册（次要按钮）</td><td>取消"开通会员"在未登录时的显示——对未注册用户推销会员会打断首启流程</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">上下文侧栏（仅工作台与后台）</h3>
+  <div class="grid g3">
+    <div class="card"><h4>240px / 折叠 64px</h4><p>工作台侧栏承载作品内结构：页列表、素材、版本、导出记录。折叠后只留图标 + tooltip，把宽度让给画布。</p></div>
+    <div class="card"><h4>不与顶栏重复</h4><p>侧栏只放"当前作品的内部结构"，绝不放全局入口（那是顶栏的职责）。这是当前版本最容易犯的错。</p></div>
+    <div class="card"><h4>记忆用户选择</h4><p>折叠状态写入 <code>localStorage</code>，跨会话保持——用户调整过一次布局，就不该再调整第二次。</p></div>
+  </div>
+
+  <h3 class="blk">命令面板 ⌘K</h3>
+  <div class="card">
+    <p style="margin-bottom:12px">命令面板是这次方案里"性价比最高"的新增项。产品已有 11 个路由、大量作品与模版，纯靠导航点击成本很高。一个 <span class="kbd">⌘K</span> 面板可以同时解决：快速跳页、搜索作品、执行"新建 PPT / 导出当前作品 / 切换主题"等动作，且<strong>对移动端无副作用</strong>（移动端不显示该入口）。</p>
+    <ul class="clean">
+      <li><strong>分组：</strong>最近作品 → 页面跳转 → 动作 → 模版。每组最多 5 项，超出显示"查看全部"。</li>
+      <li><strong>搜索范围：</strong>作品标题、模版名、页面名、动作名。模糊匹配，支持拼音首字母。</li>
+      <li><strong>键盘：</strong><span class="kbd">↑</span><span class="kbd">↓</span> 移动、<span class="kbd">Enter</span> 执行、<span class="kbd">Esc</span> 关闭、<span class="kbd">Tab</span> 切换分组。</li>
+      <li><strong>空态：</strong>无输入时展示"最近打开"与高频动作，而不是空白列表。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= 9 ================= -->
+<section id="s9">
+  <div class="sec-head"><span class="sec-num">09</span><h2>关键组件设计</h2></div>
+  <p class="sec-lede">
+    以下每个组件都给出了<strong>深色与浅色两套实况渲染</strong>，以及必须覆盖的状态清单。判断一个组件是否"设计完成"的标准不是"默认态好不好看"，而是<strong>悬停、焦点、禁用、加载、错误、空态六种状态是否都被定义过</strong>。
+  </p>
+
+  <h3 class="blk">8.1 按钮</h3>
+  <div class="two">
+    <div>
+      <div class="pv" data-theme="dark">
+        <div class="pv-label">Dark</div>
+        <div class="pv-row">
+          <button class="pv-btn pv-btn--primary">生成演示文稿</button>
+          <button class="pv-btn pv-btn--secondary">存为模版</button>
+          <button class="pv-btn pv-btn--ghost">取消</button>
+          <button class="pv-btn pv-btn--danger">删除作品</button>
+        </div>
+        <div class="pv-sep"></div>
+        <div class="pv-row">
+          <button class="pv-btn pv-btn--primary pv-btn--sm">小</button>
+          <button class="pv-btn pv-btn--primary">中</button>
+          <button class="pv-btn pv-btn--primary pv-btn--lg">大</button>
+          <button class="pv-btn pv-btn--primary pv-btn--focus">焦点态</button>
+          <button class="pv-btn pv-btn--primary" disabled>禁用</button>
+        </div>
+        <div class="pv-sep"></div>
+        <div class="pv-row">
+          <button class="pv-btn pv-btn--secondary pv-btn--loading"><span style="width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block"></span>渲染中 3/8</button>
+          <button class="pv-btn pv-btn--secondary">重新生成本页 <span class="pv-badge pv-badge--warn" style="font-family:var(--f-mono)">−3 点</span></button>
+        </div>
+      </div>
+      <p class="pv-cap" style="color:var(--ink3)">深色主题：主按钮为亮青底 + 深色文字。</p>
+    </div>
+    <div>
+      <div class="pv" data-theme="light">
+        <div class="pv-label">Light</div>
+        <div class="pv-row">
+          <button class="pv-btn pv-btn--primary">生成演示文稿</button>
+          <button class="pv-btn pv-btn--secondary">存为模版</button>
+          <button class="pv-btn pv-btn--ghost">取消</button>
+          <button class="pv-btn pv-btn--danger">删除作品</button>
+        </div>
+        <div class="pv-sep"></div>
+        <div class="pv-row">
+          <button class="pv-btn pv-btn--primary pv-btn--sm">小</button>
+          <button class="pv-btn pv-btn--primary">中</button>
+          <button class="pv-btn pv-btn--primary pv-btn--lg">大</button>
+          <button class="pv-btn pv-btn--primary pv-btn--focus">焦点态</button>
+          <button class="pv-btn pv-btn--primary" disabled>禁用</button>
+        </div>
+        <div class="pv-sep"></div>
+        <div class="pv-row">
+          <button class="pv-btn pv-btn--secondary pv-btn--loading"><span style="width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block"></span>渲染中 3/8</button>
+          <button class="pv-btn pv-btn--secondary">重新生成本页 <span class="pv-badge pv-badge--warn" style="font-family:var(--f-mono)">−3 点</span></button>
+        </div>
+      </div>
+      <p class="pv-cap" style="color:var(--ink3)">浅色主题：主按钮为深青底 + 白色文字。</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>四种类型，不再多</h4><p><strong>Primary</strong> 每个视图仅一个 · <strong>Secondary</strong> 有边界的功能性操作 · <strong>Ghost</strong> 取消/次要 · <strong>Danger</strong> 破坏性。禁止出现第五种。</p></div>
+    <div class="card"><h4>尺寸 28 / 36 / 44</h4><p>三档对应紧凑工具栏、常规、主行动。高度必须是 4 的倍数以贴合 8pt 网格；触摸目标最小 44px（移动端自动升档）。</p></div>
+    <div class="card"><h4>消耗类按钮带价签</h4><p>"重新生成""提升至 4K"这类扣点操作，按钮内直接显示 <code>−3 点</code> 徽标。这是把成本前置最轻量的做法，比弹窗确认更不打断。</p></div>
+  </div>
+
+  <h3 class="blk">8.2 输入与生成器</h3>
+  <div class="two">
+    <div>
+      <div class="pv" data-theme="dark">
+        <div class="pv-label">Dark · 生成器外壳</div>
+        <div class="pv-card">
+          <div style="font-size:12.5px;color:var(--p-text2);margin-bottom:8px">演示主题</div>
+          <div style="font-size:14px;line-height:1.7">为品牌团队制作一份 2026 年度招商方案，面向连锁零售客户，突出供应链优势与门店数字化能力。</div>
+          <div class="pv-sep"></div>
+          <div class="pv-row">
+            <span class="pv-pill">页数 <b style="font-family:var(--f-mono);color:var(--p-text)">8</b></span>
+            <span class="pv-pill pv-pill--on">画质 2K</span>
+            <span class="pv-pill">模版库</span>
+            <span class="pv-pill">风格参考</span>
+            <span class="pv-pill">Logo</span>
+          </div>
+          <div class="pv-sep"></div>
+          <div class="pv-row" style="justify-content:space-between">
+            <span style="font-size:11.5px;color:var(--p-text3)">8 页 × 3 点 · 2K · 2048×1152</span>
+            <button class="pv-btn pv-btn--primary pv-btn--sm">生成 · 24 点</button>
+          </div>
+        </div>
+      </div>
+      <p class="pv-cap" style="color:var(--ink3)">成本与主按钮合并，配置与价格同屏可见。</p>
+    </div>
+    <div>
+      <div class="pv" data-theme="light">
+        <div class="pv-label">Light · 表单状态</div>
+        <div class="pv-col">
+          <div class="pv-field">
+            <label>作品名称</label>
+            <input class="pv-input pv-input--focus" value="2026 年度招商方案">
+            <span class="pv-hint">焦点态：1px 高对比描边 + 3px 柔光</span>
+          </div>
+          <div class="pv-field">
+            <label>生成页数</label>
+            <input class="pv-input pv-input--err" value="128">
+            <span class="pv-hint err">页数需在 1–100 之间，当前为 128</span>
+          </div>
+          <div class="pv-field">
+            <label>邀请码</label>
+            <input class="pv-input" placeholder="选填，注册时使用" disabled>
+            <span class="pv-hint">禁用态：40% 不透明度，保留文字可读</span>
+          </div>
+        </div>
+      </div>
+      <p class="pv-cap" style="color:var(--ink3)">标签在上方，错误紧贴字段并说明修复方式。</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>标签永远在字段上方</h4><p>不用占位符替代标签——用户输入后标签消失，回头检查时无法确认字段含义。这是当前生成器页最明显的可用性问题。</p></div>
+    <div class="card"><h4>错误信息要可执行</h4><p>"页数需在 1–100 之间，当前为 128" 而不是"输入无效"。同时把字段标红并保留用户已输入的值，绝不静默重置。</p></div>
+    <div class="card"><h4>配置胶囊替代下拉</h4><p>页数、画质、模版、风格、Logo 五项用胶囊呈现，一眼看全当前配置。当前实现把页数做成裸 <code>input[type=number]</code>、画质做成原生 select，视觉与交互都不统一。</p></div>
+  </div>
+
+  <h3 class="blk">8.3 幻灯片卡片与生成状态</h3>
+  <div class="pv" data-theme="dark" style="margin-bottom:16px">
+    <div class="pv-label">Dark · 状态机</div>
+    <div class="pv-row" style="align-items:stretch">
+      <div class="pv-slide">
+        <div class="pv-slide-img">封面</div>
+        <div class="pv-slide-meta"><b>1 · 封面</b><span class="pv-dot pv-dot--done" title="已完成"></span></div>
+      </div>
+      <div class="pv-slide pv-slide--sel">
+        <div class="pv-slide-img">核心洞察</div>
+        <div class="pv-slide-meta"><b>2 · 核心洞察</b><span class="pv-dot pv-dot--done"></span></div>
+      </div>
+      <div class="pv-slide pv-slide--run">
+        <div class="pv-slide-img"><div class="pv-skel" style="width:64%;height:8px;margin-bottom:6px"></div><div class="pv-skel" style="width:40%;height:8px"></div></div>
+        <div class="pv-slide-meta"><b>3 · 数据对比</b><span class="pv-badge pv-badge--warn">62%</span></div>
+      </div>
+      <div class="pv-slide">
+        <div class="pv-slide-img">流程</div>
+        <div class="pv-slide-meta"><b>4 · 实施流程</b><span class="pv-dot pv-dot--idle"></span></div>
+      </div>
+      <div class="pv-slide pv-slide--fail">
+        <div class="pv-slide-img" style="color:var(--p-danger)">生成失败</div>
+        <div class="pv-slide-meta"><b>5 · 案例</b><span class="pv-badge pv-badge--danger">重试</span></div>
+      </div>
+    </div>
+    <div class="pv-sep"></div>
+    <div class="pv-row" style="justify-content:space-between">
+      <span style="font-size:12px;color:var(--p-text2)">已完成 2 / 8 · 渲染中 1 · 失败 1</span>
+      <span style="font-size:12px;color:var(--p-text3);font-family:var(--f-mono)">并发 3 线程</span>
+    </div>
+    <div class="pv-bar" style="margin-top:10px"><span style="width:37%"></span></div>
+  </div>
+  <div class="grid g4">
+    <div class="card"><h4><span style="display:inline-block;width:7px;height:7px;border-radius:50%;border:1.5px solid #6E767D"></span> 待生成</h4><p>中性灰点 + 占位缩略图。表示"已规划，未开始"，与"正在生成"必须可区分。</p></div>
+    <div class="card"><h4><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#F2F4F5"></span> 生成中</h4><p>2px 高对比边框 + 骨架屏 + 百分比。边框呼吸动画，让"活跃"状态在页面任意位置可见。</p></div>
+    <div class="card"><h4><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#8A9299"></span> 已完成</h4><p>绿色点。不描边、不加高亮——完成态应当是"安静"的，把注意力留给进行中的项。</p></div>
+    <div class="card"><h4><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#F2837C"></span> 失败</h4><p>危险色边框 + 明确"重试"按钮 + 失败原因（一行）+ <strong>已自动退回点数</strong>的说明。</p></div>
+  </div>
+  <div class="card warn" style="margin-top:14px">
+    <h4>⚠ 失败态必须解释"钱"</h4>
+    <p>产品是点数制，一次失败若只是显示"生成失败"，用户第一反应是"我的点没了"。失败卡片必须包含三要素：<strong>失败原因 + 是否已退回点数 + 一键重试</strong>。这是当前实现里完全缺失、但对留存影响最大的一处。</p>
+  </div>
+
+  <h3 class="blk">8.4 确认弹窗与反馈</h3>
+  <div class="two">
+    <div>
+      <div class="pv" data-theme="dark">
+        <div class="pv-label">Dark · 扣点确认</div>
+        <div class="pv-card pv-card--elev" style="max-width:330px">
+          <div style="font-size:15px;font-weight:600">确认生成演示文稿</div>
+          <div style="font-size:12px;color:var(--p-text2);margin-top:6px;line-height:1.6">任务提交后将扣除对应点数，失败的页面会自动退回。</div>
+          <div class="pv-sep"></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--p-text2)"><span>生成页数</span><b style="color:var(--p-text)">8 页</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--p-text2);margin-top:8px"><span>画质</span><b style="color:var(--p-text)">2K · 2048×1152</b></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--p-text2);margin-top:8px"><span>每页消耗</span><b style="color:var(--p-text)">3 点</b></div>
+          <div class="pv-sep"></div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span style="font-size:13px;color:var(--p-text2)">本次预计消耗</span>
+            <span style="font-size:22px;font-weight:600;font-family:var(--f-mono)">24 <small style="font-size:12px;font-weight:400;color:var(--p-text3)">点</small></span>
+          </div>
+          <div style="font-size:11.5px;color:var(--p-text3);margin-top:6px">生成后余额 104 点</div>
+          <div class="pv-row" style="justify-content:flex-end;margin-top:16px">
+            <button class="pv-btn pv-btn--ghost pv-btn--sm">取消</button>
+            <button class="pv-btn pv-btn--primary pv-btn--sm">确认生成</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pv" data-theme="light">
+        <div class="pv-label">Light · Toast 与空态</div>
+        <div class="pv-col">
+          <div class="pv-toast"><div style="flex:1"><b>已导出 CELANO-招商方案.pptx</b><span>共 8 页 · 4.2 MB · 已保存到下载目录</span></div></div>
+          <div class="pv-toast pv-toast--warn"><div style="flex:1"><b>第 5 页生成失败，已退回 3 点</b><span>上游接口超时，可单独重试这一页</span></div></div>
+          <div class="pv-toast pv-toast--danger"><div style="flex:1"><b>点数不足</b><span>本次需要 24 点，当前余额 12 点</span></div></div>
+          <div class="pv-empty">
+            <b>还没有作品</b>
+            <span>完成一次生成后，作品会自动保存在这里</span>
+            <div class="pv-row" style="justify-content:center;margin-top:12px"><button class="pv-btn pv-btn--primary pv-btn--sm">开始第一份作品</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>弹窗只在必要时出现</h4><p>确认弹窗的触发阈值设为<strong>消耗 ≥ 10 点或 ≥ 总余额的 20%</strong>。小额操作（单页重试 3 点）用按钮内价签即可，不必打断。</p></div>
+    <div class="card"><h4>弹窗必须回答三个问题</h4><p>我要做什么？会花多少？做完之后我还能剩多少？当前弹窗答对了前两个，缺了"生成后余额"这一条。</p></div>
+    <div class="card"><h4>Toast 与空态分工</h4><p>Toast 报告<strong>已发生的事</strong>（3 秒消失）；空态引导<strong>下一步做什么</strong>（常驻）。二者不可互相替代。</p></div>
+  </div>
+
+  <h3 class="blk">8.5 加载与骨架屏</h3>
+  <div class="two">
+    <div>
+      <div class="pv" data-theme="dark">
+        <div class="pv-label">Dark · 骨架屏</div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1">
+            <div class="pv-skel" style="height:74px;margin-bottom:10px"></div>
+            <div class="pv-skel" style="height:11px;width:70%;margin-bottom:7px"></div>
+            <div class="pv-skel" style="height:11px;width:45%"></div>
+          </div>
+          <div style="flex:1">
+            <div class="pv-skel" style="height:74px;margin-bottom:10px"></div>
+            <div class="pv-skel" style="height:11px;width:60%;margin-bottom:7px"></div>
+            <div class="pv-skel" style="height:11px;width:38%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="pv" data-theme="dark">
+        <div class="pv-label">Dark · 分阶段进度</div>
+        <div class="pv-col">
+          <div class="pv-row" style="gap:10px"><span class="pv-badge pv-badge--ok">✓</span><span style="font-size:12.5px">已解析参考资料（3 个文件）</span></div>
+          <div class="pv-row" style="gap:10px"><span class="pv-badge pv-badge--ok">✓</span><span style="font-size:12.5px">已完成大纲规划（8 页 · 10 种版式）</span></div>
+          <div class="pv-row" style="gap:10px"><span class="pv-badge pv-badge--brand">●</span><span style="font-size:12.5px;color:var(--p-text)">正在渲染第 3 / 8 页</span></div>
+          <div class="pv-bar pv-bar--indet" style="margin-top:2px"><span></span></div>
+          <div class="pv-row" style="gap:10px;opacity:.5"><span class="pv-badge">○</span><span style="font-size:12.5px">导出准备</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:10px">骨架屏的用途是<strong>消除等待焦虑</strong>，因此必须保持与真实内容相同的尺寸与数量，否则内容出现时会发生跳动，反而增加焦虑。加载超过 400ms 才显示骨架，避免闪一下又消失。</p>
+
+  <h3 class="blk">8.6 状态矩阵（组件完成度检查表）</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>组件</th><th>默认</th><th>悬停</th><th>按下</th><th>焦点</th><th>禁用</th><th>加载</th><th>错误</th><th>空态</th></tr></thead>
+    <tbody>
+      <tr><td>按钮</td><td>●</td><td>●</td><td>●</td><td>●</td><td>●</td><td>●</td><td>—</td><td>—</td></tr>
+      <tr><td>输入框</td><td>●</td><td>●</td><td>—</td><td>●</td><td>●</td><td>—</td><td>●</td><td>—</td></tr>
+      <tr><td>配置胶囊</td><td>●</td><td>●</td><td>●</td><td>●</td><td>●</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>幻灯片卡片</td><td>●</td><td>●</td><td>●</td><td>●</td><td>—</td><td>●</td><td>●</td><td>●</td></tr>
+      <tr><td>进度条</td><td>●</td><td>—</td><td>—</td><td>—</td><td>—</td><td>●</td><td>●</td><td>—</td></tr>
+      <tr><td>弹窗</td><td>●</td><td>—</td><td>—</td><td>●</td><td>—</td><td>●</td><td>●</td><td>—</td></tr>
+      <tr><td>Toast</td><td>●</td><td>●</td><td>—</td><td>—</td><td>—</td><td>—</td><td>●</td><td>—</td></tr>
+      <tr><td>列表 / 表格</td><td>●</td><td>●</td><td>—</td><td>●</td><td>—</td><td>●</td><td>●</td><td>●</td></tr>
+      <tr><td>下拉菜单</td><td>●</td><td>●</td><td>●</td><td>●</td><td>●</td><td>—</td><td>—</td><td>●</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">建议把这张表作为设计评审的验收清单：任何新组件提交时必须逐格确认，未定义的状态默认视为缺陷。</p>
+</section>
+
+<!-- ================= 10 ================= -->
+<section id="s10">
+  <div class="sec-head"><span class="sec-num">10</span><h2>主要页面设计</h2></div>
+  <p class="sec-lede">
+    覆盖现有全部 11 个路由，其中 7 个核心页面给出布局线框与关键决策说明。每个页面都按「目的 → 布局 → 关键操作 → 空态 / 错误态」四段描述，避免设计停留在"好看"层面。
+  </p>
+
+  <h3 class="blk">9.1 首页 Home</h3>
+  <div class="two">
+    <div class="wire">
+      <div class="wire-frame">
+        <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+          <div class="f-brand">顶栏 · 品牌 / 导航 / ⌘K / 128 点 / 头像</div>
+          <div class="f-tall" style="background:#FAFBFB">品牌标签 + 衬线主标题「把想法，变成有表现力的作品」</div>
+          <div class="f-act">主行动「开始制作 PPT」 · 次行动「浏览模版库」</div>
+        </div>
+        <div class="wf" style="grid-template-columns:repeat(3,1fr);gap:1px;padding:1px">
+          <div class="f-mute">PPT 生成</div>
+          <div class="f-mute">文生图</div>
+          <div class="f-mute">智能画布</div>
+        </div>
+        <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+          <div class="f-mute">最近作品 · 4 张缩略图（16:9 等比）</div>
+        </div>
+      </div>
+      <p class="wire-cap"><b>核心改动：</b>把"能力入口卡片"从主视觉下方<strong>提到主行动之后、最近作品之前</strong>，并在未登录时隐藏"开通会员"。首页的唯一任务是让用户 30 秒内进入生成。</p>
+    </div>
+    <div>
+      <h4 class="blk">关键决策</h4>
+      <ul class="clean">
+        <li><strong>主标题用衬线、正文用无衬线</strong>：延续现有最强的品牌资产，但中文改用思源宋体，让中英混排一致。</li>
+        <li><strong>主行动只有一个</strong>：E4 反转按钮"开始制作 PPT"（暗色主题白底黑字）。次要的"浏览模版库"用 E0 幽灵按钮，两者填充度差距必须一眼可辨。</li>
+        <li><strong>最近作品区必须真实可用</strong>：缩略图用 16:9 等比裁剪，显示页数 / 画质 / 更新时间；点击直接进工作台而非账户页（当前实现是跳账户页，多绕一步）。</li>
+        <li><strong>首屏高度控制在 100vh 内</strong>：让"能力卡片"在桌面端可见，减少一次滚动。</li>
+      </ul>
+      <h4 class="blk">空态与错误态</h4>
+      <ul class="clean">
+        <li>未登录：最近作品区显示"登录后查看你的作品"，而不是空白。</li>
+        <li>接口失败：显示重试按钮 + 保留能力入口（不因作品加载失败而阻塞主流程）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="blk">9.2 PPT 生成页（核心转化页）</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-brand">顶栏（同全局）</div>
+        <div class="f-mute" style="min-height:24px">← 返回首页 · 面包屑</div>
+        <div class="f-mute" style="min-height:38px">页面标题「从主题开始，生成一份完整的演示。」+ 一句说明</div>
+      </div>
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-xtall" style="background:#FAFBFB;text-align:left;padding:10px">
+          <div style="font-family:var(--f-sans);color:#5C6B6B;font-size:11px">① 主题输入区（多行，最小 5 行，右上角字符计数）</div>
+        </div>
+      </div>
+      <div class="wf" style="grid-template-columns:repeat(6,1fr);gap:1px;padding:1px">
+        <div class="f-act">页数</div>
+        <div class="f-act">画质</div>
+        <div class="f-mute">模版库</div>
+        <div class="f-mute">风格参考</div>
+        <div class="f-mute">Logo</div>
+        <div class="f-brand">生成 · 24 点</div>
+      </div>
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-mute">② 成本条：8 页 × 3 点 · 2K · 2048×1152 · 生成后余额 104 点</div>
+      </div>
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-mute">③ 已添加素材（芯片列表，可单独移除）</div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>三段式结构：</b>输入 → 配置 → 提交，全部在一屏内完成，无需滚动即可点下"生成"。这是转化率最高的页面，任何多余元素都应删除。</p>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>成本条是新增的关键元素</h4><p>把"本次消耗 / 单价构成 / 生成后余额"三件事常驻在生成按钮下方。它替代了原来"只在弹窗里才知道要花多少"的模式，是本次方案里对转化率影响最直接的一处改动。</p></div>
+    <div class="card"><h4>"优化"按钮改为辅助动作</h4><p>当前"优化"与"生成"并排且样式接近，用户会犹豫点哪个。新方案把"优化提示词"降级为输入框内的辅助按钮（图标 + 文字），并明确提示"优化不消耗点数"。</p></div>
+    <div class="card"><h4>素材芯片需可追溯</h4><p>参考资料（≤6）、风格参考图（≤3）、Logo、模版系列四类素材必须分组显示并标注类型与数量，支持单独移除。当前实现把所有文件混在一列，用户无法分辨哪张是风格参考。</p></div>
+  </div>
+
+  <h3 class="blk">9.3 工作台 Workspace（使用时长最长的页面）</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-brand">顶栏 · 作品名（可编辑） · 已保存 · ⌘Z/⇧⌘Z · 导出 PPTX</div>
+      </div>
+      <div class="wf" style="grid-template-columns:130px 1fr 170px;gap:1px;padding:1px">
+        <div class="f-mute f-xtall">页列表<br>缩略图 + 状态点<br>拖拽排序<br>批量选择</div>
+        <div class="f-act f-xtall">画布<br>16:9 等比<br>安全区参考线<br>Logo 叠层实时预览</div>
+        <div class="f-mute f-xtall">检查器<br>提示词<br>版式 / 画质<br>重新生成 −3 点<br>上移 / 下移 / 删除</div>
+      </div>
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-mute">状态栏 · 已完成 5/8 · 并发 3 线程 · 已消耗 15 点 · 2 页失败（已退回 6 点）</div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>设计要点：</b>顶栏管"作品级操作"，检查器管"当前页操作"，状态栏管"全局进度与账务"。三层职责不交叉——这是当前版本最混乱的地方（进度、消耗、操作散落在各处）。</p>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h4>必须支持的三件事</h4><ul class="clean">
+      <li><strong>单页重生成</strong>：选中页 → 检查器 → "重新生成本页 −3 点"。这是留存的核心功能，必须在一处可达。</li>
+      <li><strong>批量操作</strong>：多选后顶部浮动条出现"重新生成 N 页 / 删除 / 调整顺序"，并显示合计点数。</li>
+      <li><strong>拖拽排序</strong>：页列表支持拖拽，拖拽时显示插入位置指示线，放下后立即保存。</li>
+    </ul></div>
+    <div class="card"><h4>画布区体验细则</h4><ul class="clean">
+      <li>画布内提供"安全区"参考线开关（PPT 导出后边缘可能被裁切）。</li>
+      <li>Logo 位置 / 透明度 / 尺寸的调整<strong>实时反映在画布上</strong>，而不是只在导出时生效。</li>
+      <li>缩放：<span class="kbd">⌘0</span> 适配、<span class="kbd">⌘+</span>/<span class="kbd">⌘−</span> 缩放，缩放比例常驻右下角。</li>
+      <li>生成中的页面显示骨架屏 + 百分比，<strong>不阻塞其他页面的浏览与编辑</strong>。</li>
+    </ul></div>
+  </div>
+
+  <h3 class="blk">9.4 模版库</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-brand">顶栏（同全局）</div>
+        <div class="f-mute" style="min-height:30px">筛选条 · 行业 / 场景 / 风格 / 画质 · 排序</div>
+      </div>
+      <div class="wf" style="grid-template-columns:repeat(4,1fr);gap:1px;padding:1px">
+        <div class="f-tall">模版 16:9 预览<br>悬停显示"套用"</div>
+        <div class="f-tall">模版</div>
+        <div class="f-tall">模版</div>
+        <div class="f-tall">模版</div>
+      </div>
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-mute">分页 / 无限滚动加载</div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>设计要点：</b>卡片保持 16:9 等比（与最终产出画幅一致，避免用户对比例产生错误预期）。悬停时显示两个动作：<b>"预览"</b>与<b>"套用并生成"</b>——后者直接跳到生成页并带上模版系列作为深度参考。</p>
+  </div>
+
+  <h3 class="blk">9.5 个人中心 / 作品库</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:1fr;gap:1px;padding:1px">
+        <div class="f-brand">顶栏（同全局）</div>
+      </div>
+      <div class="wf" style="grid-template-columns:170px 1fr;gap:1px;padding:1px">
+        <div class="f-mute f-xtall">账户侧栏<br>概览 / 作品库<br>素材库 / API 配置<br>消耗记录 / 安全设置</div>
+        <div class="wf" style="grid-template-columns:1fr;gap:1px">
+          <div class="f-act" style="min-height:44px">概览卡 · 剩余 128 点 · 本月消耗 96 点 · 作品 7 份 · 会员到期日</div>
+          <div class="f-mute">消耗记录表 · 时间 / 类型 / 明细 / 点数变化（涨跌色）</div>
+          <div class="f-mute f-tall">作品库网格 · 4 列 16:9 缩略图 + 悬停操作</div>
+        </div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>设计要点：</b>把"点数概览"放在最顶部——这是用户来账户页最主要的目的。消耗记录用<b>涨红跌绿</b>标注点数变化，与金融惯例一致，让"花了多少"一眼可读。</p>
+  </div>
+
+  <h3 class="blk">9.6 会员与点数</h3>
+  <div class="grid g3">
+    <div class="card"><h4>定价卡三档并排</h4><p>中间档用 2px 高对比描边 + "推荐"徽标（这是 2px 边框唯一允许出现的场景）。每档明确"含多少点 / 单价 / 有效期"。</p></div>
+    <div class="card"><h4>充值码入口独立</h4><p>产品支持充值码与邀请码，属于运营体系。把它放在定价卡下方作为"已有充值码？去兑换"的次要链接，不与购买流程混淆。</p></div>
+    <div class="card"><h4>点数说明前置</h4><p>"2K 3 点/页、4K 5 点/页"的换算表必须显示在购买页上，让用户在付费前就能算清"这些点够做几份 PPT"。</p></div>
+  </div>
+
+  <h3 class="blk">9.7 管理后台</h3>
+  <div class="wire">
+    <div class="wire-frame">
+      <div class="wf" style="grid-template-columns:150px 1fr;gap:1px;padding:1px">
+        <div class="f-mute f-xtall">后台侧栏<br>仪表盘 / 用户管理<br>邀请码 / 充值码<br>AI 模型配置<br>内容规划模型<br>使用记录</div>
+        <div class="wf" style="grid-template-columns:1fr;gap:1px">
+          <div class="wf" style="grid-template-columns:repeat(4,1fr);gap:1px">
+            <div class="f-act" style="min-height:40px">今日生成</div>
+            <div class="f-act" style="min-height:40px">在线用户</div>
+            <div class="f-act" style="min-height:40px">点数消耗</div>
+            <div class="f-act" style="min-height:40px">失败率</div>
+          </div>
+          <div class="f-mute f-tall">数据表 · 支持筛选 / 排序 / 批量操作 / 导出</div>
+        </div>
+      </div>
+    </div>
+    <p class="wire-cap"><b>设计要点：</b>后台是<b>信息密度优先</b>的场景，允许比前台更小的间距（12px 代替 16px）、更紧凑的行高（36px 行）。但配色、字体、圆角仍共用同一套 token——<b>一致性不等于相同的留白，而等于相同的语言</b>。</p>
+  </div>
+</section>
+
+<!-- ================= 11 ================= -->
+<section id="s11">
+  <div class="sec-head"><span class="sec-num">11</span><h2>核心操作流程</h2></div>
+  <p class="sec-lede">
+    界面的价值在流程里体现，而不在单页里。下面四条流程覆盖了用户 90% 以上的实际操作路径，每一步都标注了<strong>用户此刻最想知道的问题</strong>与界面对应的解答。
+  </p>
+
+  <h3 class="blk">流程 A · 首次生成（主流程）</h3>
+  <div class="flow">
+    <div class="flow-step hot"><span class="n">01</span><b>进入首页</b><span>用户想：这个工具能做什么？<br>界面答：主标题 + 三个能力入口 + 主行动</span></div>
+    <div class="flow-step"><span class="n">02</span><b>点击「开始制作 PPT」</b><span>无登录拦截，直接进入生成页（未登录在提交时才引导）</span></div>
+    <div class="flow-step"><span class="n">03</span><b>输入主题</b><span>用户想：我该写多详细？<br>界面答：占位符给完整示例 + 字数建议</span></div>
+    <div class="flow-step"><span class="n">04</span><b>配置页数与画质</b><span>用户想：要花多少？<br>界面答：成本条实时联动，随配置即时变化</span></div>
+    <div class="flow-step"><span class="n">05</span><b>（可选）上传素材</b><span>参考资料 / 风格参考 / Logo / 模版，芯片化呈现可移除</span></div>
+    <div class="flow-step hot"><span class="n">06</span><b>点击「生成 · 24 点」</b><span>消耗 ≥10 点触发确认弹窗：页数 / 画质 / 总额 / 生成后余额</span></div>
+    <div class="flow-step"><span class="n">07</span><b>进入工作台</b><span>规划 → 渲染，分阶段进度 + 每页状态，等待期间界面可交互</span></div>
+    <div class="flow-step"><span class="n">08</span><b>预览与微调</b><span>单页重生成 / 调序 / 改 Logo 位置，自动保存</span></div>
+    <div class="flow-step hot"><span class="n">09</span><b>导出 PPTX</b><span>进度可见、文件名明确、完成后 Toast + 直达下载</span></div>
+  </div>
+  <p class="note">共 9 步，其中 3 步是本次方案新增或重构的关键节点（成本条、分阶段进度、失败退款说明）。<strong>目标：从首页到开始生成不超过 5 次点击。</strong></p>
+
+  <h3 class="blk">流程 B · 单页不满意 → 局部重做（留存关键路径）</h3>
+  <div class="flow">
+    <div class="flow-step"><span class="n">01</span><b>在页列表选中该页</b><span>画布切到该页，检查器载入其属性</span></div>
+    <div class="flow-step"><span class="n">02</span><b>编辑提示词</b><span>检查器内直接改；提供"恢复原始提示词"</span></div>
+    <div class="flow-step hot"><span class="n">03</span><b>点击「重新生成本页 −3 点」</b><span>按钮自带价签，小额不弹窗，仅 Toast 告知</span></div>
+    <div class="flow-step"><span class="n">04</span><b>原图保留在历史</b><span>生成后可"对比 / 回退到上一版"，避免越改越差</span></div>
+    <div class="flow-step"><span class="n">05</span><b>满意后自动保存</b><span>顶栏"已保存"状态更新，无需手动操作</span></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>为什么这条流程最重要</h4>
+    <p>AI 生成的本质是"概率性产出"——再好的模型也会有 1–2 页不理想。如果用户只能整篇重来，那么每一次不满意都意味着"重新花 24 点 + 重新等待 8 页"，用户的直接反应是放弃这个工具。<strong>把"局部重做"做成最顺手的一条路径，是产品从"玩具"变成"工具"的分水岭。</strong>当前实现虽然有单页重生成能力，但入口在检查器深处且不带价签，实际使用率会很低。</p>
+  </div>
+
+  <h3 class="blk">流程 C · 生成失败与点数退回</h3>
+  <div class="flow">
+    <div class="flow-step"><span class="n">01</span><b>某页渲染失败</b><span>卡片转危险色 + 显示一行原因（如"上游接口超时"）</span></div>
+    <div class="flow-step hot"><span class="n">02</span><b>自动退回点数</b><span>状态栏与卡片同时显示"已退回 3 点"，账务透明</span></div>
+    <div class="flow-step"><span class="n">03</span><b>提供两个选择</b><span>「重试本页」（再扣 3 点）或「跳过，继续导出」</span></div>
+    <div class="flow-step"><span class="n">04</span><b>批量失败时</b><span>顶部横幅汇总："3 页失败，已退回 9 点 · 全部重试"</span></div>
+  </div>
+  <div class="card warn" style="margin-top:14px">
+    <h4>⚠ 这是当前实现最需要补齐的一环</h4>
+    <p>产品已经实现了失败退回的<strong>后端逻辑</strong>（<code>refundedCredits</code>、<code>refundedSlideIds</code>），但界面上几乎没有表达。用户看到"生成失败"时的第一反应是"我的点被吞了"，而不是"系统会退给我"。<strong>把已有的退款能力显性化，是零成本提升信任度的改动。</strong></p>
+  </div>
+
+  <h3 class="blk">流程 D · 新用户首启（前 60 秒）</h3>
+  <div class="flow">
+    <div class="flow-step"><span class="n">01</span><b>落地首页</b><span>不弹注册墙，不弹会员推广；主行动直接可用</span></div>
+    <div class="flow-step"><span class="n">02</span><b>填写主题</b><span>占位符给一个可照抄的完整示例，降低首次创作门槛</span></div>
+    <div class="flow-step hot"><span class="n">03</span><b>提交时引导注册</b><span>手机号 + 验证码；<strong>此前输入的主题与配置必须保留</strong>，不得丢失</span></div>
+    <div class="flow-step"><span class="n">04</span><b>新用户赠点</b><span>注册后明确告知"已赠送 X 点，可免费生成一份 8 页 PPT"</span></div>
+    <div class="flow-step"><span class="n">05</span><b>首次生成后引导</b><span>在完成态给出下一步：导出 PPTX / 存为模版 / 再做一份</span></div>
+  </div>
+  <p class="note">关键原则：<strong>先给价值，再要身份。</strong>注册墙出现在用户"已经投入了创作成本"的那一刻（提交生成时），转化率远高于落地即弹窗。同时必须保证注册前后的表单状态不丢失——这是最容易导致新用户流失的技术细节。</p>
+</section>
+
+<!-- ================= 12 ================= -->
+<section id="s12">
+  <div class="sec-head"><span class="sec-num">12</span><h2>一致性 · 可访问性 · 响应式</h2></div>
+  <p class="sec-lede">
+    这三项决定了方案能否"落地之后不走样"。它们不是设计完成后的检查项，而是必须写进代码约束、在 CI 里可验证的规则。
+  </p>
+
+  <h3 class="blk">11.1 一致性：三个机制</h3>
+  <div class="grid g3">
+    <div class="card">
+      <h4>① Token 单一来源</h4>
+      <p>全部颜色、间距、圆角、字号、动效只在 <code>index.css</code> 的 <code>@theme</code> 中定义一次，组件通过 CSS 变量引用。<strong>禁止在组件内写死十六进制色值</strong>——当前 <code>home.css</code> 里仍有 <code>#8d76ff</code>、<code>#c8b9ff</code>、<code>#b8a1ff</code> 等硬编码紫色，正是缺少这条约束的结果。</p>
+    </div>
+    <div class="card">
+      <h4>② 组件状态矩阵</h4>
+      <p>每个组件必须定义默认 / 悬停 / 按下 / 焦点 / 禁用 / 加载 / 错误 / 空态共 8 种状态（见 8.6 表格）。评审时逐格验收，未定义即视为缺陷。</p>
+    </div>
+    <div class="card">
+      <h4>③ 命名与结构约定</h4>
+      <p>类名沿用 <code>celano-{区块}-{元素}</code> 前缀体系（现有代码已具备，应保留）；页面级容器统一为 <code>celano-{page}-app</code> / <code>celano-{page}-main</code>，让样式作用域可预测。</p>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h4>一致性 ≠ 所有页面长得一样</h4>
+    <p>一致性指的是<strong>相同的语言</strong>，而非相同的留白。首页可以有大字号衬线标题和 96px 的区块间距，管理后台可以有 12px 行高紧凑表格——但它们使用同一套中性阶、同一套圆角阶、同一套强调阶梯、同一套动效曲线。判断标准是：<em>用户能不能仅凭视觉就判断"这是同一个产品"</em>。</p>
+  </div>
+
+  <h3 class="blk">11.2 可访问性（目标 WCAG 2.2 AA）</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>项</th><th>要求</th><th>当前实现的问题</th></tr></thead>
+    <tbody>
+      <tr><td>文本对比度</td><td>正文 ≥ 4.5:1，大字号 ≥ 3:1</td><td>灰阶 <code>#676771</code> 在深底上约 4.0:1，不达标；占位符 <code>#676771</code> 同样偏低</td></tr>
+      <tr><td>非文本对比度</td><td>控件边界、图标 ≥ 3:1</td><td>深色主题中 <code>rgba(255,255,255,.06)</code> 的描边对比度不足，输入框边界几乎不可见</td></tr>
+      <tr><td>焦点可见</td><td>所有可交互元素有 2px 可见焦点环 + 2px 偏移</td><td>仅部分元素有焦点样式，且使用紫色 <code>#b8a1ff</code>（与黑白体系冲突）；多数按钮 <code>outline</code> 被重置</td></tr>
+      <tr><td>键盘可达</td><td>全部功能可通过键盘完成，Tab 顺序符合视觉顺序</td><td>拖拽排序无键盘替代方案；模态框未实现焦点锁定（focus trap）</td></tr>
+      <tr><td>语义与 ARIA</td><td>弹窗 <code>role="dialog" aria-modal</code>；图标按钮有 <code>aria-label</code></td><td>确认弹窗已具备 <code>role="dialog"</code>（好），但关闭后未将焦点归还触发元素</td></tr>
+      <tr><td>状态可感知</td><td>明度 + 边框样式 + 图标 + 文案四重编码</td><td>生成中 / 已完成 / 失败缺少形态差异（无 2px 强调边、无虚线、无图标），仅靠文案与明度区分</td></tr>
+      <tr><td>动效降级</td><td>支持 <code>prefers-reduced-motion</code>，循环动画改为静态中间态</td><td><code>motion.css</code> 未处理该系统偏好；骨架屏与呼吸动画会持续播放</td></tr>
+      <tr><td>触摸目标</td><td>移动端 ≥ 44×44px</td><td>导航按钮 34px 高、缩略图上的操作按钮更小，移动端易误触</td></tr>
+      <tr><td>语言与缩放</td><td>页面 200% 缩放不丢内容；<code>lang="zh-CN"</code></td><td><code>lang</code> 已正确设置；但字号用固定 px，未使用 <code>rem</code>，浏览器字号设置无效</td></tr>
+      <tr><td>表单错误</td><td>错误以文本说明，并与字段建立 <code>aria-describedby</code> 关联</td><td>数字输入越界后静默重置，用户不知道发生了什么</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">键盘可达地图</h3>
+  <div class="card">
+    <ul class="clean">
+      <li><strong>Tab 顺序：</strong>顶栏（品牌 → 5 个导航 → ⌘K → 点数 → 头像）→ 主内容（自上而下）→ 状态栏。禁止使用 <code>tabindex</code> 正数打乱顺序。</li>
+      <li><strong>跳转链接：</strong>页面第一个可聚焦元素为"跳到主内容"，视觉隐藏但聚焦时显示。</li>
+      <li><strong>复合组件：</strong>页列表用 <code>role="listbox"</code> + 方向键移动；分段控件用 <code>role="tablist"</code> + 左右键切换。</li>
+      <li><strong>拖拽的键盘替代：</strong>选中页后按 <span class="kbd">⌥</span>+<span class="kbd">↑</span>/<span class="kbd">↓</span> 调整顺序——所有拖拽操作都必须有键盘等价物。</li>
+      <li><strong>模态焦点管理：</strong>打开时焦点进入弹窗第一个可交互元素并锁定在内部，关闭时归还给触发按钮。</li>
+    </ul>
+  </div>
+
+  <h3 class="blk">11.3 响应式适配策略</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>页面</th><th>xs（&lt;640）</th><th>sm / md（640–1023）</th><th>lg+（≥1024）</th></tr></thead>
+    <tbody>
+      <tr><td>首页</td><td>单列堆叠；顶栏只留品牌标记 + 头像；主行动全宽</td><td>能力卡片 2 列；最近作品 2 列</td><td>能力卡片 3 列；最近作品 4 列</td></tr>
+      <tr><td>PPT 生成页</td><td>配置胶囊横向滚动；生成按钮全宽固定在底部</td><td>配置胶囊换行两排；成本条在按钮上方</td><td>配置胶囊单排；成本条与按钮同行</td></tr>
+      <tr><td>工作台</td><td><strong>单栏</strong>：页列表与检查器变为底部抽屉；画布全宽</td><td>两栏：画布 + 检查器抽屉；页列表横向滚动条</td><td>完整三栏，两侧均可折叠</td></tr>
+      <tr><td>模版库</td><td>2 列网格</td><td>3 列网格</td><td>4 列网格</td></tr>
+      <tr><td>个人中心</td><td>侧栏变顶部横向标签；概览卡纵向堆叠</td><td>侧栏折叠为图标条</td><td>左侧栏 170px 常驻</td></tr>
+      <tr><td>管理后台</td><td><strong>不推荐手机使用</strong>，显示"建议在桌面端使用后台"并保留只读表格</td><td>侧栏抽屉；表格横向滚动</td><td>侧栏常驻；表格支持列冻结</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h4>移动端导航用底部标签栏</h4><p>4 项：首页 / 生成 / 作品 / 我的。创作类产品在移动端的高频动作是"看结果"和"发起生成"，而不是"切换创作类型"。</p></div>
+    <div class="card"><h4>不隐藏功能，只改变形态</h4><p>响应式禁止用 <code>display:none</code> 直接砍掉功能。当前 <code>home.css</code> 在 820px 以下直接隐藏了"个人中心"入口，导致移动端用户无法进入账户页——应改为收进头像菜单。</p></div>
+    <div class="card"><h4>触摸优先的两条硬指标</h4><p>所有可点区域 ≥ 44×44px；相邻可点元素间距 ≥ 8px。画布上的 Logo 拖拽点需放大到 24px 视觉尺寸、44px 触摸热区。</p></div>
+  </div>
+</section>
+
+<!-- ================= 13 ================= -->
+<section id="s13">
+  <div class="sec-head"><span class="sec-num">13</span><h2>设计理由与可用性改进建议</h2></div>
+  <p class="sec-lede">
+    最后回答"为什么这样设计"，以及"接下来按什么顺序改"。
+  </p>
+
+  <h3 class="blk">六条核心设计理由</h3>
+  <div class="grid g2">
+    <div class="card">
+      <h4><span class="idx">1</span>为什么是"黑白为骨、彩色为标点"，而不是全彩或纯黑白</h4>
+      <p>全彩的问题不用解释；纯黑白的问题在于<strong>它把"当前状态"的表达手段压到了只剩明度</strong>——选中的页、当前导航项、键盘焦点，三者只能靠深浅微差区分，长时间使用必然丢失位置感。而解法不是加一套彩色主题，而是加<strong>5% 的、职责被严格限定的点缀色</strong>。<br>骨架仍然是黑白：<strong>14 级中性阶</strong>给足层级空间，<strong>强调阶梯</strong>让"点哪里"由填充度回答，<strong>状态形态语言</strong>让"到哪了"由边框样式回答。彩色只补最后一件事——<strong>"你现在在哪"</strong>。补齐之后，黑白反而比全彩更耐看：它不会在长时间使用后产生审美疲劳，也不会与用户自己生成的 PPT 画面（往往色彩丰富）抢注意力。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">2</span>为什么是双主题，而不是统一改成浅色或深色</h4>
+      <p>产品有两类截然不同的界面：<strong>创作场</strong>（首页、生成器、工作台、画布——需要沉浸、需要让画面成为主角，暗色更合适）与<strong>文档场</strong>（个人中心、消耗记录、管理后台——需要长时间阅读文字与表格，浅色更合适）。强行统一会让其中一方受损。双主题的代价只是 token 需要定义两套值，而这个代价在 token 体系建立后是一次性的。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">3</span>为什么把"成本"从弹窗里拿出来</h4>
+      <p>点数制产品的最大信任风险是"我不知道会花多少"。当前设计把成本藏在提交后的确认弹窗里，意味着<strong>用户在配置页无法做出理性决策</strong>——他不知道把 6 页改成 12 页、把 2K 换成 4K 到底多花多少，只能反复试。成本条常驻之后，配置行为从"猜"变成"算"，同时弹窗的打断次数也自然下降（小额操作不再需要确认）。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">4</span>为什么把"失败与退款"当成一等公民来设计</h4>
+      <p>AI 生成必然有失败率，这是技术事实。但产品是<strong>预扣费</strong>模式，失败时用户感知到的是"钱被拿走了但没拿到东西"。后端已经实现了退款逻辑，界面却完全没有表达——这是一个纯粹的信息传递缺口，<strong>修复成本极低，但对信任度的收益极高</strong>。设计上把它做成失败卡片的固定组成部分（原因 + 已退回 + 重试），而不是一条会被错过的 Toast。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">5</span>为什么在无彩色体系里，动效是必需品而不是装饰</h4>
+      <p>彩色界面里，颜色承担了"什么变了"的大部分传达工作——按钮变绿表示成功、变红表示失败、变灰表示禁用。放弃颜色之后，这部分职责必须有人接手，<strong>动效就是那个接手者</strong>：状态切换的交叉淡入、进度条的平滑推进、点数扣除的回弹确认、失败卡片的虚线晃动——它们替代了原本由色相完成的语义传达。<br>这也是"高级感"最直接的来源。同样一个黑白界面，动效做对了就显得精密、可控、有分量；没有动效或做得随意，就立刻退回"未完成的线框图"观感。所以第 07 章的动效规范不是可选项，而是这套黑白方案能否成立的前提。</p>
+    </div>
+    <div class="card">
+      <h4><span class="idx">6</span>为什么彩色必须被"限权"，而不是被"喜欢"</h4>
+      <p>加彩色最容易翻车的地方不是选错色，而是<strong>让颜色到处跑</strong>：主按钮染个色、标题染个色、卡片加个彩色顶边、图表再来一套配色……三次之后，界面就从"克制"变成了"热闹"。<br>本方案给每个颜色分配了<strong>互不重叠的语境</strong>——澜青只做交互状态、朱砂只做不可逆操作、涨跌只做数值。三者从不在同一视觉单元里出现，所以用户在任何一个局部画面里，最多只会看到一种彩色。<br><strong>颜色的克制不是审美偏好，而是可用性要求</strong>：颜色越少，每一种颜色的含义越确定，用户判断得越快。这也是"高级感"和"花哨"之间真正的分界线——不是用了什么颜色，而是颜色承担了多少职责。</p>
+    </div>
+  </div>
+
+  <h3 class="blk">可用性改进建议（按优先级）</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>优先级</th><th>问题</th><th>建议</th><th>预期收益</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td>成本只在提交弹窗中出现，配置时不可见</td>
+        <td>生成按钮下方常驻成本条：页数 × 单价 / 画质 / 总额 / 生成后余额</td>
+        <td>配置决策从猜测变为计算；减少反复试错带来的无效生成</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td>失败态不说明点数是否退回</td>
+        <td>失败卡片固定包含"原因 + 已退回 N 点 + 重试"；批量失败给顶部汇总横幅</td>
+        <td>直接消除"点数被吞"的信任危机，降低客服量</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td>主行动与次要行动视觉权重相同（全站白色按钮）</td>
+        <td>建立强调阶梯：主行动统一为 E4 反转，其余降为 E2 描边 / E0 纯文字，填充度差距拉大到一眼可辨</td>
+        <td>降低每屏的决策成本，提升生成转化率</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td>移动端 820px 以下直接隐藏"个人中心"</td>
+        <td>改为收进头像菜单，不删除任何功能入口</td>
+        <td>修复移动端用户无法进入账户页的功能性缺陷</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td>单页重生成入口深、无价签</td>
+        <td>检查器主位放置"重新生成本页 −3 点"；页卡片悬停提供快捷入口</td>
+        <td>让"局部重做"成为默认行为，显著提升成稿率与留存</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td>生成等待是黑盒（无阶段、无并发信息）</td>
+        <td>分阶段进度（解析 → 规划 → 渲染 → 导出）+ 每页状态 + 并发线程数</td>
+        <td>把"等待焦虑"转化为"进展感知"，降低中途离开率</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td>灰阶文字与描边对比度不达 AA</td>
+        <td>按 04 节 token 表替换；补齐 2px 焦点环（品牌色）</td>
+        <td>满足无障碍合规要求，同时提升暗色下的可读性</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td>样式表中残留紫色硬编码值，与品牌声明矛盾</td>
+        <td>清理 <code>#8d76ff</code> / <code>#c8b9ff</code> / <code>#b8a1ff</code>，全部走 token</td>
+        <td>消除品牌不一致，为后续换肤留下可能</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td>缺少全局搜索与快速跳转</td>
+        <td>新增 <span class="kbd">⌘K</span> 命令面板（作品 / 模版 / 页面 / 动作）</td>
+        <td>在 11 个路由与大量作品下显著降低导航成本</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td>中文字体栈只对拉丁生效，中文标题失去衬线气质</td>
+        <td>Display 字族改用思源宋体 / Noto Serif SC，配子集化加载</td>
+        <td>中英混排统一，品牌气质在中文语境下成立</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td>拖拽排序无键盘替代，模态无焦点锁定</td>
+        <td>补 <span class="kbd">⌥</span>+<span class="kbd">↑</span>/<span class="kbd">↓</span> 调序、focus trap 与焦点归还</td>
+        <td>达成 WCAG 2.2 AA 的键盘与焦点要求</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td>未响应系统"减少动效"偏好</td>
+        <td><code>motion.css</code> 增加 <code>prefers-reduced-motion</code> 分支</td>
+        <td>照顾前庭敏感用户，同时提升低端设备流畅度</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td>字号使用固定 px，浏览器字号设置失效</td>
+        <td>根字号与正文改用 <code>rem</code>，间距保持 px</td>
+        <td>支持浏览器级缩放，满足低视力用户需求</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3 class="blk">落地路径建议</h3>
+  <div class="flow">
+    <div class="flow-step hot"><span class="n">STEP 1</span><b>建立 token 层</b><span>重写 <code>index.css</code> 的 <code>@theme</code>：14 级中性阶、强调阶梯、双主题变量、间距 / 圆角 / 动效曲线。此步不改变任何页面外观，但为后续所有改动提供基础。</span></div>
+    <div class="flow-step"><span class="n">STEP 2</span><b>落地 P0 四项</b><span>强调阶梯与按钮体系、成本条、失败退款表达、移动端入口修复。改动集中在少数文件，可独立验证。</span></div>
+    <div class="flow-step"><span class="n">STEP 3</span><b>重构工作台</b><span>三栏布局 + 状态栏 + 单页重生成 + 分阶段进度。这是工作量最大但收益最高的一块。</span></div>
+    <div class="flow-step"><span class="n">STEP 4</span><b>补齐可访问性</b><span>焦点环、键盘地图、ARIA、动效降级、rem 化。可与 STEP 3 并行。</span></div>
+    <div class="flow-step"><span class="n">STEP 5</span><b>浅色主题与 ⌘K</b><span>为文档类页面启用浅色主题，新增命令面板。作为体验增值项收尾。</span></div>
+  </div>
+  <p class="note" style="margin-top:12px">建议每个 STEP 完成后做一次 5 人可用性测试（任务：完成一次 8 页生成并修改其中一页），以"完成时间"和"是否需要帮助"两项作为验收指标。</p>
+</section>
+
+<div style="padding:44px 0 0;border-top:1px solid var(--line);margin-top:56px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:flex-end">
+  <div>
+    <div style="font-family:var(--f-serif);font-size:20px;letter-spacing:-.02em">CELANO PPT · 界面设计方案 v2.0</div>
+    <p class="note" style="margin-top:6px">面向现有 11 个路由页面的完整界面体系重建 · 覆盖布局、色彩、字体、组件、流程与可访问性</p>
+  </div>
+  <div class="note" style="font-family:var(--f-mono);font-size:11px">2026-10 · 可映射至 <code>src/index.css</code> @theme</div>
+</div>
+</main>
+</div>
+<script>
+(function () {
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function countUp(el) {
+    if (!el) return;
+    var to = 128;
+    if (reduce) { el.textContent = String(to); return; }
+    el.textContent = '0';
+    var start = performance.now(), dur = 420;
+    function step(now) {
+      var p = Math.min(1, (now - start) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = String(Math.round(to * e));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.mtile'), function (tile) {
+    tile.addEventListener('click', function () {
+      tile.classList.remove('is-run');
+      void tile.offsetWidth;
+      tile.classList.add('is-run');
+      if (tile.dataset.motion === 'tick') countUp(tile.querySelector('[data-count]'));
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.mtile-stage--spot'), function (stage) {
+    stage.addEventListener('mousemove', function (e) {
+      var r = stage.getBoundingClientRect();
+      stage.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+      stage.style.setProperty('--my', (e.clientY - r.top) + 'px');
+    });
+  });
+
+  var lab = document.getElementById('accentLab');
+  if (lab) {
+    var btns = lab.querySelectorAll('.al-switch button');
+    Array.prototype.forEach.call(btns, function (btn) {
+      btn.addEventListener('click', function () {
+        lab.setAttribute('data-accent', btn.getAttribute('data-set'));
+        Array.prototype.forEach.call(btns, function (b) {
+          if (b === btn) b.classList.add('on'); else b.classList.remove('on');
+        });
+      });
+    });
+  }
+
+  var first = document.querySelector('.mtile[data-motion="enter"]');
+  if (first) window.setTimeout(function () { first.click(); }, 600);
+})();
+</script>
+</body>
+</html>
