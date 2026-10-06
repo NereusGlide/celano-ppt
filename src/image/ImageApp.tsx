@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ArrowRight, Image as ImageIcon, LoaderCircle, Sparkles, Upload, X } from 'lucide-react';
 import { CreationHeading } from '../components/CreationHeading.js';
 import { PrimaryNav } from '../components/PrimaryNav.js';
+import { Select } from '../components/Select.js';
 import { UserAuthModal } from '../components/UserAuthModal.js';
 import { useAuth } from '../context/AuthContext.js';
 import { IMAGE_COST, IMAGE_SIZE_PRESETS, type ImageResolution } from '../shared/imageSpecs.js';
@@ -36,8 +37,8 @@ export const ImageApp: React.FC = () => {
       <section className="image-card celano-compose-card">
         <textarea className="celano-composer-input" value={prompt} disabled={!authReady || busy} onChange={event => set({ prompt: event.target.value })} placeholder="描述你想生成的画面，例如：一张具有电影质感的城市夜景海报……" rows={5} />
         <div className="image-options celano-composer-toolbar">
-          <label className="celano-composer-control">画质<select disabled={busy} value={resolution} onChange={event => set({ resolution: event.target.value as ImageResolution })}><option>2K</option><option>4K</option></select></label>
-          <label className="celano-composer-control">比例<select disabled={busy} value={ratio} onChange={event => set({ ratio: event.target.value })}>{Object.keys(IMAGE_SIZE_PRESETS[resolution.toLowerCase()]).map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+          <label className="celano-composer-control">画质<Select value={resolution} disabled={busy} ariaLabel="画质" onChange={v => set({ resolution: v as ImageResolution })} options={[{ label: '2K', value: '2K' }, { label: '4K', value: '4K' }]} /></label>
+          <label className="celano-composer-control">比例<Select value={ratio} disabled={busy} ariaLabel="比例" onChange={v => set({ ratio: v })} options={Object.keys(IMAGE_SIZE_PRESETS[resolution.toLowerCase()]).map(v => ({ label: v, value: v }))} /></label>
           <button disabled={busy} className="image-upload celano-composer-control" onClick={() => input.current?.click()}><Upload size={15} /> 上传参考图</button>
           <input ref={input} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; if (file) { if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) setNotice('请选择 8MB 以内的 PNG、JPEG 或 WebP 图片'); else set({ reference: { name: file.name, file } }); } event.target.value = ''; }} />
           <span className="image-cost">本次消耗 {cost} 点</span>
