@@ -5,7 +5,7 @@
  */
 
 import type { PptPageType, PptPalette, PptSlidePlan } from '../../src/types.js';
-import { PORTRAIT_AVOIDANCE_RULE } from '../imagePrompt.js';
+import { PORTRAIT_AVOIDANCE_RULE, sanitizeFamousCharacters } from '../imagePrompt.js';
 
 export type PptDeckPlan = {
   title: string;
@@ -213,8 +213,8 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
   const { slide } = input;
   const content = [slide.title, slide.subtitle, slide.summary, ...slide.bullets].filter(Boolean).join('；');
   const lines = [
-    `用户原始需求：${cleanImagePrompt(input.deckPrompt)}`,
-    `页面内容方向：${cleanImagePrompt(slide.imagePrompt || content || input.deckPrompt)}`,
+    `用户原始需求：${sanitizeFamousCharacters(cleanImagePrompt(input.deckPrompt))}`,
+    `页面内容方向：${sanitizeFamousCharacters(cleanImagePrompt(slide.imagePrompt || content || input.deckPrompt))}`,
     slide.title ? `页面标题：${slide.title}` : '',
     slide.subtitle ? `页面副标题：${slide.subtitle}` : '',
     slide.bullets.length ? `页面要点：${slide.bullets.join('；')}` : '',
