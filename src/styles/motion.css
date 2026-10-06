@@ -86,3 +86,33 @@ button:disabled { cursor: not-allowed; }
   .canvas-primary-nav { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }
+
+/* ================= 交互增强层 =================
+   在既有动效基线上统一补齐：卡片悬浮、图标反馈、点缀强调、状态切换。
+   黑白基调 + 青色点缀（--accent），节奏统一用 --m-base / --ease-standard，
+   悬停效果仅在支持 hover 的设备启用，触屏设备保留 :active 按压反馈。 */
+
+/* 卡片悬浮 lift + 阴影（补齐 work-card / pc-stat / canvas-node / panel 等缺口） */
+@media (hover: hover) {
+  .celano-work-card:hover { transform: translateY(-3px); }
+  .celano-work-card:hover .celano-work-preview { border-color: rgba(255, 255, 255, .22); }
+  .pc-stat:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, .2); }
+  .canvas-node:hover { box-shadow: 0 10px 28px rgba(0, 0, 0, .4); }
+  .pc-panel:hover, .ws-panel:hover { border-color: rgba(255, 255, 255, .16); }
+}
+
+/* 图标按钮悬停轻微放大 + 高亮（overshoot 节奏更灵动） */
+.pc-icon-button, .ws-icon-btn {
+  transition: transform var(--m-fast) var(--ease-overshoot), background-color var(--m-fast) var(--ease-standard), color var(--m-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .pc-icon-button:hover:not(:disabled), .ws-icon-btn:hover:not(:disabled) { transform: scale(1.06); }
+}
+
+/* 表单控件聚焦：青色点缀（统一视觉语言，替代散落的白色描边） */
+.pc-root .pc-input:focus, .pc-root select:focus, .pc-search:focus-within,
+.ws-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 状态切换过渡：选中/激活态的切换更顺滑，用 accent 强调当前项 */
+.membership-mode-tabs button, .membership-period-picker button,
+.membership-nav button { transition: background-color var(--m-base) var(--ease-standard), color var(--m-base) var(--ease-standard); }
