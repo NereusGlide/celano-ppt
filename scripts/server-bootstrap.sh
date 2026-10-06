@@ -50,7 +50,7 @@ done
 log "检测系统环境"
 . /etc/os-release
 case "${ID:-} ${ID_LIKE:-}" in
-  *ubuntu*|*debian*) PKGS="curl ca-certificates gnupg git nginx python3 build-essential" ;;
+  *ubuntu*|*debian*) PKGS="curl ca-certificates gnupg git nginx python3 build-essential antiword catdoc poppler-utils" ;;
   *centos*|*rhel*|*tencentos*) PKGS="curl ca-certificates git nginx python3 gcc gcc-c++ make" ;;
   *) warn "未识别的发行版 ${PRETTY_NAME:-}，按通用方式安装依赖"; PKGS="curl ca-certificates git python3" ;;
 esac
