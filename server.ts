@@ -270,6 +270,11 @@ app.use('/api/ai', aiRouter);
 app.use('/api/canvas', createCanvasRouter(requireUser));
 app.use('/api/canvas/assets', createCanvasAssetRouter(requireUser));
 
+// 会员套餐目录：公开只读，仅返回上架套餐（前端会员中心渲染用）
+app.get('/api/membership-plans', (_req, res) => {
+  res.json({ success: true, membershipPlans: db.getMembershipPlans().filter(plan => plan.enabled) });
+});
+
 app.get('/api/auth/users', (req,res) => { const user=requireUser(req,res); if(!user)return; res.json({success:true,users:[publicUser(user)]}); });
 app.post('/api/auth/login', (req,res) => {
   const {identifier,password}=req.body||{}; if(!identifier||!password)return jsonError(res,400,'请输入账号与密码');

@@ -18,7 +18,9 @@ test('会员写入拒绝未知套餐、无效状态和非法有效期，清除�
   const valid = { planId: 'celano-basic', status: 'active', expiresAt: Date.now() + 86400000 };
   assert.deepEqual(parseMembership(valid), valid);
   assert.equal(parseMembership(null), undefined);
-  for (const value of [false, [], {}, { ...valid, planId: '__proto__' }, { ...valid, planId: 'fake' }, { ...valid, status: 'pending' }, { ...valid, expiresAt: NaN }, { ...valid, expiresAt: Date.now() - 1 }, { ...valid, expiresAt: 'tomorrow' }]) {
+  // 套餐 ID 由管理端动态配置，任意合法 ID 均可写入；仅拒绝危险键与非法状态/有效期
+  assert.deepEqual(parseMembership({ ...valid, planId: 'celano-vip' }), { ...valid, planId: 'celano-vip' });
+  for (const value of [false, [], {}, { ...valid, planId: '__proto__' }, { ...valid, planId: '' }, { ...valid, status: 'pending' }, { ...valid, expiresAt: NaN }, { ...valid, expiresAt: Date.now() - 1 }, { ...valid, expiresAt: 'tomorrow' }]) {
     assert.throws(() => parseMembership(value));
   }
 });

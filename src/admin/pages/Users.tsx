@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../api.js';
 import { Alert, Button, Field, Modal, PageHeader, Pagination, Select, Table, Tag, TextInput, Column } from '../ui.js';
 import { User } from '../../types.js';
-import { MEMBERSHIP_NAMES, membershipView } from '../../shared/membership.js';
+import { membershipView } from '../../shared/membership.js';
+import { MembershipPlanConfig } from '../../types.js';
 
 const localDate = (ts: number) => { const date = new Date(ts); return new Date(ts - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const fmt = (ts?: number) => (ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-');
@@ -33,6 +34,11 @@ export const UsersPage: React.FC = () => {
   const [banBusy, setBanBusy] = useState(false);
   const [deleteFor, setDeleteFor] = useState<Row | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlanConfig[]>([]);
+
+  useEffect(() => {
+    adminApi.membershipPlans().then(res => setMembershipPlans(res.membershipPlans)).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -223,7 +229,7 @@ export const UsersPage: React.FC = () => {
             </Field>
             <Field label="剩余点数"><TextInput value={String(editing.credits)} onChange={(v) => setEditing({ ...editing, credits: v })} type="number" className="w-full" /></Field>
             <Field label="会员套餐" hint="确认办理后设置；会员资格与点数余额、账号角色独立">
-              <Select value={editing.membershipPlan || ''} onChange={v => setEditing({ ...editing, membershipPlan: v })} options={[{ label: '未开通会员', value: '' }, ...Object.entries(MEMBERSHIP_NAMES).map(([value, label]) => ({ value, label }))]} className="w-full" />
+              <Select value={editing.membershipPlan || ''} onChange={v => setEditing({ ...editing, membershipPlan: v })} options={[{ label: '未开通会员', value: '' }, ...membershipPlans.map(plan => ({ value: plan.id, label: plan.name }))]} className="w-full" />
             </Field>
             {editing.membershipPlan ? <>
               <Field label="会员状态"><Select value={editing.membershipStatus || 'active'} onChange={v => setEditing({ ...editing, membershipStatus: v })} options={[{ label: '有效', value: 'active' }, { label: '已取消', value: 'cancelled' }]} className="w-full" /></Field>

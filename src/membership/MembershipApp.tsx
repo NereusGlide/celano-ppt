@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Check, CreditCard, Crown, Sparkles } from 'lucide-react';
 import '../styles/membership.css';
 import { useAuth } from '../context/AuthContext.js';
-import { membershipView } from '../shared/membership.js';
+import { membershipView, applyMembershipCatalog } from '../shared/membership.js';
+import { MembershipPlanConfig } from '../types.js';
 
-type MembershipPlan = { id: string; name: string; price: string; renewal: string; points: number; note: string; accent: string; recommended?: boolean; benefits: string[] };
 type RechargePlan = { id: string; name: string; price: string; points: number; note: string; accent: string };
 type DisplayPlan = { id: string; name: string; price: string; priceUnit: string; points: number; pointsUnit: string; note: string; accent: string; recommended?: boolean; renewalLabel: string; benefits: string[] };
 type BillingPeriod = 'annual' | 'monthly' | 'quarterly' | 'single';
@@ -16,31 +16,28 @@ const billingPeriods: Array<{ id: BillingPeriod; label: string; discount: string
   { id: 'single', label: '单独购买', discount: '无续费' },
 ];
 
-function amount(value: string) { return Number(value.replace(/[^\d.]/g, '')) || 0; }
 function money(value: number) { return `¥${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`; }
-function displayMembershipPlan(plan: MembershipPlan, period: BillingPeriod): DisplayPlan {
-  const renewal = amount(plan.renewal);
+function displayMembershipPlan(plan: MembershipPlanConfig, period: BillingPeriod): DisplayPlan {
+  const renewal = plan.renewalPrice;
+  const points = plan.points;
   if (period === 'annual') {
-    const points = plan.points;
-    return { ...plan, points, pointsUnit: '点 / 月 · 12 期', price: money(renewal * 12 * 0.45), priceUnit: ' / 年', renewalLabel: `每月发放 ${points.toLocaleString()} 点 · 共 12 期`, benefits: plan.benefits.map((item, index) => index === 0 ? `每月发放 ${points.toLocaleString()} 点` : item) };
+    return { ...plan, points, pointsUnit: '点 / 月 · 12 期', price: money(renewal * 12 * 0.45), priceUnit: ' / 年', renewalLabel: `每月发放 ${points.toLocaleString()} 点 · 共 12 期`, benefits: [`每月发放 ${points.toLocaleString()} 点`, ...plan.benefits] };
   }
   if (period === 'quarterly') {
-    const points = plan.points;
-    return { ...plan, points, pointsUnit: '点 / 月 · 3 期', price: money(renewal * 3 * 0.7), priceUnit: ' / 季', renewalLabel: `每月发放 ${points.toLocaleString()} 点 · 共 3 期`, benefits: plan.benefits.map((item, index) => index === 0 ? `每月发放 ${points.toLocaleString()} 点` : item) };
+    return { ...plan, points, pointsUnit: '点 / 月 · 3 期', price: money(renewal * 3 * 0.7), priceUnit: ' / 季', renewalLabel: `每月发放 ${points.toLocaleString()} 点 · 共 3 期`, benefits: [`每月发放 ${points.toLocaleString()} 点`, ...plan.benefits] };
   }
   if (period === 'single') {
-    return { ...plan, points: plan.points, pointsUnit: '点', price: money(renewal), priceUnit: ' / 月', renewalLabel: `一次性到账 ${plan.points.toLocaleString()} 点`, benefits: plan.benefits.map((item, index) => index === 0 ? `本次到账 ${plan.points.toLocaleString()} 点` : item) };
+    return { ...plan, points, pointsUnit: '点', price: money(renewal), priceUnit: ' / 月', renewalLabel: `一次性到账 ${points.toLocaleString()} 点`, benefits: [`本次到账 ${points.toLocaleString()} 点`, ...plan.benefits] };
   }
-  return { ...plan, price: plan.price, priceUnit: ' / 月', pointsUnit: '点 / 月', renewalLabel: plan.renewal, benefits: plan.benefits };
+  return { ...plan, price: plan.price, priceUnit: ' / 月', pointsUnit: '点 / 月', renewalLabel: `下月续费 ¥${renewal}`, benefits: [`每月发放 ${points.toLocaleString()} 点`, ...plan.benefits] };
 }
 
-// 套餐结构参照即梦公开会员页，权益映射为 CELANO 的 PPT / 文生图 / 画布能力。
-// 真实成交价格仍应由后端支付配置决定，前端只展示产品目录。
-const membershipPlans: MembershipPlan[] = [
-  { id: 'celano-basic', name: '基础会员', price: '¥33', renewal: '下月续费 ¥69', points: 725, note: '适合轻量创作与个人演示', accent: 'slate', benefits: ['每月到账 725 点', 'PPT 2K 生成', '标准生成队列', '作品库账号归属'] },
-  { id: 'celano-standard', name: '标准会员', price: '¥96', renewal: '下月续费 ¥199', points: 2210, note: '适合稳定制作演示文稿', accent: 'blue', recommended: true, benefits: ['每月到账 2,210 点', 'PPT 2K / 4K 生成', '优先生成队列', '风格参考与 Logo 素材库'] },
-  { id: 'celano-advanced', name: '高级会员', price: '¥519', renewal: '下月续费 ¥998', points: 12320, note: '适合高频视觉创作', accent: 'violet', benefits: ['每月到账 12,320 点', 'PPT 六路并发生成', '高级画布节点与素材管理', '单页局部修改优先处理'] },
-  { id: 'celano-super', name: '超级会员', price: '¥2,235', renewal: '下月续费 ¥4,299', points: 54600, note: '适合团队和商业化生产', accent: 'gold', benefits: ['每月到账 54,600 点', 'PPT 六路并发与高峰优先', '团队级创作额度预留', '支持 API / 商用配置扩展'] },
+// 接口不可用时的兜底目录，与后端默认套餐保持一致。
+const DEFAULT_MEMBERSHIP_PLANS: MembershipPlanConfig[] = [
+  { id: 'celano-basic', name: '基础会员', price: '¥33', renewalPrice: 69, points: 725, note: '适合轻量创作与个人演示', accent: 'slate', benefits: ['PPT 2K 生成', '标准生成队列', '作品库账号归属'], enabled: true },
+  { id: 'celano-standard', name: '标准会员', price: '¥96', renewalPrice: 199, points: 2210, note: '适合稳定制作演示文稿', accent: 'blue', recommended: true, benefits: ['PPT 2K / 4K 生成', '优先生成队列', '风格参考与 Logo 素材库'], enabled: true },
+  { id: 'celano-advanced', name: '高级会员', price: '¥519', renewalPrice: 998, points: 12320, note: '适合高频视觉创作', accent: 'violet', benefits: ['PPT 六路并发生成', '高级画布节点与素材管理', '单页局部修改优先处理'], enabled: true },
+  { id: 'celano-super', name: '超级会员', price: '¥2,235', renewalPrice: 4299, points: 54600, note: '适合团队和商业化生产', accent: 'gold', benefits: ['PPT 六路并发与高峰优先', '团队级创作额度预留', '支持 API / 商用配置扩展'], enabled: true },
 ];
 
 const rechargePlans: RechargePlan[] = [
@@ -59,14 +56,27 @@ export const MembershipApp: React.FC = () => {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [selected, setSelected] = useState('celano-standard');
   const [notice, setNotice] = useState('');
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlanConfig[]>(DEFAULT_MEMBERSHIP_PLANS);
 
   useEffect(() => {
     if (membership.active) { setMode('recharge'); setSelected('recharge-1500'); }
   }, [membership.active]);
 
+  useEffect(() => {
+    fetch('/api/membership-plans')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.success && Array.isArray(data.membershipPlans) && data.membershipPlans.length) {
+          setMembershipPlans(data.membershipPlans);
+          applyMembershipCatalog(data.membershipPlans);
+        }
+      })
+      .catch(() => { /* 接口不可用时回退到内置目录 */ });
+  }, []);
+
   const activeItems = mode === 'membership' ? membershipPlans : rechargePlans;
   const active = useMemo(() => activeItems.find(item => item.id === selected) || activeItems[0], [activeItems, selected]);
-  const displayActive = mode === 'membership' ? displayMembershipPlan(active as MembershipPlan, billingPeriod) : active;
+  const displayActive = mode === 'membership' ? displayMembershipPlan(active as MembershipPlanConfig, billingPeriod) : active;
   const goHome = () => {
     if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/membership') { window.history.pushState({}, '', '/#/'); window.dispatchEvent(new Event('hashchange')); }
     else window.location.hash = '/';
@@ -102,7 +112,7 @@ export const MembershipApp: React.FC = () => {
       </> : <div className="membership-period-hint recharge-hint"><span>充值点数有效期 2 年</span><small>优先消耗即将到期的点数</small></div>}
       <section className={`membership-plans ${mode === 'recharge' ? 'recharge-plans' : 'subscription-plans'}`} aria-label={mode === 'membership' ? '会员套餐' : '积分充值套餐'}>
         {activeItems.map(plan => {
-          const displayPlan: DisplayPlan = mode === 'membership' ? displayMembershipPlan(plan as MembershipPlan, billingPeriod) : { ...(plan as RechargePlan), priceUnit: '', pointsUnit: '点', renewalLabel: (plan as RechargePlan).note, benefits: [] };
+          const displayPlan: DisplayPlan = mode === 'membership' ? displayMembershipPlan(plan as MembershipPlanConfig, billingPeriod) : { ...(plan as RechargePlan), priceUnit: '', pointsUnit: '点', renewalLabel: (plan as RechargePlan).note, benefits: [] };
           return <button key={plan.id} className={`membership-plan ${plan.accent} ${active?.id === plan.id ? 'selected' : ''}`} onClick={() => { setSelected(plan.id); setNotice(''); }}>
           {'recommended' in plan && plan.recommended ? <span className="membership-recommended">推荐</span> : null}
           <span className="membership-plan-mark"><Sparkles size={17} /></span><strong>{displayPlan.name}</strong><span className="membership-points">{displayPlan.points.toLocaleString()} <small>{displayPlan.pointsUnit}</small></span><span className="membership-price">{displayPlan.price}{mode === 'membership' ? <small>{displayPlan.priceUnit}</small> : ''}</span><span className="membership-note">{mode === 'membership' ? displayPlan.renewalLabel : displayPlan.note}</span>

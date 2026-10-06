@@ -10,7 +10,8 @@ import {
   InviteCode,
   RechargeCode,
   AiProviderConfig,
-  ImageResolution
+  ImageResolution,
+  MembershipPlanConfig
 } from '../src/types.js';
 
 export const adminRouter = express.Router();
@@ -475,6 +476,56 @@ adminRouter.put('/planning-config', requireAdmin, (req, res) => {
   }
   const saved = db.updatePlanningConfig(updates);
   res.json({ success: true, planningConfig: saved });
+});
+
+/* =========================================================
+   会员套餐目录管理
+   ========================================================= */
+
+/** 校验整套会员套餐目录；返回归一化后的数组，非法时抛错。 */
+function normalizeMembershipPlans(value: unknown): MembershipPlanConfig[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50) throw new Error('会员套餐需为 1-50 项');
+  const seen = new Set<string>();
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object') throw new Error(`第 ${index + 1} 项套餐格式无效`);
+    const plan = item as Record<string, unknown>;
+    const id = String(plan.id || '').trim();
+    if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id)) throw new Error(`第 ${index + 1} 项套餐 ID 需为 1-40 位字母数字或 -_`);
+    if (seen.has(id)) throw new Error(`套餐 ID「${id}」重复`);
+    seen.add(id);
+    const name = String(plan.name || '').trim();
+    if (!name || name.length > 30) throw new Error(`第 ${index + 1} 项套餐名称需为 1-30 个字符`);
+    const points = Number(plan.points);
+    if (!Number.isSafeInteger(points) || points < 0) throw new Error(`第 ${index + 1} 项套餐点数需为非负整数`);
+    const renewalPrice = Number(plan.renewalPrice);
+    if (!Number.isFinite(renewalPrice) || renewalPrice < 0) throw new Error(`第 ${index + 1} 项套餐续费价需为非负数`);
+    const benefits = Array.isArray(plan.benefits) ? plan.benefits.filter((b): b is string => typeof b === 'string' && !!b.trim()).map(b => b.trim().slice(0, 80)).slice(0, 12) : [];
+    return {
+      id,
+      name,
+      price: String(plan.price || '').trim().slice(0, 20),
+      renewalPrice,
+      points,
+      note: String(plan.note || '').trim().slice(0, 80),
+      accent: String(plan.accent || 'slate').trim().slice(0, 20),
+      recommended: plan.recommended === true,
+      benefits,
+      enabled: plan.enabled !== false,
+    };
+  });
+}
+
+adminRouter.get('/membership-plans', requireAdmin, (_req, res) => {
+  res.json({ success: true, membershipPlans: db.getMembershipPlans() });
+});
+
+adminRouter.put('/membership-plans', requireAdmin, (req, res) => {
+  try {
+    const plans = normalizeMembershipPlans(req.body?.membershipPlans ?? req.body);
+    res.json({ success: true, membershipPlans: db.setMembershipPlans(plans) });
+  } catch (error) {
+    res.status(400).json({ success: false, error: (error as Error).message });
+  }
 });
 
 /* =========================================================

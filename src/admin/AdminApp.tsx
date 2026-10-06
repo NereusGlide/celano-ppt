@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, LogOut, ChevronDown, RefreshCw, Lock, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, LogOut, ChevronDown, RefreshCw, Lock, Sparkles } from 'lucide-react';
 import { AdminAccount } from '../types.js';
 import { adminApi, getAdminToken, setAdminToken, clearAdminToken } from './api.js';
 import { Button, TextInput, Alert, Field } from './ui.js';
@@ -9,6 +9,7 @@ import { UsagePage } from './pages/UsageRecords.js';
 import { InviteCodesPage } from './pages/InviteCodes.js';
 import { RechargeCodesPage } from './pages/RechargeCodes.js';
 import { AiConfigsPage } from './pages/AiConfigs.js';
+import { MembershipPlansPage } from './pages/MembershipPlans.js';
 import '../styles/workspace.css';
 
 const MENUS = [
@@ -17,6 +18,7 @@ const MENUS = [
   { key: 'usage', label: '使用记录管理', Icon: History },
   { key: 'invites', label: '邀请码管理', Icon: Ticket },
   { key: 'recharge', label: '充值码管理', Icon: CreditCard },
+  { key: 'membership', label: '会员套餐管理', Icon: Crown },
   { key: 'ai', label: 'AI 接口配置', Icon: Cpu }
 ];
 
@@ -182,6 +184,7 @@ export const AdminApp: React.FC = () => {
             {menu === 'usage' && <UsagePage key={version} />}
             {menu === 'invites' && <InviteCodesPage key={version} />}
             {menu === 'recharge' && <RechargeCodesPage key={version} />}
+            {menu === 'membership' && <MembershipPlansPage key={version} />}
             {menu === 'ai' && <AiConfigsPage key={version} />}
           </div>
         </main>

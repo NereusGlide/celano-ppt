@@ -108,10 +108,27 @@ export interface User {
   inviteCode?: string;
   /** 服务端确认的会员权益，与账号角色和点数余额分开保存。 */
   membership?: {
-    planId: 'celano-basic' | 'celano-standard' | 'celano-advanced' | 'celano-super';
+    planId: string;
     status: 'active' | 'cancelled';
     expiresAt: number;
   };
+}
+
+/** 会员套餐目录项：管理端可配置，前端会员中心据此渲染套餐卡片。 */
+export interface MembershipPlanConfig {
+  id: string;
+  name: string;
+  /** 首月展示价（如 ¥33），仅作产品目录展示 */
+  price: string;
+  /** 续费价（元），用于计算年/季/单买价格 */
+  renewalPrice: number;
+  /** 每月发放点数 */
+  points: number;
+  note: string;
+  accent: string;
+  recommended?: boolean;
+  benefits: string[];
+  enabled: boolean;
 }
 
 export interface ThirdPartyApiConfig {

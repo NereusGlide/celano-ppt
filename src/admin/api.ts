@@ -5,7 +5,8 @@ import {
   RechargeCode,
   UsageRecord,
   AiProviderConfig,
-  PlanningModelConfig
+  PlanningModelConfig,
+  MembershipPlanConfig
 } from '../types.js';
 
 /** 管理端生图档位配置。apiKey 由服务端脱敏返回，空值代表保留现有密钥。 */
@@ -162,6 +163,11 @@ export const adminApi = {
 
   updatePlanningConfig: (payload: Partial<PlanningModelConfig>) =>
     request<{ success: boolean; planningConfig: PlanningModelConfig }>('PUT', '/planning-config', payload),
+
+  membershipPlans: () => request<{ success: boolean; membershipPlans: MembershipPlanConfig[] }>('GET', '/membership-plans'),
+
+  saveMembershipPlans: (membershipPlans: MembershipPlanConfig[]) =>
+    request<{ success: boolean; membershipPlans: MembershipPlanConfig[] }>('PUT', '/membership-plans', { membershipPlans }),
 
   aiConfigs: () => request<{ success: boolean; aiConfigs: AiProviderConfig[] }>('GET', '/ai-configs'),
 

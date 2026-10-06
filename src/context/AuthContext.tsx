@@ -3,6 +3,7 @@ import { User } from '../types.js';
 import * as api from '../services/api.js';
 import { fetchCurrentUser, logoutSession } from '../services/account.js';
 import { subscribeLibraryChanges } from '../shared/libraryEvents.js';
+import { applyMembershipCatalog } from '../shared/membership.js';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -30,6 +31,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .catch(err => { if (!controller.signal.aborted && generationRef.current === generation) console.warn('恢复登录状态失败', err); })
       .finally(() => { if (!controller.signal.aborted && generationRef.current === generation) setAuthReady(true); });
     return () => controller.abort();
+  }, []);
+  // 拉取会员套餐目录，更新套餐 ID → 名称 映射，供导航栏/个人中心展示动态套餐名
+  useEffect(() => {
+    fetch('/api/membership-plans')
+      .then(res => res.json())
+      .then(data => { if (data?.success && Array.isArray(data.membershipPlans)) applyMembershipCatalog(data.membershipPlans); })
+      .catch(() => {});
   }, []);
   const syncUser = useCallback((user: User) => { setCurrentUser(prev => prev?.id === user.id ? user : prev); }, []);
   useEffect(() => {

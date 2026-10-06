@@ -14,7 +14,8 @@ import {
   ImageTierConfig,
   ImageResolution,
   PlanningModelConfig,
-  PptDeck
+  PptDeck,
+  MembershipPlanConfig
 } from '../src/types.js';
 import {
   PasswordCredential,
@@ -42,6 +43,8 @@ interface DatabaseSchema {
   aiConfigs: AiProviderConfig[];
   /** 内容规划模型配置（仅管理端可见） */
   planningConfig: PlanningModelConfig;
+  /** 会员套餐目录（管理端可编辑） */
+  membershipPlans: MembershipPlanConfig[];
   /** PPT 生成任务（移植自超级画布Agent，无计费） */
   pptDecks: PptDeck[];
   /** 已执行的数据兼容迁移版本，避免历史计费修正重复执行 */
@@ -58,6 +61,14 @@ const USAGE_RECORD_LIMIT = 5000;
 // 纯净发行版不预置前台用户或演示作品。
 const initialUsers: User[] = [];
 const initialPresentations: Presentation[] = [];
+
+/** 默认会员套餐目录：管理后台可整体增删改；首月价仅作展示，真实成交以后端支付配置为准。 */
+const DEFAULT_MEMBERSHIP_PLANS: MembershipPlanConfig[] = [
+  { id: 'celano-basic', name: '基础会员', price: '¥33', renewalPrice: 69, points: 725, note: '适合轻量创作与个人演示', accent: 'slate', benefits: ['PPT 2K 生成', '标准生成队列', '作品库账号归属'], enabled: true },
+  { id: 'celano-standard', name: '标准会员', price: '¥96', renewalPrice: 199, points: 2210, note: '适合稳定制作演示文稿', accent: 'blue', recommended: true, benefits: ['PPT 2K / 4K 生成', '优先生成队列', '风格参考与 Logo 素材库'], enabled: true },
+  { id: 'celano-advanced', name: '高级会员', price: '¥519', renewalPrice: 998, points: 12320, note: '适合高频视觉创作', accent: 'violet', benefits: ['PPT 六路并发生成', '高级画布节点与素材管理', '单页局部修改优先处理'], enabled: true },
+  { id: 'celano-super', name: '超级会员', price: '¥2,235', renewalPrice: 4299, points: 54600, note: '适合团队和商业化生产', accent: 'gold', benefits: ['PPT 六路并发与高峰优先', '团队级创作额度预留', '支持 API / 商用配置扩展'], enabled: true },
+];
 
 // 默认 endpoint 仅用于本地演示，生产部署请用 PIAO_BASE_URL / 管理后台覆盖为自有地址。
 // 密钥只能从环境变量或管理后台注入，源代码和示例数据不携带可用凭据。
@@ -158,6 +169,7 @@ class Database {
       usageRecords: [],
       aiConfigs: [],
       planningConfig: { baseUrl: '', apiKey: '', modelName: '', reasoningEffort: '' },
+      membershipPlans: [...DEFAULT_MEMBERSHIP_PLANS],
       pptDecks: [],
       billingMigrationVersion: 0
     };
@@ -209,6 +221,7 @@ class Database {
     if (!this.data.rechargeCodes) this.data.rechargeCodes = [];
     if (!this.data.usageRecords) this.data.usageRecords = [];
     if (!this.data.aiConfigs) this.data.aiConfigs = [];
+    if (!Array.isArray(this.data.membershipPlans) || !this.data.membershipPlans.length) this.data.membershipPlans = [...DEFAULT_MEMBERSHIP_PLANS];
     for (const config of this.data.aiConfigs) {
       if (!config.displayName) config.displayName = config.name;
       if (!Array.isArray(config.resolutionSupport)) config.resolutionSupport = [...IMAGE_RESOLUTIONS];
@@ -794,6 +807,17 @@ class Database {
     this.data.planningConfig.modelName = normalizePlanningModelName(this.data.planningConfig.baseUrl, this.data.planningConfig.modelName);
     this.save();
     return this.data.planningConfig;
+  }
+
+  // ---------- 会员套餐目录（管理端可编辑） ----------
+  getMembershipPlans(): MembershipPlanConfig[] {
+    return this.data.membershipPlans;
+  }
+
+  setMembershipPlans(plans: MembershipPlanConfig[]): MembershipPlanConfig[] {
+    this.data.membershipPlans = plans;
+    this.save();
+    return this.data.membershipPlans;
   }
 
   /**
