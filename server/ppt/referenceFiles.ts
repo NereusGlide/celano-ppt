@@ -42,20 +42,28 @@ async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Pr
     const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('视觉读取图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
-    const parts: string[] = [];
     const BATCH = 3;
-    for (let i = 0; i < files.length; i += BATCH) {
-      const batch = files.slice(i, i + BATCH);
-      const images = batch.map(f => 'data:image/jpeg;base64,' + fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
-      const content = [
-        { type: 'text' as const, text: `请按顺序完整转录以下 ${batch.length} 张扫描页面的全部文字内容。保留原有结构（标题、正文、要点、表格），逐页输出，不要添加解释、评论或 Markdown 标记；某页无文字则跳过。` },
-        ...images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
-      ];
-      const text = await chatVision(config, [{ role: 'user', content }]);
-      if (text.trim()) parts.push(text.trim());
-      if (parts.join('\n').length > MAX_REFERENCE_TEXT) break;
-    }
-    return parts.join('\n\n');
+    const CONCURRENCY = 3;
+    const batches: string[][] = [];
+    for (let i = 0; i < files.length; i += BATCH) batches.push(files.slice(i, i + BATCH));
+    const results: string[] = new Array(batches.length).fill('');
+    let cursor = 0;
+    const worker = async () => {
+      for (;;) {
+        const index = cursor++;
+        if (index >= batches.length) return;
+        const batch = batches[index];
+        const images = batch.map(f => 'data:image/jpeg;base64,' + fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
+        const content = [
+          { type: 'text' as const, text: `请按顺序完整转录以下 ${batch.length} 张扫描页面的全部文字内容。保留原有结构（标题、正文、要点、表格），逐页输出，不要添加解释、评论或 Markdown 标记；某页无文字则跳过。` },
+          ...images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
+        ];
+        const text = await chatVision(config, [{ role: 'user', content }]);
+        results[index] = text.trim();
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    return results.filter(Boolean).join('\n\n');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
