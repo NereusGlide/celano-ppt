@@ -37,15 +37,16 @@ async function ocrPdf(savedPath: string): Promise<string> {
 async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Promise<string> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-vision-'));
   try {
-    await runFile('pdftoppm', ['-png', '-r', '150', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
-    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    // 扫描件用 JPEG + 120 DPI，体积远小于 PNG（约 1/5），避免批量请求体超出上游限制
+    await runFile('pdftoppm', ['-jpeg', '-r', '120', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
+    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('视觉读取图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
     const parts: string[] = [];
-    const BATCH = 6;
+    const BATCH = 3;
     for (let i = 0; i < files.length; i += BATCH) {
       const batch = files.slice(i, i + BATCH);
-      const images = batch.map(f => 'data:image/png;base64,' + fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
+      const images = batch.map(f => 'data:image/jpeg;base64,' + fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
       const content = [
         { type: 'text' as const, text: `请按顺序完整转录以下 ${batch.length} 张扫描页面的全部文字内容。保留原有结构（标题、正文、要点、表格），逐页输出，不要添加解释、评论或 Markdown 标记；某页无文字则跳过。` },
         ...images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
