@@ -1,11 +1,11 @@
 .celano-canvas-landing { min-height: 100dvh; background:var(--bg-canvas); color: var(--text-primary); }
 .celano-canvas-entry { overflow: hidden; border: 1px solid var(--bg-subtle); border-radius: 23px; background: var(--bg-subtle); box-shadow: 0 24px 70px #0005; }
 .celano-canvas-preview { height: 230px; position: relative; display: flex; align-items: center; justify-content: center; gap: 90px; background: radial-gradient(circle, #55555e55 1px, transparent 1px) 0 0 / 20px 20px; }
-.canvas-preview-node { position: relative; z-index: 1; border: 1px solid #4D555C; border-radius: 15px; background: var(--bg-subtle); box-shadow: 0 12px 30px #0004; }
-.canvas-preview-text { width: 175px; padding: 21px; transform: rotate(-4deg); display: flex; flex-direction: column; gap: 14px; color: #E2E5E8; font-size: 14px; }
-.canvas-preview-text i { height: 5px; background: #4D555C; border-radius: 5px; width: 100%; }
+.canvas-preview-node { position: relative; z-index: 1; border: 1px solid #475569; border-radius: 15px; background: var(--bg-subtle); box-shadow: 0 12px 30px #0004; }
+.canvas-preview-text { width: 175px; padding: 21px; transform: rotate(-4deg); display: flex; flex-direction: column; gap: 14px; color: #cbd5e1; font-size: 14px; }
+.canvas-preview-text i { height: 5px; background: #475569; border-radius: 5px; width: 100%; }
 .canvas-preview-text i:last-child { width: 65%; }
-.canvas-preview-image { width: 180px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #C9CED3; font-size: 12px; background: linear-gradient(135deg,var(--bg-subtle),var(--bg-subtle)); transform: rotate(4deg); }
+.canvas-preview-image { width: 180px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #a8b6c9; font-size: 12px; background: linear-gradient(135deg,var(--bg-subtle),var(--bg-subtle)); transform: rotate(4deg); }
 .canvas-preview-link { position: absolute; width: 200px; height: 55px; border: 2px solid var(--text-secondary); border-left: 0; border-right: 0; border-bottom: 0; border-radius: 50%; opacity: .6; }
 .canvas-preview-tag { position: absolute; bottom: 17px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); }
 .celano-canvas-entry-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px; border-top: 1px solid var(--bg-subtle); }
@@ -14,9 +14,9 @@
 .canvas-entry-buttons { display: flex; gap: 10px; }
 .canvas-entry-buttons button { height: 42px; padding: 0 18px; border-radius: 11px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; font-size: 13px; white-space: nowrap; }
 .canvas-entry-primary { background: var(--text-primary); color: var(--bg-surface); border: 1px solid var(--text-primary); }
-.canvas-entry-primary:hover { background: #E2E5E8; border-color: #E2E5E8; }
-.canvas-entry-secondary { background: var(--bg-subtle); color: #E2E5E8; border: 1px solid #343B42; }
-.canvas-entry-secondary:hover { background: #343B42; }
+.canvas-entry-primary:hover { background: #cbd5e1; border-color: #cbd5e1; }
+.canvas-entry-secondary { background: var(--bg-subtle); color: #cbd5e1; border: 1px solid #334155; }
+.canvas-entry-secondary:hover { background: #334155; }
 .celano-canvas-entry-note { text-align: center; color: var(--text-secondary); font-size: 12px; margin-top: 22px; }
 .celano-canvas-shell { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background:var(--bg-canvas); }
 .celano-canvas-host { position: relative; flex: 1; min-height: 0; }

@@ -11,7 +11,7 @@
    · 「强调阶梯」用填充度表达主次：E4 反转 > E3 实心 > E2 描边 > E1 弱底 > E0 纯文字
    · 唯一品牌点缀色「澜蓝 · 靛青」只出现在交互状态（焦点 / 当前项 / 进度 / 进行中）
    · 主行动永远保持黑白反转，绝不着色
-   · 暗色底不用纯黑 #000，用 N950 #0B0E10 留出层级空间
+   · 暗色底不用纯黑 #000，用 N950 #0c1220 留出层级空间
    · 完整规范见 design/celano-ui-spec.html
    ========================================================================= */
 
@@ -27,19 +27,19 @@
 
   /* ---------- 中性阶 Graphite（14 级，主色体系） ---------- */
   --color-n-0: #FFFFFF;
-  --color-n-25: #FAFBFB;
-  --color-n-50: #F4F6F7;
-  --color-n-100: #EDEFF1;
-  --color-n-200: #E2E5E8;
-  --color-n-300: #C9CED3;
-  --color-n-400: #8A9299;
-  --color-n-500: #6E767D;
-  --color-n-600: #4D555C;
-  --color-n-700: #343B42;
-  --color-n-800: #21262A;
-  --color-n-900: #14181B;
-  --color-n-950: #0B0E10;
-  --color-n-1000: #050708;
+  --color-n-25: #f8fafc;
+  --color-n-50: #e8eef7;
+  --color-n-100: #f1f5f9;
+  --color-n-200: #cbd5e1;
+  --color-n-300: #a8b6c9;
+  --color-n-400: #8b99ad;
+  --color-n-500: #64748b;
+  --color-n-600: #475569;
+  --color-n-700: #334155;
+  --color-n-800: #1a2436;
+  --color-n-900: #131c2c;
+  --color-n-950: #0c1220;
+  --color-n-1000: #070b14;
 
   /* ---------- 品牌点缀色 澜蓝 · 靛青（低饱和蓝，非绿） ---------- */
   --color-accent-50: #edf2fd;
@@ -80,29 +80,29 @@
   --color-brand-900: #132345;
   --color-brand-950: #0a1428;
 
-  --color-ink-50: #F4F6F7;
-  --color-ink-100: #EDEFF1;
-  --color-ink-200: #E2E5E8;
-  --color-ink-300: #C9CED3;
-  --color-ink-400: #8A9299;
-  --color-ink-500: #6E767D;
-  --color-ink-600: #4D555C;
-  --color-ink-700: #343B42;
-  --color-ink-800: #21262A;
-  --color-ink-900: #14181B;
-  --color-ink-950: #0B0E10;
+  --color-ink-50: #e8eef7;
+  --color-ink-100: #f1f5f9;
+  --color-ink-200: #cbd5e1;
+  --color-ink-300: #a8b6c9;
+  --color-ink-400: #8b99ad;
+  --color-ink-500: #64748b;
+  --color-ink-600: #475569;
+  --color-ink-700: #334155;
+  --color-ink-800: #1a2436;
+  --color-ink-900: #131c2c;
+  --color-ink-950: #0c1220;
 
-  --color-slate-50: #F4F6F7;
-  --color-slate-100: #EDEFF1;
-  --color-slate-200: #E2E5E8;
-  --color-slate-300: #C9CED3;
-  --color-slate-400: #8A9299;
-  --color-slate-500: #6E767D;
-  --color-slate-600: #4D555C;
-  --color-slate-700: #343B42;
-  --color-slate-800: #21262A;
-  --color-slate-900: #14181B;
-  --color-slate-950: #0B0E10;
+  --color-slate-50: #e8eef7;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #cbd5e1;
+  --color-slate-300: #a8b6c9;
+  --color-slate-400: #8b99ad;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1a2436;
+  --color-slate-900: #131c2c;
+  --color-slate-950: #0c1220;
 
   --color-indigo-50: #edf2fd;
   --color-indigo-100: #d5e0fa;
@@ -142,26 +142,26 @@
    浅色文档场在 [data-theme="light"] 下覆盖同名变量，组件结构零改动。
    ========================================================================= */
 :root {
-  --bg-canvas: #0B0E10;
-  --bg-surface: #14181B;
-  --bg-subtle: #21262A;
-  --bg-raised: #21262A;
+  --bg-canvas: #0c1220;
+  --bg-surface: #131c2c;
+  --bg-subtle: #1a2436;
+  --bg-raised: #232f47;
 
-  --border-subtle: rgba(255, 255, 255, 0.09);
-  --border-default: rgba(255, 255, 255, 0.18);
-  --border-control: rgba(255, 255, 255, 0.28);
+  --border-subtle: rgba(150, 180, 220, 0.10);
+  --border-default: rgba(150, 180, 220, 0.20);
+  --border-control: rgba(150, 180, 220, 0.32);
 
-  --text-primary: #F4F6F7;
-  --text-secondary: #8A9299;
-  --text-tertiary: #8A9299;
-  --text-inverse: #0B0E10;
+  --text-primary: #e8eef7;
+  --text-secondary: #8b99ad;
+  --text-tertiary: #6b7889;
+  --text-inverse: #0c1220;
 
   /* E4 反转填充：暗色主题为白底黑字 */
-  --fill-primary: #F4F6F7;
+  --fill-primary: #e8eef7;
   --fill-primary-hover: #FFFFFF;
-  --on-fill-primary: #0B0E10;
+  --on-fill-primary: #0c1220;
   /* E3 实心填充 */
-  --fill-emphasis: #21262A;
+  --fill-emphasis: #1a2436;
 
   /* 唯一品牌点缀色：只用于交互状态 */
   --accent: #7aa2f7;
@@ -207,7 +207,7 @@
   --elev-lg: 0 12px 32px rgba(0, 0, 0, .42), 0 2px 8px rgba(0, 0, 0, .28);
   --elev-xl: 0 24px 70px rgba(0, 0, 0, .5), 0 6px 18px rgba(0, 0, 0, .3);
   /* 顶部 1px 微光：深色界面"受光边"，显贵的关键细节 */
-  --highlight-top: inset 0 1px 0 rgba(255, 255, 255, .06);
+  --highlight-top: inset 0 1px 0 rgba(150, 180, 220, .06);
 
   /* ---------- 字号阶梯（收敛随手值；正文 12-14、标题 16-24、展示 32-48） ---------- */
   --text-size-2xs: 10px;
@@ -224,24 +224,24 @@
 
 /* 浅色文档场（个人中心 / 会员 / 后台）—— 为后续接入预留，当前不影响暗色页面 */
 [data-theme="light"] {
-  --bg-canvas: #F4F6F7;
+  --bg-canvas: #e8eef7;
   --bg-surface: #FFFFFF;
-  --bg-subtle: #EDEFF1;
+  --bg-subtle: #f1f5f9;
   --bg-raised: #FFFFFF;
 
-  --border-subtle: #E2E5E8;
-  --border-default: #C9CED3;
-  --border-control: #8A9299;
+  --border-subtle: #cbd5e1;
+  --border-default: #a8b6c9;
+  --border-control: #8b99ad;
 
-  --text-primary: #0B0E10;
-  --text-secondary: #4D555C;
-  --text-tertiary: #6E767D;
+  --text-primary: #0c1220;
+  --text-secondary: #475569;
+  --text-tertiary: #64748b;
   --text-inverse: #FFFFFF;
 
-  --fill-primary: #14181B;
-  --fill-primary-hover: #343B42;
+  --fill-primary: #131c2c;
+  --fill-primary-hover: #334155;
   --on-fill-primary: #FFFFFF;
-  --fill-emphasis: #EDEFF1;
+  --fill-emphasis: #f1f5f9;
 
   --accent: #2f4f96;
   --accent-soft: #edf2fd;
@@ -260,6 +260,11 @@
 @layer base {
   html {
     background-color: var(--bg-canvas);
+    /* 顶部品牌色微光晕：高端深色主题的标志性细节，让底色不再是"死黑" */
+    background-image:
+      radial-gradient(1100px 520px at 50% -8%, rgba(122, 162, 247, 0.10), transparent 62%),
+      radial-gradient(820px 420px at 88% 2%, rgba(122, 162, 247, 0.05), transparent 58%);
+    background-attachment: fixed;
   }
 
   body {
@@ -391,13 +396,13 @@
 
   /* E1 弱底胶囊 */
   .celano-pill {
-    background-color: rgba(255, 255, 255, 0.06);
+    background-color: rgba(150, 180, 220, 0.06);
     border: 1px solid var(--border-subtle);
     border-radius: 9999px;
     transition: background-color var(--m-fast) var(--ease-standard);
   }
   .celano-pill:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(150, 180, 220, 0.1);
   }
 
   /* 悬浮面板 */

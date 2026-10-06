@@ -1,11 +1,12 @@
 import { PPT_PAGE_WIDTH, PPT_PAGE_HEIGHT, MAX_IMAGE_BYTES, MAX_IMAGE_DATA_URL_LENGTH, IMAGE_COST } from '../shared/imageSpecs.js';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, Monitor, Sparkles, Clock, Undo2, Trash2, Image as ImageIcon, Hand, ZoomIn, ZoomOut, Maximize, Paintbrush, SquareDashed, Wand2, X, Square, RefreshCw, LoaderCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Download, Monitor, Clock, Undo2, Trash2, Image as ImageIcon, Hand, ZoomIn, ZoomOut, Maximize, Paintbrush, SquareDashed, Wand2, X, Square, RefreshCw, LoaderCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DrawCanvas } from './DrawCanvas.js';
 import { PagePreview } from './PagePreview.js';
 import { DrawTool, Annotation, TOOL_META, composeEditInput, buildEditPrompt, DEFAULT_MARK_WIDTH, MARK_WIDTH_MIN, MARK_WIDTH_MAX } from './draw.js';
 import { workspaceEditPage, replacePptSlideImage, createPptDeck, listPptDecks, getPptDeck, stopPptDeck, resumePptDeck, retryFailedPptDeck, regeneratePptSlide, deletePptDeck, deletePptSlide, type PptDeckView } from '../services/api.js';
 import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
+import { BrandLogo } from '../components/BrandLogo.js';
 import { publishLibraryChange, subscribeLibraryChanges } from '../shared/libraryEvents.js';
 import { useAuth } from '../context/AuthContext.js';
 import { UserAuthModal } from '../components/UserAuthModal.js';
@@ -666,7 +667,7 @@ export const WorkspaceApp: React.FC = () => {
       <header className="ws-topbar">
         <div className="ws-header-tools" style={{ minWidth: 0 }}>
           <button className="ws-button ws-ghost" onClick={goHome} title="返回首页"><ArrowLeft size={14} /> 返回首页</button>
-          <span className="ws-brand-mark"><Sparkles size={18} /></span>
+          <span className="ws-brand-mark"><BrandLogo size={18} /></span>
           <div style={{ minWidth: 0 }}>
             <strong style={{ fontSize: 14, letterSpacing: '.08em', color: '#F4F6F7' }}>PPT 工作台</strong>
             <small style={{ display: 'block', color: '#8A9299', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>

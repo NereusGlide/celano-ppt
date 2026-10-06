@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, FileImage, Image as ImageIcon, Layers3, LoaderCircle, Plus, Sparkles, Trash2, Upload, WandSparkles, X } from 'lucide-react';
 import { deleteAccountWork, fetchAccountSummary } from '../services/account.js';
 import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
+import { BrandLogo } from '../components/BrandLogo.js';
 import type { Presentation, User } from '../types.js';
 import { CreationHeading } from '../components/CreationHeading.js';
 import { PrimaryNav } from '../components/PrimaryNav.js';
@@ -19,7 +20,7 @@ const go = (route: string) => { window.location.hash = route; };
 
 export const Nav = PrimaryNav;
 
-function BrandPill() { return <div className="celano-brand-pill"><Sparkles size={16} /> 青澜集团旗下 AI 产品</div>; }
+function BrandPill() { return <div className="celano-brand-pill"><BrandLogo size={16} /> 青澜集团旗下 AI 产品</div>; }
 
 function ProductCard({ icon, title, text, action, onClick }: { icon: React.ReactNode; title: string; text: string; action: string; onClick: () => void }) {
   return <button className="celano-product-card" onClick={onClick}><div className="celano-card-icon">{icon}</div><div><strong>{title}</strong><p>{text}</p></div><span className="celano-card-arrow">{action}<ArrowRight size={14} /></span></button>;

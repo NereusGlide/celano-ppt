@@ -19,7 +19,7 @@ button:disabled { cursor: not-allowed; }
   height: 70px;
 }
 .image-topbar, .support-topbar, .canvas-topbar, .membership-topbar, .pc-topbar {
-  background: rgba(11, 14, 16, .86);
+  background: rgba(12, 18, 32, .86);
   backdrop-filter: blur(18px);
   position: sticky;
   top: 0;
@@ -38,18 +38,18 @@ button:disabled { cursor: not-allowed; }
 .celano-nav-extra {
   height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(255,255,255,.14);
+  border: 1px solid rgba(150, 180, 220, .14);
   border-radius: 9px;
-  background: rgba(255,255,255,.06);
+  background: rgba(150, 180, 220, .06);
   color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
 }
-.celano-nav-extra:hover { background: rgba(255,255,255,.12); color: #fff; }
+.celano-nav-extra:hover { background: rgba(150, 180, 220, .12); color: #fff; }
 .canvas-primary-nav { justify-content: center; min-width: 0; margin: 0 8px; }
 .canvas-primary-nav button { color: var(--text-secondary); }
-.canvas-primary-nav button:hover, .canvas-primary-nav button.active { color: #fff; background: rgba(255,255,255,.06); }
+.canvas-primary-nav button:hover, .canvas-primary-nav button.active { color: #fff; background: rgba(150, 180, 220, .06); }
 
 .celano-compose-card, .image-card {
   width: 100%;
@@ -95,10 +95,10 @@ button:disabled { cursor: not-allowed; }
 /* 卡片悬浮 lift + 阴影（补齐 work-card / pc-stat / canvas-node / panel 等缺口） */
 @media (hover: hover) {
   .celano-work-card:hover { transform: translateY(-3px); }
-  .celano-work-card:hover .celano-work-preview { border-color: rgba(255, 255, 255, .22); }
-  .pc-stat:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, .2); }
+  .celano-work-card:hover .celano-work-preview { border-color: rgba(150, 180, 220, .22); }
+  .pc-stat:hover { transform: translateY(-2px); border-color: rgba(150, 180, 220, .2); }
   .canvas-node:hover { box-shadow: 0 10px 28px rgba(0, 0, 0, .4); }
-  .pc-panel:hover, .ws-panel:hover { border-color: rgba(255, 255, 255, .16); }
+  .pc-panel:hover, .ws-panel:hover { border-color: rgba(150, 180, 220, .16); }
 }
 
 /* 图标按钮悬停轻微放大 + 高亮（overshoot 节奏更灵动） */
@@ -120,18 +120,18 @@ button:disabled { cursor: not-allowed; }
 /* 自定义下拉：深色菜单 + 统一动效，替代原生 select 的系统默认白底菜单（macOS 下 option 无法用 CSS 控制）。
    触发区与选项均采用较大点击范围（34/40px 高、充足内边距），兼顾触控与鼠标操作。 */
 .celano-select { position: relative; display: inline-flex; }
-.celano-select-trigger { height: 38px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 10px; background: rgba(255, 255, 255, .05); color: var(--text-primary, var(--text-primary)); display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; cursor: pointer; transition: border-color var(--m-fast) var(--ease-standard), background-color var(--m-fast) var(--ease-standard); }
+.celano-select-trigger { height: 38px; padding: 0 13px; border: 1px solid rgba(150, 180, 220, .14); border-radius: 10px; background: rgba(150, 180, 220, .05); color: var(--text-primary, var(--text-primary)); display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; cursor: pointer; transition: border-color var(--m-fast) var(--ease-standard), background-color var(--m-fast) var(--ease-standard); }
 .celano-select-trigger:disabled { opacity: .5; cursor: not-allowed; }
 .celano-select-caret { opacity: .55; flex-shrink: 0; transition: transform var(--m-fast) var(--ease-standard); }
 .celano-select.open .celano-select-caret { transform: rotate(180deg); }
-.celano-select-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%; max-height: 288px; overflow-y: auto; padding: 6px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 12px; background: #1A1F23; box-shadow: 0 14px 36px rgba(0, 0, 0, .55); z-index: 60; display: grid; gap: 3px; animation: celano-select-in var(--m-fast) var(--ease-standard) both; }
+.celano-select-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%; max-height: 288px; overflow-y: auto; padding: 6px; border: 1px solid rgba(150, 180, 220, .14); border-radius: 12px; background: #1A1F23; box-shadow: 0 14px 36px rgba(0, 0, 0, .55); z-index: 60; display: grid; gap: 3px; animation: celano-select-in var(--m-fast) var(--ease-standard) both; }
 .celano-select-menu.align-right { left: auto; right: 0; }
 @keyframes celano-select-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
-.celano-select-option { min-height: 38px; border: 0; background: transparent; color: #C9CED3; text-align: left; padding: 9px 14px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; transition: background-color var(--m-fast) var(--ease-standard), color var(--m-fast) var(--ease-standard); }
+.celano-select-option { min-height: 38px; border: 0; background: transparent; color: #a8b6c9; text-align: left; padding: 9px 14px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; display: flex; align-items: center; transition: background-color var(--m-fast) var(--ease-standard), color var(--m-fast) var(--ease-standard); }
 .celano-select-option.active { color: var(--accent, var(--accent)); background: var(--accent-soft, rgba(122, 162, 247, .14)); font-weight: 600; }
 @media (hover: hover) {
-  .celano-select-trigger:hover:not(:disabled) { border-color: rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .09); }
-  .celano-select-option:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+  .celano-select-trigger:hover:not(:disabled) { border-color: rgba(150, 180, 220, .3); background: rgba(150, 180, 220, .10); }
+  .celano-select-option:hover { background: rgba(150, 180, 220, .08); color: #fff; }
   .celano-select-option.active:hover { background: var(--accent-soft, rgba(122, 162, 247, .14)); }
 }
 /* bare 变体：融入已有外框的 pill 容器，触发区透明只留文字与箭头 */
@@ -147,5 +147,5 @@ button:disabled { cursor: not-allowed; }
 .celano-modal, .pc-modal, .ws-modal { box-shadow: 0 40px 100px rgba(0, 0, 0, .6), 0 8px 24px rgba(0, 0, 0, .4); }
 @media (hover: hover) {
   .celano-product-card:hover, .membership-plan:hover { box-shadow: var(--elev-lg), var(--highlight-top); }
-  .pc-work-row:hover .pc-work-cover { border-color: rgba(255, 255, 255, .18); }
+  .pc-work-row:hover .pc-work-cover { border-color: rgba(150, 180, 220, .18); }
 }

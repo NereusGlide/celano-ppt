@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { BrandLogo } from './BrandLogo.js';
 import { useAuth } from '../context/AuthContext.js';
 import { UserAuthModal } from './UserAuthModal.js';
 import { membershipView } from '../shared/membership.js';
@@ -14,7 +14,7 @@ export const PrimaryNav: React.FC<{ active?: PrimaryNavRoute; trailing?: React.R
   const go = (route: string) => { window.location.hash = route; };
   return <>
     <header className="celano-home-topbar">
-      <button className="celano-home-brand" onClick={() => go('/')} aria-label="返回首页"><span className="celano-brand-mark"><Sparkles size={16} /></span><span>CELANO</span></button>
+      <button className="celano-home-brand" onClick={() => go('/')} aria-label="返回首页"><span className="celano-brand-mark"><BrandLogo size={16} /></span><span>CELANO</span></button>
       <nav className="celano-home-nav" aria-label="主导航">
         <button className={active === 'image' ? 'active' : ''} onClick={() => go('/image')}>文生图</button>
         <button className={active === 'ppt' ? 'active' : ''} onClick={() => go('/ppt')}>PPT 生成</button>

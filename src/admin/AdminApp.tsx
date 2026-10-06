@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, Gift, LogOut, ChevronDown, RefreshCw, Lock, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, Gift, LogOut, ChevronDown, RefreshCw, Lock } from 'lucide-react';
 import { AdminAccount } from '../types.js';
 import { adminApi, getAdminToken, setAdminToken, clearAdminToken } from './api.js';
 import { Button, TextInput, Alert, Field } from './ui.js';
+import { BrandLogo } from '../components/BrandLogo.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { UsersPage } from './pages/Users.js';
 import { UsagePage } from './pages/UsageRecords.js';
@@ -47,7 +48,7 @@ const AdminLogin: React.FC<{ onSuccess: (admin: AdminAccount) => void }> = ({ on
     <div className="ws-root" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
       <form onSubmit={submit} className="ws-panel" style={{ width: 420, maxWidth: '100%', padding: 30, margin: 0 }}>
         <div style={{ textAlign: 'center', marginBottom: 26 }}>
-          <span className="ws-brand-mark" style={{ margin: '0 auto 14px' }}><Sparkles size={18} /></span>
+          <span className="ws-brand-mark" style={{ margin: '0 auto 14px' }}><BrandLogo size={18} /></span>
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>CELANO PPT 管理后台</h1>
           <p className="ws-subtitle">用户 · 使用记录 · 邀请码 · 充值码 · AI 接口</p>
         </div>
@@ -134,7 +135,7 @@ export const AdminApp: React.FC = () => {
     <div className="ws-root">
       <header className="ws-topbar">
         <div className="ws-brand">
-          <span className="ws-brand-mark"><Sparkles size={18} /></span>
+          <span className="ws-brand-mark"><BrandLogo size={18} /></span>
           <span><strong>CELANO PPT</strong><small>管理后台 · 用户与 AI 接口维护</small></span>
         </div>
         <div className="ws-header-tools">
