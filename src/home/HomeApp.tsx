@@ -60,12 +60,14 @@ export const HomeApp: React.FC = () => {
 async function uploadFile(endpoint: string, file: File, field = 'file') {
   const form = new FormData(); form.append(field, file);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
+  // 超时按体积动态计算：基础 120s + 按 300KB/s 预留传输时间，上限 600s（照顾慢速跨境/代理链路）
+  const timeoutMs = Math.min(600_000, Math.max(120_000, 60_000 + Math.ceil(file.size / (300 * 1024)) * 1000));
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(endpoint, { method: 'POST', body: form, credentials: 'same-origin', signal: controller.signal });
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('上传超时，请检查网络后重试');
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('上传超时，请重试；若正在使用代理/VPN，建议关闭或更换网络后重试');
     throw new Error('网络异常，请检查网络连接后重试');
   } finally {
     clearTimeout(timer);
