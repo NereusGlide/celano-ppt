@@ -3,5 +3,5 @@
 .celano-feature-main .celano-creation-heading h1{font-family:var(--font-sans,Inter,system-ui,sans-serif);font-weight:600;font-size:clamp(32px,4vw,48px);line-height:1.2;letter-spacing:-.045em;margin:0;color:var(--text-primary)}
 .celano-feature-main .celano-creation-description{max-width:720px;margin:0 auto;color:var(--text-secondary);font-size:13px;line-height:1.7}
 .celano-feature-main .celano-compose-card{padding:8px}
-.celano-feature-main .celano-compose-card>textarea{height:194px;min-height:194px;font-size:17px;line-height:1.75;padding:22px}
+.celano-feature-main .celano-compose-card>textarea{height:194px;min-height:194px;font-size:16px;line-height:1.75;padding:22px}
 @media(max-width:768px){.celano-feature-main .celano-creation-heading{grid-template-rows:18px 116px 66px;gap:10px;margin-bottom:26px}.celano-feature-main .celano-creation-heading h1{font-size:32px}.celano-feature-main .celano-creation-description{font-size:12px}.celano-feature-main .celano-compose-card>textarea{height:168px;min-height:168px}}

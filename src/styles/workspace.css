@@ -26,7 +26,7 @@
 .ws-sidebar-bottom{margin-top:auto;padding:35px 10px 4px}
 .ws-credit-mini{border:1px solid var(--ws-border);padding:16px;border-radius:14px;background:linear-gradient(125deg,var(--bg-subtle),var(--bg-surface))}
 .ws-credit-mini p{font-size:11px;color:var(--text-secondary);margin:0 0 8px}
-.ws-credit-mini strong{font-size:25px;font-weight:600;font-variant-numeric:tabular-nums}
+.ws-credit-mini strong{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
 .ws-credit-mini button{display:block;margin-top:13px;width:100%;padding:8px;border:1px solid #343B42;border-radius:9px;background:#ffffff09;color:#E2E5E8;font-size:11px}
 .ws-sidebar-note{font-size:10px;color:var(--text-secondary);margin:18px 3px 0}
 .ws-main{min-width:0;padding:32px 36px 48px;overflow-y:auto}
@@ -51,7 +51,7 @@
 .ws-panel-head h2,.ws-panel h2{font-size:14px;font-weight:600;margin:0}
 .ws-panel-head p,.ws-subtitle{font-size:11px;color:var(--text-secondary);line-height:1.8;margin:5px 0 0}
 .ws-welcome{padding:27px;display:flex;align-items:center;justify-content:space-between;gap:24px;background:radial-gradient(ellipse at 90% 10%,#ffffff0e,transparent 70%),var(--bg-surface);margin-bottom:18px}
-.ws-welcome h2{font-size:22px;letter-spacing:-.04em;margin:0}
+.ws-welcome h2{font-size:24px;letter-spacing:-.04em;margin:0}
 .ws-welcome p{font-size:12px;color:var(--text-secondary);margin:10px 0 18px;line-height:1.8}
 .ws-welcome-symbol{width:85px;height:85px;border:1px solid #ffffff12;border-radius:24px;transform:rotate(-10deg);display:grid;place-items:center;background:#ffffff05;color:#E2E5E8;flex-shrink:0}
 .ws-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px}
@@ -59,7 +59,7 @@
 .ws-stat-top{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-secondary)}
 .ws-stat-icon{color:var(--text-secondary)}
 .ws-stat-number{display:flex;gap:6px;align-items:baseline;margin-top:17px}
-.ws-stat-number strong{font-size:29px;line-height:1;letter-spacing:-.03em;font-weight:600;font-variant-numeric:tabular-nums}
+.ws-stat-number strong{font-size:24px;line-height:1;letter-spacing:-.03em;font-weight:600;font-variant-numeric:tabular-nums}
 .ws-stat-number span{font-size:11px;color:var(--text-secondary)}
 .ws-stat-note{color:var(--text-secondary);font-size:10px;margin-top:12px}
 .ws-two-col{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(270px,1fr);gap:18px}
@@ -163,7 +163,7 @@
 .ws-search:focus-within{border-color:#ffffff55}
 .ws-modal-backdrop{position:fixed;inset:0;z-index:80;background:#000b;backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:20px}
 .ws-modal{width:440px;max-width:100%;border-radius:20px;padding:26px;border:1px solid #ffffff1f;background:var(--bg-surface);box-shadow:0 30px 100px #0009}
-.ws-modal h2{font-size:17px;margin:0 0 12px}
+.ws-modal h2{font-size:16px;margin:0 0 12px}
 .ws-modal p{color:var(--text-secondary);font-size:12px;line-height:1.9;overflow-wrap:anywhere}
 .ws-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .ws-modal-head h2{margin:0}
@@ -173,10 +173,10 @@
 .ws-crumb b{color:#E2E5E8;font-weight:500}
 /* ---- 视觉/字体升级 ---- */
 .ws-root{font-feature-settings:"tnum" 1}
-.ws-page-head h1{font-size:26px;font-weight:600;letter-spacing:-.03em}
+.ws-page-head h1{font-size:24px;font-weight:600;letter-spacing:-.03em}
 .ws-eyebrow{letter-spacing:.2em}
 .ws-nav-label{letter-spacing:.22em}
-.ws-stat-number strong{font-size:30px}
+.ws-stat-number strong{font-size:32px}
 .ws-table th{position:sticky;top:0;background:var(--bg-surface);z-index:1}
 .ws-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .ws-dot{width:7px;height:7px;border-radius:50%;background:#4D555C;display:inline-block;flex-shrink:0}
@@ -189,7 +189,7 @@
 .ws-user-cell small{display:block;color:var(--text-secondary);font-size:10px;margin-top:3px;font-family:var(--font-mono)}
 .ws-empty{margin:0}
 @media(max-width:1024px){.ws-main{padding:27px 22px}.ws-layout{grid-template-columns:200px minmax(0,1fr)}.ws-two-col{grid-template-columns:1fr}}
-@media(max-width:768px){.ws-topbar{height:62px;padding:0 17px;gap:10px}.ws-brand small{display:none}.ws-brand strong{font-size:12px}.ws-layout{display:block;height:auto;min-height:calc(100dvh - 62px)}.ws-sidebar{height:auto;overflow:visible;padding:12px 14px;border-right:0;border-bottom:1px solid var(--ws-border)}.ws-nav-label,.ws-sidebar-bottom{display:none}.ws-nav{flex-direction:row;gap:5px;overflow-x:auto}.ws-nav button{padding:10px 12px;white-space:nowrap;gap:7px;flex-shrink:0}.ws-nav-count{display:none}.ws-main{padding:22px 15px 35px}.ws-page-head{align-items:flex-start;gap:10px}.ws-page-head h1{font-size:21px}.ws-stats{grid-template-columns:repeat(2,1fr);gap:10px}.ws-stat{padding:16px}.ws-welcome{padding:21px}.ws-welcome h2{font-size:19px}.ws-welcome-symbol{display:none}.ws-table td,.ws-table th{padding-left:16px;padding-right:16px}}
+@media(max-width:768px){.ws-topbar{height:62px;padding:0 17px;gap:10px}.ws-brand small{display:none}.ws-brand strong{font-size:12px}.ws-layout{display:block;height:auto;min-height:calc(100dvh - 62px)}.ws-sidebar{height:auto;overflow:visible;padding:12px 14px;border-right:0;border-bottom:1px solid var(--ws-border)}.ws-nav-label,.ws-sidebar-bottom{display:none}.ws-nav{flex-direction:row;gap:5px;overflow-x:auto}.ws-nav button{padding:10px 12px;white-space:nowrap;gap:7px;flex-shrink:0}.ws-nav-count{display:none}.ws-main{padding:22px 15px 35px}.ws-page-head{align-items:flex-start;gap:10px}.ws-page-head h1{font-size:20px}.ws-stats{grid-template-columns:repeat(2,1fr);gap:10px}.ws-stat{padding:16px}.ws-welcome{padding:21px}.ws-welcome h2{font-size:20px}.ws-welcome-symbol{display:none}.ws-table td,.ws-table th{padding-left:16px;padding-right:16px}}
 /* =========================================================================
    工作台三栏编辑器（仅作用于 .ws-editor，后台沿用上面的两栏骨架）
    布局：页列表 | 画布 | 检查器，底部常驻状态栏
@@ -311,7 +311,7 @@
   .ws-editor .ws-layout[data-inspector="off"]{height:calc(100dvh - 62px)}
   .ws-editor .ws-stage{padding:10px 11px;gap:10px}
   .ws-editor .ws-toolbar{padding:8px 10px;gap:6px}
-  .ws-editor .ws-toolbar .ws-button{height:40px;padding:0 12px;font-size:12.5px}
+  .ws-editor .ws-toolbar .ws-button{height:40px;padding:0 12px;font-size:12px}
   .ws-editor .ws-icon-btn{width:36px;height:36px}
   .ws-editor .ws-canvas-inner{max-width:none}
   .ws-editor .ws-pages>button{width:112px}

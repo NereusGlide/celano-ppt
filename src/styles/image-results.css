@@ -24,7 +24,7 @@
 .image-result-detail{min-width:0;border:1px solid #ffffff16;border-radius:20px;overflow:hidden;background:#12171a}
 .image-result-detail-head{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:21px 24px}
 .image-result-detail-head>div{min-width:0}
-.image-result-detail-head h2{font-size:15px;font-weight:500;margin:0 0 7px;overflow-wrap:anywhere;line-height:1.6}
+.image-result-detail-head h2{font-size:14px;font-weight:500;margin:0 0 7px;overflow-wrap:anywhere;line-height:1.6}
 .image-result-detail-head span{color:#8a959c;font-size:11px}
 .image-result-delete{flex:none;border:1px solid #ffffff1a;background:transparent;color:#87959c;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;cursor:pointer}
 .image-result-delete:hover{background:#ed8b7715;color:#ed9b8b;border-color:#ed8b7740}
@@ -32,7 +32,7 @@
 .image-result-viewer>img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:3px;box-shadow:0 12px 50px #0005}
 .image-result-feedback{text-align:center;color:#8a959c;padding:26px;max-width:500px}
 .image-result-feedback>svg{color:#c4d0d6;margin:0 auto 17px}
-.image-result-feedback h2{font-size:19px;font-weight:500;color:#e5eaed;margin:0 0 14px}
+.image-result-feedback h2{font-size:20px;font-weight:500;color:#e5eaed;margin:0 0 14px}
 .image-result-feedback p{font-size:13px;line-height:1.8;overflow-wrap:anywhere}
 .image-result-feedback small{font-size:11px;line-height:1.8}
 .image-result-feedback button,.image-result-empty button{display:inline-flex;align-items:center;gap:8px;cursor:pointer;border:1px solid #ffffff20;background:#ffffff09;color:#eff3f5;border-radius:10px;font-size:12px;padding:10px 16px;margin-top:18px}
@@ -48,10 +48,10 @@
 .image-results-error button{color:#f1d5cd;background:transparent;border:1px solid #e6918040;border-radius:8px;padding:6px 10px;margin-left:12px;cursor:pointer}
 .image-result-empty{text-align:center;padding:110px 24px;color:#849198;border:1px dashed #ffffff1b;border-radius:20px}
 .image-result-empty>svg{margin:0 auto 15px}
-.image-result-empty h2{font-size:19px;font-weight:500;color:#e7ecef;margin:0 0 12px}
+.image-result-empty h2{font-size:20px;font-weight:500;color:#e7ecef;margin:0 0 12px}
 .image-result-empty p{font-size:13px}
 .image-results-spin{animation:image-result-spin 1.2s linear infinite}
 @keyframes image-result-spin{to{transform:rotate(360deg)}}
 @media(max-width:800px){.image-results-main{padding:26px 18px 40px}.image-results-layout{grid-template-columns:160px minmax(0,1fr);gap:14px}.image-result-thumb{height:83px}.image-result-detail-head,.image-result-detail-actions{padding:16px}.image-result-viewer{padding:16px;min-height:330px}.image-result-prompt{margin-left:16px;margin-right:16px}}
-@media(max-width:600px){.image-results-heading{align-items:center;margin-bottom:22px}.image-results-heading h1{font-size:27px}.image-result-new{padding:10px;font-size:11px!important;gap:5px}.image-result-new>svg:last-child{display:none}.image-results-layout{display:flex;flex-direction:column-reverse;gap:16px}.image-result-detail,.image-result-rail{width:100%;box-sizing:border-box}.image-result-thumbnails{display:flex;max-height:none;overflow-x:auto}.image-result-thumbnails>button{width:126px;flex:none}.image-result-thumb{height:82px}.image-result-viewer{height:43vh;min-height:280px}.image-result-feedback{padding:10px}.image-result-detail-actions{gap:7px}.image-result-detail-actions>a,.image-result-detail-actions>button{padding:9px 10px;font-size:11px}.image-results-heading p{font-size:8px;margin-top:18px}}
+@media(max-width:600px){.image-results-heading{align-items:center;margin-bottom:22px}.image-results-heading h1{font-size:24px}.image-result-new{padding:10px;font-size:11px!important;gap:5px}.image-result-new>svg:last-child{display:none}.image-results-layout{display:flex;flex-direction:column-reverse;gap:16px}.image-result-detail,.image-result-rail{width:100%;box-sizing:border-box}.image-result-thumbnails{display:flex;max-height:none;overflow-x:auto}.image-result-thumbnails>button{width:126px;flex:none}.image-result-thumb{height:82px}.image-result-viewer{height:43vh;min-height:280px}.image-result-feedback{padding:10px}.image-result-detail-actions{gap:7px}.image-result-detail-actions>a,.image-result-detail-actions>button{padding:9px 10px;font-size:11px}.image-results-heading p{font-size:8px;margin-top:18px}}
 @media(prefers-reduced-motion:reduce){.image-results-main button,.image-results-main a{transition:none}.image-results-spin{animation:none}}
