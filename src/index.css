@@ -9,7 +9,7 @@
 
    · 中性阶 Graphite 14 级（N0–N1000，带 2% 冷调）承担全部层级
    · 「强调阶梯」用填充度表达主次：E4 反转 > E3 实心 > E2 描边 > E1 弱底 > E0 纯文字
-   · 唯一品牌点缀色「澜青 · 青瓷」只出现在交互状态（焦点 / 当前项 / 进度 / 进行中）
+   · 唯一品牌点缀色「澜蓝 · 靛青」只出现在交互状态（焦点 / 当前项 / 进度 / 进行中）
    · 主行动永远保持黑白反转，绝不着色
    · 暗色底不用纯黑 #000，用 N950 #0B0E10 留出层级空间
    · 完整规范见 design/celano-ui-spec.html
@@ -41,18 +41,18 @@
   --color-n-950: #0B0E10;
   --color-n-1000: #050708;
 
-  /* ---------- 品牌点缀色 澜青 · 青瓷（低饱和青绿） ---------- */
-  --color-accent-50: #EAF4F1;
-  --color-accent-100: #CBE6DE;
-  --color-accent-200: #9FD2C5;
-  --color-accent-300: #63D6BC;
-  --color-accent-400: #41A28C;
-  --color-accent-500: #248A73;
-  --color-accent-600: #1B7A68;
-  --color-accent-700: #146155;
-  --color-accent-800: #0F4C43;
-  --color-accent-900: #0B3A33;
-  --color-accent-950: #062420;
+  /* ---------- 品牌点缀色 澜蓝 · 靛青（低饱和蓝，非绿） ---------- */
+  --color-accent-50: #edf2fd;
+  --color-accent-100: #d5e0fa;
+  --color-accent-200: #b0c6f5;
+  --color-accent-300: #7aa2f7;
+  --color-accent-400: #5e85d6;
+  --color-accent-500: #4769b8;
+  --color-accent-600: #2f4f96;
+  --color-accent-700: #24407c;
+  --color-accent-800: #1b3160;
+  --color-accent-900: #132345;
+  --color-accent-950: #0a1428;
 
   /* ---------- 危险语义 朱砂 ---------- */
   --color-danger-300: #F2A08C;
@@ -62,23 +62,23 @@
   /* ---------- 数据可视化（唯一彩色出口，遵循中国惯例：涨红跌绿） ---------- */
   --color-up: #C0272B;
   --color-up-dark: #E8836F;
-  --color-down: #17864A;
-  --color-down-dark: #6DD69A;
+  --color-down: #2f4f96;
+  --color-down-dark: #7aa2f7;
 
   /* ---------- 向后兼容重映射 ----------
      历史组件若使用 slate / indigo / cyan / brand 等命名空间，
      直接落到新色阶上，无需逐个改动。 */
-  --color-brand-50: #EAF4F1;
-  --color-brand-100: #CBE6DE;
-  --color-brand-200: #9FD2C5;
-  --color-brand-300: #63D6BC;
-  --color-brand-400: #41A28C;
-  --color-brand-500: #248A73;
-  --color-brand-600: #1B7A68;
-  --color-brand-700: #146155;
-  --color-brand-800: #0F4C43;
-  --color-brand-900: #0B3A33;
-  --color-brand-950: #062420;
+  --color-brand-50: #edf2fd;
+  --color-brand-100: #d5e0fa;
+  --color-brand-200: #b0c6f5;
+  --color-brand-300: #7aa2f7;
+  --color-brand-400: #5e85d6;
+  --color-brand-500: #4769b8;
+  --color-brand-600: #2f4f96;
+  --color-brand-700: #24407c;
+  --color-brand-800: #1b3160;
+  --color-brand-900: #132345;
+  --color-brand-950: #0a1428;
 
   --color-ink-50: #F4F6F7;
   --color-ink-100: #EDEFF1;
@@ -104,29 +104,29 @@
   --color-slate-900: #14181B;
   --color-slate-950: #0B0E10;
 
-  --color-indigo-50: #EAF4F1;
-  --color-indigo-100: #CBE6DE;
-  --color-indigo-200: #9FD2C5;
-  --color-indigo-300: #63D6BC;
-  --color-indigo-400: #41A28C;
-  --color-indigo-500: #248A73;
-  --color-indigo-600: #1B7A68;
-  --color-indigo-700: #146155;
-  --color-indigo-800: #0F4C43;
-  --color-indigo-900: #0B3A33;
-  --color-indigo-950: #062420;
+  --color-indigo-50: #edf2fd;
+  --color-indigo-100: #d5e0fa;
+  --color-indigo-200: #b0c6f5;
+  --color-indigo-300: #7aa2f7;
+  --color-indigo-400: #5e85d6;
+  --color-indigo-500: #4769b8;
+  --color-indigo-600: #2f4f96;
+  --color-indigo-700: #24407c;
+  --color-indigo-800: #1b3160;
+  --color-indigo-900: #132345;
+  --color-indigo-950: #0a1428;
 
-  --color-cyan-50: #EAF4F1;
-  --color-cyan-100: #CBE6DE;
-  --color-cyan-200: #9FD2C5;
-  --color-cyan-300: #63D6BC;
-  --color-cyan-400: #41A28C;
-  --color-cyan-500: #248A73;
-  --color-cyan-600: #1B7A68;
-  --color-cyan-700: #146155;
-  --color-cyan-800: #0F4C43;
-  --color-cyan-900: #0B3A33;
-  --color-cyan-950: #062420;
+  --color-cyan-50: #edf2fd;
+  --color-cyan-100: #d5e0fa;
+  --color-cyan-200: #b0c6f5;
+  --color-cyan-300: #7aa2f7;
+  --color-cyan-400: #5e85d6;
+  --color-cyan-500: #4769b8;
+  --color-cyan-600: #2f4f96;
+  --color-cyan-700: #24407c;
+  --color-cyan-800: #1b3160;
+  --color-cyan-900: #132345;
+  --color-cyan-950: #0a1428;
 
   /* ---------- 圆角阶 ---------- */
   --radius-xs: 6px;
@@ -164,18 +164,18 @@
   --fill-emphasis: #21262A;
 
   /* 唯一品牌点缀色：只用于交互状态 */
-  --accent: #63D6BC;
-  --accent-soft: rgba(99, 214, 188, 0.14);
-  --on-accent: #04241E;
+  --accent: #7aa2f7;
+  --accent-soft: rgba(122, 162, 247, 0.14);
+  --on-accent: #0a1428;
 
   --danger-text: #E8836F;
   --danger-soft: rgba(232, 131, 111, 0.12);
   --danger-line: rgba(232, 131, 111, 0.32);
 
   --data-up: #E8836F;
-  --data-down: #6DD69A;
+  --data-down: #7aa2f7;
 
-  --focus-ring: #63D6BC;
+  --focus-ring: #7aa2f7;
 
   /* ---------- 动效 ---------- */
   --m-instant: 100ms;
@@ -242,8 +242,8 @@
   --on-fill-primary: #FFFFFF;
   --fill-emphasis: #EDEFF1;
 
-  --accent: #1B7A68;
-  --accent-soft: #EAF4F1;
+  --accent: #2f4f96;
+  --accent-soft: #edf2fd;
   --on-accent: #FFFFFF;
 
   --danger-text: #B33A2B;
@@ -251,9 +251,9 @@
   --danger-line: #E4B7AE;
 
   --data-up: #C0272B;
-  --data-down: #17864A;
+  --data-down: #2f4f96;
 
-  --focus-ring: #1B7A68;
+  --focus-ring: #2f4f96;
 }
 
 @layer base {
