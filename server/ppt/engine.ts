@@ -13,7 +13,7 @@ import { chargeCredits, normalizeResolution, resolutionCost, resolutionImageSize
 import { chatText, editImage, generateImage } from './aiClient.js';
 import { GLOBAL_IMAGE_SLOTS, withImageSlot } from './imageSlots.js';
 import { assertNative16x9, assertPptImageSize, dataUrlBytes, type ImageDimensions } from './imageDimensions.js';
-import { analyzeReferences, MAX_REFERENCE_TEXT, planningReferenceContext } from './referenceAnalysis.js';
+import { analyzeReferences, analyzeStyleReferences, MAX_REFERENCE_TEXT, planningReferenceContext } from './referenceAnalysis.js';
 import {
   buildPlanPrompts,
   buildSlidePrompt,
@@ -193,6 +193,24 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
         if (!isCurrent()) return false;
         db.updatePptDeck(deckId, { referenceAnalysisStatus: 'done', referenceAnalysis });
       }
+      // 风格参考图分析：用视觉模型反推每张图值得借鉴的设计点，供渲染阶段综合延申（最多取前 3 张）
+      const styleRefs = deck.referenceImages.filter(ref => ref.name.startsWith('视觉风格参考：'));
+      if (styleRefs.length && !deck.styleAnalysis) {
+        const styleUrls = styleRefs
+          .map(ref => ref.storageKey ? loadImageDataUrl(ref.storageKey) : null)
+          .filter((url): url is string => Boolean(url))
+          .slice(0, 3);
+        if (styleUrls.length) {
+          try {
+            const styleAnalysis = await analyzeStyleReferences(planning, styleUrls, controller.signal);
+            if (!isCurrent()) return false;
+            db.updatePptDeck(deckId, { styleAnalysis });
+          } catch (err) {
+            // 视觉模型不可用（未配 visionModelName 或上游不支持图像）时跳过风格反推，不阻断规划
+            console.warn('[ppt] 风格参考反推失败，跳过:', String((err as Error)?.message || err).slice(0, 120));
+          }
+        }
+      }
       const batched = deck.pageCount > PLAN_BATCH_SIZE;
       const totalBatches = batched ? Math.ceil(deck.pageCount / PLAN_BATCH_SIZE) : 1;
       let batchIndex = 0;
@@ -323,6 +341,7 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       referenceCount: count,
       faithfulReference,
       referenceLabels: referenceLabels.slice(0, count),
+      styleAnalysis: deck.styleAnalysis,
       editInstruction: instruction,
     });
     const prompt = buildPrompt(refs.length);

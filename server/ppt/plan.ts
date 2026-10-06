@@ -209,7 +209,7 @@ function cleanImagePrompt(text: string) {
 }
 
 /** 原生单页提示词：原始需求与该页视觉分镜合并后直接生图。 */
-export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePlan; index: number; referenceCount?: number; faithfulReference?: boolean; referenceLabels?: string[]; styleHint?: string; palette?: PptPalette; editInstruction?: string }) {
+export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePlan; index: number; referenceCount?: number; faithfulReference?: boolean; referenceLabels?: string[]; styleHint?: string; styleAnalysis?: string; palette?: PptPalette; editInstruction?: string }) {
   const { slide } = input;
   const content = [slide.title, slide.subtitle, slide.summary, ...slide.bullets].filter(Boolean).join('；');
   const lines = [
@@ -225,6 +225,7 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
     input.faithfulReference ? [
       '本次为风格延申模式：参考图提供整套作品的视觉主基调，需从中提炼并固定沿用；但每页排版必须依据内容重新设计，不能复制同一版式。',
       ...(input.referenceLabels || []).map((label, index) => `输入参考图${index + 1}：${label}`),
+      input.styleAnalysis ? `已反推出参考图各自值得借鉴的设计点，务必综合这些借鉴点进行延申、而非逐张照搬：${input.styleAnalysis}` : '',
       `本页内容类型：${slide.pageType}。第一步，从参考图提炼并全程锁定统一主视觉：配色（主色、辅色、点缀色及比例）、字体气质与字号层级、装饰语言（几何图形、线条、纹理、材质）、图像处理方式（黑白、遮罩、裁切、饱和度）。若参考图是多页展示拼图，识别其中的单页设计，不把整张拼图或展示外框作为输出。`,
       '第二步，依据本页内容类型及其在整套中的位置，设计专属且高级的排版：封面用超大字号与强对比的冲击式排版、目录用精致的列表层级、正文用错落有致的图文分栏、数据用立体图表化表达、结论用收束式版面。各页版式必须有明确区别并服务于各自内容，禁止每页重复同一布局或照搬母版单一版式。',
       '第三步，运用前沿设计手法提升高级感与纵深感：3D 立体元素与等距视角、玻璃拟态与弥散光晕、层次化柔和阴影营造悬浮感与景深、渐变网格光晕、超大字号排版搭配大量留白形成节奏。光影与立体感要克制而精准——高级感来自层次、留白与细节，不是特效堆砌。',

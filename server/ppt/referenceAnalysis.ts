@@ -1,5 +1,5 @@
 import type { PlanningModelConfig } from '../../src/types.js';
-import { chatText } from './aiClient.js';
+import { chatText, chatVision, type VisionContentPart } from './aiClient.js';
 
 import { MAX_REFERENCE_TEXT } from '../../src/shared/referenceFiles.js';
 export { MAX_REFERENCE_TEXT } from '../../src/shared/referenceFiles.js';
@@ -8,6 +8,19 @@ export const REFERENCE_CHUNK_SIZE = 24_000;
 export function planningReferenceContext(text: string, analysis: string): string {
   // Long files have already been read in full by segment; do not overflow the planner's context.
   return text.length <= REFERENCE_CHUNK_SIZE ? `${analysis}\n\n原始参考资料：\n${text}` : analysis;
+}
+
+/** 用视觉模型反推多张风格参考图各自值得借鉴的设计点，综合成一套可延申的视觉语言。 */
+export async function analyzeStyleReferences(config: PlanningModelConfig, styleImageUrls: string[], signal?: AbortSignal): Promise<string> {
+  if (!styleImageUrls.length) return '';
+  const content: VisionContentPart[] = [
+    {
+      type: 'text',
+      text: '下面是多张 PPT 风格参考图。请逐张反推出各自最值得借鉴的设计点（构图、配色、字体气质、排版节奏、光影层次、装饰语言、留白处理、图像处理方式等），再综合成一套可延申的视觉语言，作为后续页面设计的统一指导。只输出设计层面的借鉴点，不评价图片优劣，不输出无关内容。',
+    },
+    ...styleImageUrls.map(url => ({ type: 'image_url' as const, image_url: { url } })),
+  ];
+  return chatVision(config, [{ role: 'user', content }], signal);
 }
 
 export function splitReferenceText(text: string): string[] {

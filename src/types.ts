@@ -355,6 +355,8 @@ export interface PptDeck {
   referenceAnalysisStatus?: 'analyzing' | 'done' | 'failed';
   referenceAnalysisProgress?: { done: number; total: number };
   referenceAnalysis?: string;
+  /** 视觉模型反推出的「风格参考图值得借鉴的设计点」，渲染阶段综合延申用 */
+  styleAnalysis?: string;
   /** 大纲分批规划进度（页数超过单批上限时，前端显示「第 X/Y 批」） */
   planningProgress?: { batch: number; totalBatches: number };
   referencesText: string;
