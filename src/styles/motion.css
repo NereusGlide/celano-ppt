@@ -141,11 +141,11 @@ button:disabled { cursor: not-allowed; }
 
 /* ================= 质感层 =================
    顶部 1px 微光（模拟受光边）+ 多层柔和阴影，深色界面"高级感"的核心细节。 */
-.celano-compose-card, .image-card { box-shadow: var(--shadow-xl), var(--highlight-top); }
-.celano-product-card, .membership-plan, .membership-action, .pc-panel, .pc-stat, .ws-panel, .pc-welcome, .pc-balance { box-shadow: var(--shadow-md), var(--highlight-top); }
-.celano-work-preview { box-shadow: var(--shadow-sm); }
+.celano-compose-card, .image-card { box-shadow: var(--elev-xl), var(--highlight-top); }
+.celano-product-card, .membership-plan, .membership-action, .pc-panel, .pc-stat, .ws-panel, .pc-welcome, .pc-balance { box-shadow: var(--elev-md), var(--highlight-top); }
+.celano-work-preview { box-shadow: var(--elev-sm); }
 .celano-modal, .pc-modal, .ws-modal { box-shadow: 0 40px 100px rgba(0, 0, 0, .6), 0 8px 24px rgba(0, 0, 0, .4); }
 @media (hover: hover) {
-  .celano-product-card:hover, .membership-plan:hover { box-shadow: var(--shadow-lg), var(--highlight-top); }
+  .celano-product-card:hover, .membership-plan:hover { box-shadow: var(--elev-lg), var(--highlight-top); }
   .pc-work-row:hover .pc-work-cover { border-color: rgba(255, 255, 255, .18); }
 }
