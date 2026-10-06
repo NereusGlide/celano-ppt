@@ -59,11 +59,16 @@ export const HomeApp: React.FC = () => {
 
 async function uploadFile(endpoint: string, file: File, field = 'file') {
   const form = new FormData(); form.append(field, file);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
   let response: Response;
   try {
-    response = await fetch(endpoint, { method: 'POST', body: form, credentials: 'same-origin' });
-  } catch {
+    response = await fetch(endpoint, { method: 'POST', body: form, credentials: 'same-origin', signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('上传超时，请检查网络后重试');
     throw new Error('网络异常，请检查网络连接后重试');
+  } finally {
+    clearTimeout(timer);
   }
   const result = await response.json().catch(() => null);
   if (!response.ok || !result?.success) throw new Error(result?.error || '上传失败');
@@ -104,13 +109,17 @@ export const PptGenerateApp: React.FC = () => {
   const analyzeReference = async (file: UploadedFile, style: boolean) => {
     const setter = style ? setStyleReferences : setReferences;
     const apply = (update: Partial<UploadedFile>) => setter(prev => prev.map(item => item.id === file.id ? { ...item, ...update } : item));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 600_000);
     try {
-      const response = await fetch('/api/references/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: file.id }) });
+      const response = await fetch('/api/references/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: file.id }), signal: controller.signal });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.success) throw new Error(result?.error || '正文分析失败');
       apply({ extractedText: result.file.extractedText, parseStatus: result.file.parseStatus, parseError: result.file.parseError });
     } catch (error) {
-      apply({ parseStatus: 'failed', parseError: error instanceof Error ? error.message : '正文分析失败' });
+      apply({ parseStatus: 'failed', parseError: error instanceof Error && error.name === 'AbortError' ? '正文分析超时，请重试' : error instanceof Error ? error.message : '正文分析失败' });
+    } finally {
+      clearTimeout(timer);
     }
   };
   const handleReferences = async (files: FileList | null, style = false) => {
