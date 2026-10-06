@@ -246,6 +246,21 @@ function saveLegacyUpload(userId: string, file: MultipartFile) {
   return { id, extension, relative, full };
 }
 
+// 参考文件元数据：上传后暂存文件名/类型/磁盘路径，供独立的「正文分析」步骤按 id 定位。
+// 分析完成后即删除；超过容量上限时淘汰最旧的一半，避免长期残留。
+const referenceMeta = new Map<string, { userId: string; filename: string; contentType: string; full: string; at: number }>();
+const REFERENCE_META_LIMIT = 2000;
+const REFERENCE_IMAGE_EXT = /\.(png|jpe?g|webp|svg)$/i;
+const REFERENCE_TEXT_EXT = /\.(txt|md|markdown|csv|json)$/i;
+const REFERENCE_DOC_EXT = /\.(pdf|docx?|pptx?|xlsx?)$/i;
+function rememberReferenceMeta(id: string, entry: { userId: string; filename: string; contentType: string; full: string }) {
+  if (referenceMeta.size >= REFERENCE_META_LIMIT) {
+    const keys = [...referenceMeta.keys()].sort((a, b) => referenceMeta.get(a)!.at - referenceMeta.get(b)!.at);
+    for (const k of keys.slice(0, Math.ceil(REFERENCE_META_LIMIT / 2))) referenceMeta.delete(k);
+  }
+  referenceMeta.set(id, { ...entry, at: Date.now() });
+}
+
 /** 活跃度落盘节流表容量上限：无上限时每个历史用户都会永久占一条记录。 */
 const ACTIVE_PERSIST_LIMIT = 20_000;
 const activePersist = new Map<string, number>();
@@ -566,16 +581,44 @@ app.post('/api/upload-reference', async (req, res) => {
   try {
     const file = await readMultipartFile(req, ['file', 'reference'], 100 * 1024 * 1024);
     if (!file) return jsonError(res, 400, '未找到参考文件，请使用 multipart/form-data 上传');
-    const saved = saveLegacyUpload(user.id, file);
-    const extraction = await extractReferenceFile(file, saved.full, db.getPlanningConfig());
-    // 文档型参考：正文已提取进 store.json，磁盘原件立即删除以释放空间；
-    // 图片型参考（视觉风格）需保留，供生图时引用。
-    if (extraction.parseStatus === 'ready') {
-      try { fs.unlinkSync(saved.full); } catch { /* 删除失败不阻塞上传 */ }
+    const name = file.filename.toLowerCase();
+    const isImage = file.contentType.startsWith('image/') || REFERENCE_IMAGE_EXT.test(name);
+    const isText = file.contentType.startsWith('text/') || REFERENCE_TEXT_EXT.test(name);
+    const isDoc = REFERENCE_DOC_EXT.test(name);
+    if (!isImage && !isText && !isDoc) {
+      return jsonError(res, 400, '格式不支持：请上传 PDF、Word、PPT、Excel、文本或图片文件');
     }
-    res.json({ success: true, file: { id: saved.id, name: file.filename.slice(0, 160), size: file.data.length, type: file.contentType, ...extraction, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension } });
+    const saved = saveLegacyUpload(user.id, file);
+    // 图片作为视觉风格参考，无需正文分析；其余文件登记元数据，待前端触发异步分析。
+    const parseStatus: 'image' | 'pending' = isImage ? 'image' : 'pending';
+    if (!isImage) rememberReferenceMeta(saved.id, { userId: user.id, filename: file.filename, contentType: file.contentType, full: saved.full });
+    res.json({
+      success: true,
+      file: { id: saved.id, name: file.filename.slice(0, 160), size: file.data.length, type: file.contentType, parseStatus, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension }
+    });
   } catch (err: any) {
-    res.status(413).json({ success: false, error: String(err?.message || '参考文件上传失败').slice(0, 160) });
+    const msg = String(err?.message || '参考文件上传失败');
+    res.status(/过大|too large|payload/i.test(msg) ? 413 : 500).json({ success: false, error: msg.slice(0, 160) });
+  }
+});
+app.post('/api/references/analyze', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const id = String((req.body || {}).id || '');
+  const meta = referenceMeta.get(id);
+  if (!meta || meta.userId !== user.id) return jsonError(res, 404, '参考文件不存在或已过期，请重新上传');
+  const extension = path.extname(meta.filename).toLowerCase().slice(0, 10);
+  const base = { id, name: meta.filename.slice(0, 160), type: meta.contentType, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + id + extension };
+  try {
+    const data = fs.existsSync(meta.full) ? fs.readFileSync(meta.full) : Buffer.alloc(0);
+    if (!data.length) return jsonError(res, 404, '参考文件已不存在，请重新上传');
+    const extraction = await extractReferenceFile({ filename: meta.filename, contentType: meta.contentType, data }, meta.full, db.getPlanningConfig());
+    // 正文已提取进 store.json，磁盘原件立即删除以释放空间（图片型不走此流程）。
+    if (extraction.parseStatus === 'ready') { try { fs.unlinkSync(meta.full); } catch { /* 删除失败不阻塞 */ } }
+    referenceMeta.delete(id);
+    res.json({ success: true, file: { ...base, ...extraction } });
+  } catch (err: any) {
+    res.json({ success: true, file: { ...base, extractedText: '', parseStatus: 'failed', parseError: String(err?.message || '正文解析失败').slice(0, 200) } });
   }
 });
 app.post('/api/upload-logo', async (req, res) => {
