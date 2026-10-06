@@ -164,9 +164,12 @@ curl -sS -o /dev/null -w 'xiaoyiapi:  %{http_code}  握手 %{time_connect}s  总
 
 本地 → GitHub → 服务器，服务器侧一条命令完成：
 
+> ⚠️ git 操作用 **root** 执行（Deploy Key 与 `known_hosts` 在 root 名下）；`npm ci`/`build` 与运行仍用 `celano` 用户。首次更新前需给 root 加安全目录例外：
+> `git config --global --add safe.directory /opt/celano-ppt`
+
 ```bash
 cd /opt/celano-ppt
-sudo -u celano git pull --ff-only origin main
+sudo git pull --ff-only origin main      # root 拉取
 sudo -u celano npm ci
 sudo -u celano npm run build
 sudo systemctl restart celano-ppt
@@ -211,8 +214,7 @@ sudo find /var/backups -name 'celano-*.tar.gz' -mtime +14 -delete
 | 页面能开但生图失败 | 后台「AI 接口配置」未配置 2K/4K 接口，或上游报错；日志有 `[ppt] 失败页面已退款` 说明已自动退点 |
 | PPT 进度不流式 | Nginx 缓冲未关：确认 `proxy_buffering off;` |
 | 上传大图 413 | `client_max_body_size` 需大于应用侧的 40MB |
-| 智能画布空白 | 产物未生成：`cd /opt/celano-ppt && sudo -u celano npm run build:canvas` |
-| 磁盘写满 | `du -sh /opt/celano-ppt/data/*`；作品图片是主要占用，配置定期清理策略 |
+| 智能画布空白 | 产物未生成：`cd /opt/celano-ppt && sudo -u celano npm run build:canvas` || 磁盘写满 | `du -sh /opt/celano-ppt/data/*`；作品图片是主要占用，配置定期清理策略 |
 | HTTPS 证书过期 | `sudo certbot renew --dry-run`；系统 crontab 通常已有自动续期 |
 
 ## 8. 安全清单
