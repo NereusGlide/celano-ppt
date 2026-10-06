@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sanitizeFamousCharacters, PORTRAIT_AVOIDANCE_RULE, withChineseTextAccuracy } from './imagePrompt.js';
 import { buildSlidePrompt } from './ppt/plan.js';
-import { generateImage, editImage } from './ppt/aiClient.js';
+import { generateImage, editImage, chatText } from './ppt/aiClient.js';
 import type { ThirdPartyApiConfig } from '../src/types.js';
 
 function pngHeader(size: string) {
@@ -106,4 +106,32 @@ test('非安全类错误不触发净化重试', async t => {
     /生图接口 HTTP 500/,
   );
   assert.equal(calls, 1, '非安全错误应直接抛出，不重试');
+});
+
+test('网络抖动（fetch failed）自动重试后成功', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls += 1;
+    if (calls === 1) throw new TypeError('fetch failed');
+    return Response.json({ data: [{ b64_json: pngHeader('2048x1152') }] });
+  });
+  const result = await generateImage(config, 'test', '2048x1152');
+  assert.ok(result.startsWith('data:image/png;base64,'));
+  assert.equal(calls, 2, '网络错误应重试一次');
+});
+
+test('chatText 遇到连接超时自动重试', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls += 1;
+    if (calls < 3) {
+      const err: any = new Error('fetch failed');
+      err.cause = { message: 'Connect Timeout Error (timeout: 10000ms)' };
+      throw err;
+    }
+    return Response.json({ choices: [{ message: { content: '规划完成' } }] });
+  });
+  const text = await chatText({ baseUrl: 'https://piao.world/v1', apiKey: 'mock', modelName: 'gpt-5.6-luna', reasoningEffort: 'xhigh' }, [{ role: 'user', content: 'test' }]);
+  assert.equal(text, '规划完成');
+  assert.equal(calls, 3, '网络错误应重试到成功');
 });

@@ -33,6 +33,31 @@ async function readApiError(resp: Response): Promise<string> {
   }
 }
 
+/** 上游中转站偶发网络抖动（连接超时/断流）时自动重试，避免整页/整任务因瞬时故障失败。 */
+function isRetryableNetworkError(err: unknown): boolean {
+  const cause = (err as any)?.cause?.message;
+  const msg = String((err as any)?.message || cause || err || '');
+  return /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|Connect Timeout|connect timeout|socket hang up|network error|undici|UND_ERR/i.test(msg);
+}
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+async function withNetworkRetry<T>(fn: () => Promise<T>, signal: AbortSignal | undefined, attempts = 3): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    if (signal?.aborted) throw new Error('任务已停止');
+    try {
+      return await fn();
+    } catch (err) {
+      if (i < attempts - 1 && isRetryableNetworkError(err) && !signal?.aborted) {
+        await sleep(600 * (i + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('网络请求失败');
+}
+
 /**
  * Materialize an upstream image response before it leaves the server boundary.
  * This makes signed URLs safe to persist and rejects non-native aspect ratios
@@ -75,17 +100,19 @@ export async function chatText(
   if (!cfg.apiKey || !cfg.apiKey.trim()) throw new Error('规划模型 API Key 未配置，请在管理后台设置');
   const body: Record<string, unknown> = { model: normalizePlanningModelName(cfg.baseUrl, cfg.modelName || 'gpt-6.1-sol'), messages };
   if (cfg.reasoningEffort && cfg.reasoningEffort !== 'auto') body.reasoning_effort = cfg.reasoningEffort;
-  const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + String(cfg.apiKey).trim(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: timeoutSignal(signal, timeoutMs),
-  });
-  if (!resp.ok) throw new Error('规划模型接口 HTTP ' + resp.status + '：' + await readApiError(resp));
-  const data: any = await resp.json();
-  const text = String(data?.choices?.[0]?.message?.content || '').trim();
-  if (!text) throw new Error('规划模型未返回内容');
-  return text;
+  return withNetworkRetry(async () => {
+    const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + String(cfg.apiKey).trim(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: timeoutSignal(signal, timeoutMs),
+    });
+    if (!resp.ok) throw new Error('规划模型接口 HTTP ' + resp.status + '：' + await readApiError(resp));
+    const data: any = await resp.json();
+    const text = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!text) throw new Error('规划模型未返回内容');
+    return text;
+  }, signal);
 }
 
 /** 视觉读取：扫描版文件转图后，用多模态模型直接理解页面内容。 */
@@ -98,18 +125,20 @@ export async function chatVision(
   if (!cfg || typeof cfg.baseUrl !== 'string' || !cfg.baseUrl.trim()) throw new Error('未配置规划模型接口，请在管理后台设置');
   if (!cfg.apiKey || !cfg.apiKey.trim()) throw new Error('规划模型 API Key 未配置，请在管理后台设置');
   const model = String(cfg.visionModelName || cfg.modelName || 'gpt-4o').trim();
-  const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + String(cfg.apiKey).trim(), 'Content-Type': 'application/json' },
-    // max_tokens 给转录输出设上限，避免模型输出冗长拖慢每批耗时（3 页转录远小于 4096）。
-    body: JSON.stringify({ model, messages, max_tokens: 4096 }),
-    signal: timeoutSignal(signal, timeoutMs),
-  });
-  if (!resp.ok) throw new Error('视觉模型接口 HTTP ' + resp.status + '：' + await readApiError(resp));
-  const data: any = await resp.json();
-  const text = String(data?.choices?.[0]?.message?.content || '').trim();
-  if (!text) throw new Error('视觉模型未返回内容');
-  return text;
+  return withNetworkRetry(async () => {
+    const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + String(cfg.apiKey).trim(), 'Content-Type': 'application/json' },
+      // max_tokens 给转录输出设上限，避免模型输出冗长拖慢每批耗时（3 页转录远小于 4096）。
+      body: JSON.stringify({ model, messages, max_tokens: 4096 }),
+      signal: timeoutSignal(signal, timeoutMs),
+    });
+    if (!resp.ok) throw new Error('视觉模型接口 HTTP ' + resp.status + '：' + await readApiError(resp));
+    const data: any = await resp.json();
+    const text = String(data?.choices?.[0]?.message?.content || '').trim();
+    if (!text) throw new Error('视觉模型未返回内容');
+    return text;
+  }, signal);
 }
 
 /** 文生图：生成完整 16:9 页面图片，返回 data URL 或远程 URL */
@@ -140,10 +169,12 @@ export async function generateImage(
     return materializeImage(item, signal, '生图结果', size);
   };
   try {
-    return await attempt(prompt);
+    return await withNetworkRetry(() => attempt(prompt), signal);
   } catch (err) {
     // 版权角色/真人形象触发安全过滤时，角色名泛化 + 强化规避指令后重试一次，避免整页永久失败。
-    if (err instanceof SafetyRejectionError && !signal?.aborted) return attempt(safetyRewritePrompt(prompt));
+    if (err instanceof SafetyRejectionError && !signal?.aborted) {
+      return await withNetworkRetry(() => attempt(safetyRewritePrompt(prompt)), signal);
+    }
     throw err;
   }
 }
@@ -199,9 +230,11 @@ export async function editImage(
     return materializeImage(item, signal, '图像编辑结果', size);
   };
   try {
-    return await attempt(prompt);
+    return await withNetworkRetry(() => attempt(prompt), signal);
   } catch (err) {
-    if (err instanceof SafetyRejectionError && !signal?.aborted) return attempt(safetyRewritePrompt(prompt));
+    if (err instanceof SafetyRejectionError && !signal?.aborted) {
+      return await withNetworkRetry(() => attempt(safetyRewritePrompt(prompt)), signal);
+    }
     throw err;
   }
 }
