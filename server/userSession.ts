@@ -65,21 +65,38 @@ export function verifyUserSessionToken(token?: string | null, now = Date.now()):
   }
 }
 
-function serializeCookie(value: string, maxAge: number): string {
+function serializeCookie(value: string, maxAge: number, domain?: string): string {
   const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const domainPart = domain ? '; Domain=' + domain : '';
   return USER_SESSION_COOKIE + '=' + encodeURIComponent(value) +
-    '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.max(0, Math.floor(maxAge)) + secure;
+    '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.max(0, Math.floor(maxAge)) + domainPart + secure;
+}
+
+/**
+ * 从请求 Host 推导 cookie 共享域：让同一根域下的子域（如 www.yamuai.cn 与 yamuai.cn）
+ * 共享登录态，避免跨子域跳转后被迫重新登录。
+ * 跨根域（如 yamuai.cn 与 ai.celano.cn）属于浏览器安全边界，无法共享。
+ * 取最后两段作为根域，对 .cn/.com 等常见后缀有效；对 .com.cn 等复合公共后缀不适用
+ * （届时浏览器会拒绝该 Domain 的 cookie，退化为 host-only，不会造成安全问题）。
+ */
+export function resolveCookieDomain(host?: string | null): string | undefined {
+  if (!host) return undefined;
+  const h = host.split(':')[0].trim().toLowerCase();
+  if (!h || h === 'localhost' || h === '127.0.0.1' || /^\d+(\.\d+){3}$/.test(h)) return undefined;
+  const labels = h.split('.');
+  if (labels.length < 2) return undefined;
+  return labels.slice(-2).join('.');
 }
 
 type HeaderResponse = { setHeader(name: string, value: string): unknown };
 type CookieRequest = { headers?: { cookie?: string } };
 
-export function setUserSessionCookie(res: HeaderResponse, userId: string, credential?: CredentialLike | null): void {
-  res.setHeader('Set-Cookie', serializeCookie(createUserSessionToken(userId, credential), Math.floor(USER_SESSION_TTL_MS / 1000)));
+export function setUserSessionCookie(res: HeaderResponse, userId: string, credential?: CredentialLike | null, host?: string | null): void {
+  res.setHeader('Set-Cookie', serializeCookie(createUserSessionToken(userId, credential), Math.floor(USER_SESSION_TTL_MS / 1000), resolveCookieDomain(host)));
 }
 
-export function clearUserSessionCookie(res: HeaderResponse): void {
-  res.setHeader('Set-Cookie', serializeCookie('', 0));
+export function clearUserSessionCookie(res: HeaderResponse, host?: string | null): void {
+  res.setHeader('Set-Cookie', serializeCookie('', 0, resolveCookieDomain(host)));
 }
 
 export function getUserSessionToken(req: CookieRequest): string | null {

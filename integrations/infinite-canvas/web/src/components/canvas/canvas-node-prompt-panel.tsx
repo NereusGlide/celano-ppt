@@ -1,5 +1,5 @@
-import { Button,Modal,Tooltip } from "antd";
-import { ArrowUp,LoaderCircle,Maximize2,Square } from "lucide-react";
+import { App,Button,Modal,Tooltip } from "antd";
+import { ArrowUp,LoaderCircle,Maximize2,Sparkles,Square } from "lucide-react";
 import { useEffect,useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -36,6 +36,7 @@ type CanvasNodePromptPanelProps = {
 
 export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, onConfigChange, onGenerate, onStop, mentionReferences = [], connectedNodes = [], onDisconnectReference, onStartReferenceSelection, onImageSettingsOpenChange, modeOverride }: CanvasNodePromptPanelProps) {
     const { t } = useTranslation();
+    const { message } = App.useApp();
     const globalConfig = useEffectiveConfig();
     const openConfigDialog = useConfigStore((state) => state.openConfigDialog);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -47,6 +48,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
     const isEditingExistingContent = hasTextContent || hasImageContent;
     const [prompt, setPrompt] = useState(node.metadata?.composerContent ?? node.metadata?.prompt ?? "");
     const [expanded, setExpanded] = useState(false);
+    const [optimizing, setOptimizing] = useState(false);
 
     // Restore prompts only when switching nodes; preserve the current input after generation on the same node.
     useEffect(() => {
@@ -68,6 +70,27 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
 
     const openExpandedEditor = () => {
         setExpanded(true);
+    };
+
+    const optimizePromptText = async () => {
+        const text = prompt.trim();
+        if (!text || optimizing || isRunning) return;
+        setOptimizing(true);
+        try {
+            const response = await fetch("/api/canvas/optimize-prompt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: text }),
+            });
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data?.success) throw new Error(data?.error || t("canvas.promptPanel.optimizeFailed"));
+            updatePrompt(String(data.prompt || text));
+            message.success(t("canvas.promptPanel.optimized"));
+        } catch (error) {
+            message.error(error instanceof Error ? error.message : t("canvas.promptPanel.optimizeFailed"));
+        } finally {
+            setOptimizing(false);
+        }
     };
 
     return (
@@ -110,6 +133,17 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                         </>
                     ) : (
                         <>
+                            <Tooltip title={t("canvas.promptPanel.optimize")}>
+                                <Button
+                                    type="text"
+                                    className="!h-10 !w-10 !min-w-10 shrink-0 !rounded-full !bg-transparent !p-0"
+                                    style={{ color: theme.node.text }}
+                                    icon={optimizing ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                                    onClick={() => void optimizePromptText()}
+                                    disabled={!prompt.trim() || isRunning}
+                                    aria-label={t("canvas.promptPanel.optimize")}
+                                />
+                            </Tooltip>
                             <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                             <CanvasTextSettingsPopover config={config} count={node.metadata?.textCount || 1} onConfigChange={(_, value) => onConfigChange(node.id, { reasoningEffort: value })} onCountChange={(textCount) => onConfigChange(node.id, { textCount })} />
                         </>

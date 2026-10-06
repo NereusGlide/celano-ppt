@@ -280,7 +280,7 @@ app.post('/api/auth/login', (req,res) => {
   db.updateUser(user.id,{lastLoginAt:Date.now(), lastLoginIp: ip});
   touchUser(user.id);
   recordUsage(user.id,user.username,'login','账号登录 · IP ' + ip,0);
-  setUserSessionCookie(res,user.id,db.getCredentials(user.id));
+  setUserSessionCookie(res,user.id,db.getCredentials(user.id),req.hostname);
   res.json({success:true,user:publicUser(db.getUserById(user.id)||user)});
 });
 app.post('/api/auth/register', (req,res) => {
@@ -296,13 +296,13 @@ app.post('/api/auth/register', (req,res) => {
   // id 必须带随机后缀：仅用 Date.now() 时，同一毫秒内的两次注册会拿到完全相同
   // 的 id，后注册者会与先注册者共用凭据与数据（getUserById 永远只返回第一个）。
   const user:User={id:'user_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex'),username:name,name,phone:mobile,avatar:avatar||'',role:'creator',createdAt:Date.now()}; db.createUser(user,pwd);
-  const saved=db.updateUser(user.id,{credits:100,inviteCode:String(inviteCode).trim().toUpperCase(),lastLoginAt:Date.now(),lastLoginIp:clientIp(req)})||user; db.consumeInviteCode(String(inviteCode),user.id); recordUsage(user.id,user.username,'register','通过邀请码 '+String(inviteCode).trim().toUpperCase()+' 注册，赠送 100 点',100); setUserSessionCookie(res,user.id,db.getCredentials(user.id));
+  const saved=db.updateUser(user.id,{credits:100,inviteCode:String(inviteCode).trim().toUpperCase(),lastLoginAt:Date.now(),lastLoginIp:clientIp(req)})||user; db.consumeInviteCode(String(inviteCode),user.id); recordUsage(user.id,user.username,'register','通过邀请码 '+String(inviteCode).trim().toUpperCase()+' 注册，赠送 100 点',100); setUserSessionCookie(res,user.id,db.getCredentials(user.id),req.hostname);
   res.json({success:true,user:publicUser(saved)});
 });
 app.get('/api/auth/me',(req,res)=>{const user=requireUser(req,res);if(!user)return;res.json({success:true,user:publicUser(user)});});
-app.post('/api/auth/logout',(req,res)=>{clearUserSessionCookie(res);res.json({success:true});});
+app.post('/api/auth/logout',(req,res)=>{clearUserSessionCookie(res,req.hostname);res.json({success:true});});
 app.patch('/api/auth/profile',(req,res)=>{const user=requireUser(req,res);if(!user)return;const body=req.body||{};const keys=Object.keys(body);if(!keys.length||keys.some(k=>!['name','phone'].includes(k)))return jsonError(res,400,'仅允许修改 name、phone');const updates:Partial<User>={};if(body.name!==undefined){if(typeof body.name!=='string'||!body.name.trim()||body.name.trim().length>30)return jsonError(res,400,'显示名称需为1-30个字符');updates.name=body.name.trim();}if(body.phone!==undefined){if(typeof body.phone!=='string'||!isValidPhone(body.phone.trim()))return jsonError(res,400,'请输入有效的11位手机号');if(db.getUsers().some(x=>x.id!==user.id&&x.phone===body.phone.trim()))return jsonError(res,409,'该手机号已被其他账号使用');updates.phone=body.phone.trim();}res.json({success:true,user:publicUser(db.updateUser(user.id,updates)||user)});});
-app.post('/api/auth/password',(req,res)=>{const user=requireUser(req,res);if(!user)return;const {currentPassword,newPassword,confirmPassword}=req.body||{};if(typeof currentPassword!=='string'||!verifyPassword(currentPassword,db.getCredentials(user.id)))return jsonError(res,401,'当前密码错误');if(typeof newPassword!=='string'||newPassword.length<6||newPassword.length>128)return jsonError(res,400,'新密码长度需为6-128位');if(newPassword!==confirmPassword)return jsonError(res,400,'两次输入的新密码不一致');if(verifyPassword(newPassword,db.getCredentials(user.id)))return jsonError(res,400,'新密码不能与当前密码相同');db.setCredentials(user.id,hashPassword(newPassword));setUserSessionCookie(res,user.id,db.getCredentials(user.id));res.json({success:true,user:publicUser(user)});});
+app.post('/api/auth/password',(req,res)=>{const user=requireUser(req,res);if(!user)return;const {currentPassword,newPassword,confirmPassword}=req.body||{};if(typeof currentPassword!=='string'||!verifyPassword(currentPassword,db.getCredentials(user.id)))return jsonError(res,401,'当前密码错误');if(typeof newPassword!=='string'||newPassword.length<6||newPassword.length>128)return jsonError(res,400,'新密码长度需为6-128位');if(newPassword!==confirmPassword)return jsonError(res,400,'两次输入的新密码不一致');if(verifyPassword(newPassword,db.getCredentials(user.id)))return jsonError(res,400,'新密码不能与当前密码相同');db.setCredentials(user.id,hashPassword(newPassword));setUserSessionCookie(res,user.id,db.getCredentials(user.id),req.hostname);res.json({success:true,user:publicUser(user)});});
 
 app.post('/api/wallet/redeem',(req,res)=>{
   const user=requireUser(req,res);if(!user)return;
