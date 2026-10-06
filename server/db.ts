@@ -350,6 +350,11 @@ class Database {
     return (this.data.canvasAssets || []).filter(asset => asset.userId === userId && !asset.deletedAt);
   }
 
+  /** 全部未删除的画布素材（过期清理扫描用）。 */
+  getAllCanvasAssets() {
+    return (this.data.canvasAssets || []).filter(asset => !asset.deletedAt);
+  }
+
   /** 与 getCanvasAssets 保持一致：软删除后不再可被读取（否则已删素材的图片仍能取到）。 */
   getCanvasAsset(userId: string, id: string, includeDeleted = false) {
     return (this.data.canvasAssets || []).find(asset => asset.userId === userId && asset.id === id && (includeDeleted || !asset.deletedAt));
@@ -520,7 +525,11 @@ class Database {
   updatePptDeck(id: string, updates: Partial<PptDeck>): PptDeck | null {
     const idx = this.data.pptDecks.findIndex(d => d.id === id);
     if (idx === -1) return null;
-    this.data.pptDecks[idx] = { ...this.data.pptDecks[idx], ...updates, updatedAt: Date.now() };
+    const current = this.data.pptDecks[idx];
+    const next = { ...current, ...updates, updatedAt: Date.now() };
+    // 首次全部完成时记录完成时间，作为 7 天保留期起点（后续编辑不再刷新）
+    if (updates.finished === true && !current.finished) next.finishedAt = Date.now();
+    this.data.pptDecks[idx] = next;
     this.save();
     return this.data.pptDecks[idx];
   }

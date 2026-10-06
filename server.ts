@@ -13,7 +13,7 @@ import PptxGenJS from 'pptxgenjs';
 import { db } from './server/db.js';
 import { adminRouter } from './server/adminRoutes.js';
 import { pptRouter } from './server/ppt/routes.js';
-import { deleteDeck, logoImagePath, slideImagePath } from './server/ppt/engine.js';
+import { deleteDeck, logoImagePath, removeDeckImageFiles, slideImagePath } from './server/ppt/engine.js';
 import { aiRouter } from './server/aiRoutes.js';
 import { createCanvasRouter } from './server/canvasRoutes.js';
 import { createCanvasAssetRouter } from './server/canvasAssetRoutes.js';
@@ -560,6 +560,11 @@ app.post('/api/upload-reference', async (req, res) => {
     if (!file) return jsonError(res, 400, '未找到参考文件，请使用 multipart/form-data 上传');
     const saved = saveLegacyUpload(user.id, file);
     const extraction = await extractReferenceFile(file, saved.full, db.getPlanningConfig());
+    // 文档型参考：正文已提取进 store.json，磁盘原件立即删除以释放空间；
+    // 图片型参考（视觉风格）需保留，供生图时引用。
+    if (extraction.parseStatus === 'ready') {
+      try { fs.unlinkSync(saved.full); } catch { /* 删除失败不阻塞上传 */ }
+    }
     res.json({ success: true, file: { id: saved.id, name: file.filename.slice(0, 160), size: file.data.length, type: file.contentType, ...extraction, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension } });
   } catch (err: any) {
     res.status(413).json({ success: false, error: String(err?.message || '参考文件上传失败').slice(0, 160) });
@@ -694,6 +699,34 @@ async function startServer(){const isProd=process.env.NODE_ENV==='production';if
   }
   const httpServer = app.listen(PORT,'0.0.0.0',()=>{console.log('[CELANO PPT] 重构基线服务已启动: http://0.0.0.0:'+PORT);assertNotDefaultAdminPassword(isProd);});
   installGracefulShutdown(httpServer);
+  installWorksCleanup();
+}
+
+/** 作品保留 7 天：从生成完成时间算起，到期自动删除 PPT deck 与画布素材。 */
+function installWorksCleanup() {
+  const RETENTION_MS = 7 * 24 * 3600 * 1000;
+  const sweep = () => {
+    const now = Date.now();
+    let removed = 0;
+    for (const deck of db.getPptDecks()) {
+      const doneAt = deck.finishedAt || (deck.finished ? deck.updatedAt : undefined);
+      if (!doneAt || now - doneAt <= RETENTION_MS) continue;
+      removeDeckImageFiles(deck);
+      if (db.deletePptDeck(deck.id)) removed++;
+    }
+    for (const asset of db.getAllCanvasAssets()) {
+      const assetCreatedAt = typeof asset.createdAt === 'number' ? asset.createdAt : new Date(asset.createdAt).getTime();
+      if (now - assetCreatedAt <= RETENTION_MS) continue;
+      db.deleteCanvasAsset(asset.userId, asset.id);
+      removed++;
+    }
+    if (removed > 0) console.log('[CELANO PPT] 已清理过期作品 ' + removed + ' 项（保留期 7 天）');
+  };
+  const timer = setInterval(sweep, 6 * 3600 * 1000);
+  timer.unref();
+  // 启动 1 分钟后先扫一次，及时清理历史过期数据
+  const first = setTimeout(sweep, 60 * 1000);
+  first.unref();
 }
 
 /**

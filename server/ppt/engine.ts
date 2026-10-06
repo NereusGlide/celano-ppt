@@ -105,6 +105,15 @@ export function slideImagePath(deck: PptDeck, slideId: string): string {
   return full && fs.existsSync(full) ? full : '';
 }
 
+/** 删除 deck 的全部页面图片文件（作品过期清理用，路径守卫防穿越）。 */
+export function removeDeckImageFiles(deck: PptDeck): void {
+  for (const slide of deck.slides) {
+    if (!slide.storageKey) continue;
+    const full = imageFullPath(slide.storageKey);
+    if (full) { try { fs.unlinkSync(full); } catch { /* 文件可能已不存在 */ } }
+  }
+}
+
 /** Logo 上传文件仍由首页的鉴权 URL 提供；工作台路由用同一配置读取它。 */
 export function logoImagePath(deck: PptDeck): string {
   const url = String(deck.logo?.url || '');
@@ -780,6 +789,7 @@ export function deckView(deck: PptDeck) {
     finished: deck.finished,
     startedAt: deck.startedAt,
     updatedAt: deck.updatedAt,
+    finishedAt: deck.finishedAt,
     error: deck.error,
     planningSource: deck.planningSource,
     planningWarning: deck.planningWarning,

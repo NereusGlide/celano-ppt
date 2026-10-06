@@ -11,6 +11,15 @@ import { useAuth } from '../context/AuthContext.js';
 import { UserAuthModal } from '../components/UserAuthModal.js';
 import '../styles/workspace.css';
 
+/** 作品 7 天保留期的剩余时间提示。 */
+function retentionLabel(finishedAt: number | undefined, now: number): string {
+  if (!finishedAt) return '';
+  const remain = finishedAt + 7 * 24 * 3600 * 1000 - now;
+  if (remain <= 0) return ' · 已过期，请重新生成';
+  if (remain < 24 * 3600 * 1000) return ` · 剩 ${Math.ceil(remain / 3600 / 1000)} 小时，即将过期请保存`;
+  return ` · 剩 ${Math.floor(remain / 86400 / 1000)} 天`;
+}
+
 interface PageData {
   id: string;
   title: string;
@@ -812,7 +821,7 @@ export const WorkspaceApp: React.FC = () => {
               <div className="ws-panel ws-generation-status">
                 <>
                   <div style={{ fontSize: 12, color: '#8A9299', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span>{deck.stage === 'planning' ? '大纲规划中…（已 ' + Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000)) + ' 秒）' : deck.finished ? '已全部完成' : deck.running ? '逐页生成 ' + doneCount + '/' + totalSlides : '已暂停'}</span>
+                    <span>{deck.stage === 'planning' ? '大纲规划中…（已 ' + Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000)) + ' 秒）' : deck.finished ? '已全部完成' + retentionLabel(deck.finishedAt, nowMs) : deck.running ? '逐页生成 ' + doneCount + '/' + totalSlides : '已暂停'}</span>
                     {failedCount > 0 ? <span style={{ color: '#E8836F' }}>失败 {failedCount} 页{refundedCredits > 0 ? ` · 已退回 ${refundedCredits} 点` : ''}</span> : null}
                     {deck.running ? (
                       <button className="ws-button ws-ghost" style={{ marginLeft: 'auto', padding: '2px 8px' }} onClick={() => void handleStop()}><Square size={12} /> 停止</button>

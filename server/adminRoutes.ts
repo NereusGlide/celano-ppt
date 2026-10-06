@@ -243,9 +243,20 @@ adminRouter.get('/users', requireAdmin, (req, res) => {
 adminRouter.patch('/users/:id', requireAdmin, (req, res) => {
   const body = req.body || {};
   const updates: any = {};
+  const existing = db.getUserById(req.params.id);
+  if (!existing) return res.status(404).json({ success: false, error: '用户不存在' });
+  // 会员从「非有效」变为「有效」视为一次开通：自动赠送套餐对应月点数
+  let membershipGrant = 0;
+  let grantPlanName = '';
   if (body.membership !== undefined) {
     try { updates.membership = parseMembership(body.membership); }
     catch (error) { return res.status(400).json({ success: false, error: (error as Error).message }); }
+    const wasActive = existing.membership?.status === 'active' && Number(existing.membership.expiresAt) > Date.now();
+    const isActive = updates.membership?.status === 'active';
+    if (isActive && !wasActive && updates.membership?.planId) {
+      const plan = db.getMembershipPlans().find(p => p.id === updates.membership.planId);
+      if (plan && plan.points > 0) { membershipGrant = plan.points; grantPlanName = plan.name; }
+    }
   }
   if (body.status === 'active' || body.status === 'disabled') {
     updates.status = body.status;
@@ -253,6 +264,7 @@ adminRouter.patch('/users/:id', requireAdmin, (req, res) => {
   }
   if (body.role === 'admin' || body.role === 'creator' || body.role === 'member') updates.role = body.role;
   if (typeof body.credits === 'number' && body.credits >= 0) updates.credits = Math.floor(body.credits);
+  if (membershipGrant > 0) updates.credits = (updates.credits ?? existing.credits ?? 0) + membershipGrant;
   if (body.name !== undefined) {
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.trim().length > 30) {
       return res.status(400).json({ success: false, error: '昵称需为 1-30 个字符' });
@@ -271,6 +283,9 @@ adminRouter.patch('/users/:id', requireAdmin, (req, res) => {
 
   const updated = db.updateUser(req.params.id, updates);
   if (!updated) return res.status(404).json({ success: false, error: '用户不存在' });
+  if (membershipGrant > 0) {
+    recordUsage(req.params.id, updated.username, 'membership_grant', '会员开通「' + grantPlanName + '」赠送 ' + membershipGrant + ' 点', membershipGrant);
+  }
   res.json({ success: true, user: { ...updated, online: isUserOnline(updated.id) } });
 });
 

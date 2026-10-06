@@ -17,7 +17,7 @@ const sectionItems: Array<{ key: Section; label: string; icon: React.FC<{ size?:
   { key: 'assets', label: '画布素材', icon: FileImage }, { key: 'credits', label: '点数与充值', icon: CreditCard }, { key: 'profile', label: '账号资料', icon: UserRound }, { key: 'security', label: '账号安全', icon: KeyRound },
 ];
 const sectionDescriptions: Record<Section, string> = { assets: '与智能画布共用文本与图片素材。', overview: '集中查看你的创作、点数与近期动态。', works: '管理演示文稿，打开作品继续编辑或导出。', usage: '查看最近的账号操作与生成记录。', credits: '查看可用余额，并使用充值码补充创作点数。', profile: '更新显示名称与手机号，保持账号信息准确。', security: '保护你的登录凭据，修改密码无需联系管理员。' };
-const recordLabels: Record<string, string> = { register: '注册奖励', login: '登录', outline: '内容规划', slide_image: '页面生图', optimize_prompt: '提示词优化', export_pptx: '导出 PPTX', recharge: '点数充值' };
+const recordLabels: Record<string, string> = { register: '注册奖励', login: '登录', outline: '内容规划', slide_image: '页面生图', optimize_prompt: '提示词优化', export_pptx: '导出 PPTX', recharge: '点数充值', membership_grant: '会员开通赠送' };
 const statusLabels: Record<string, string> = { ready: '已完成', running: '生成中', planning: '规划中', failed: '失败' };
 const dateText = (value?: number) => value ? new Date(value).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—';
 const shortDate = (value?: number) => value ? new Date(value).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '—';
@@ -43,6 +43,18 @@ export const AccountCenterApp: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const load = async (quiet = false) => { if (!quiet) setLoading(true); else setRefreshing(true); setError(''); try { const data = await fetchAccountSummary(); setSummary(data); syncUser(data.user); setProfile({ name: data.user.name || '', phone: data.user.phone || '' }); } catch (err: any) { setError(err?.message || '个人中心加载失败'); } finally { setLoading(false); setRefreshing(false); } };
   useEffect(() => { if (currentUser) void load(); else setLoading(false); }, [currentUser?.id]);
+  useEffect(() => {
+    const grants = (summary?.records || []).filter(record => record.type === 'membership_grant');
+    if (!grants.length) return;
+    const latest = grants.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+    if (Date.now() - latest.createdAt < 24 * 3600 * 1000) {
+      const key = 'celano_membership_grant_' + latest.id;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        setNotice(`会员已开通，已自动赠送 ${latest.credits} 点，请查收！`);
+      }
+    }
+  }, [summary?.records]);
   useEffect(() => {
     if (!currentUser) return;
     const refresh = () => { void fetchAccountSummary().then(data => { setSummary(data); syncUser(data.user); }).catch(() => undefined); };

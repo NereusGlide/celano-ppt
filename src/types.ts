@@ -225,7 +225,7 @@ export interface UsageRecord {
   id: string;
   userId: string;
   username: string;
-  type: 'register' | 'login' | 'outline' | 'slide_image' | 'optimize_prompt' | 'export_pptx' | 'recharge';
+  type: 'register' | 'login' | 'outline' | 'slide_image' | 'optimize_prompt' | 'export_pptx' | 'recharge' | 'membership_grant';
   detail: string;
   credits: number;
   createdAt: number;
@@ -352,5 +352,7 @@ export interface PptDeck {
   finished: boolean;
   startedAt: number;
   updatedAt: number;
+  /** 首次全部生成完成的时间，作为 7 天保留期的起点 */
+  finishedAt?: number;
   error?: string;
 }
