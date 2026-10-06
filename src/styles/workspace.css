@@ -7,7 +7,7 @@
 .ws-root :focus-visible{outline:2px solid var(--text-primary);outline-offset:3px}
 .ws-topbar{height:72px;padding:0 30px;border-bottom:1px solid var(--ws-border);background:var(--bg-surface);display:flex;align-items:center;justify-content:space-between;gap:24px;position:sticky;top:0;z-index:30}
 .ws-brand{display:flex;align-items:center;gap:12px;background:none;border:0;color:inherit;padding:0;text-align:left}
-.ws-brand-mark{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:var(--on-fill-primary);background:var(--fill-primary);flex-shrink:0}
+.ws-brand-mark{display:grid;place-items:center;flex-shrink:0}
 .ws-brand strong{display:block;font-size:14px;letter-spacing:.08em}
 .ws-brand small{display:block;color:var(--text-secondary);font-size:11px;margin-top:2px}
 .ws-header-tools{display:flex;align-items:center;gap:9px;min-width:0}

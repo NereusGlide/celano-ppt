@@ -4,7 +4,7 @@ import '../styles/membership.css';
 import { useAuth } from '../context/AuthContext.js';
 import { membershipView, applyMembershipCatalog } from '../shared/membership.js';
 import { MembershipPlanConfig } from '../types.js';
-import { BrandLogo } from '../components/BrandLogo.js';
+import { BrandLogo, BrandWordmark } from '../components/BrandLogo.js';
 
 type RechargePlan = { id: string; name: string; price: string; points: number; note: string; accent: string };
 type DisplayPlan = { id: string; name: string; price: string; priceUnit: string; points: number; pointsUnit: string; note: string; accent: string; recommended?: boolean; renewalLabel: string; benefits: string[] };
@@ -113,7 +113,7 @@ export const MembershipApp: React.FC = () => {
   return <div className="membership-page celano-page-surface">
     <header className="membership-topbar">
       <button className="membership-back" onClick={goHome}><ArrowLeft size={16} /> 返回创作首页</button>
-      <div className="membership-brand"><span><BrandLogo size={15} /></span> CELANO <em>会员中心</em></div>
+      <div className="membership-brand"><span><BrandLogo height={20} /></span> <BrandWordmark height={13} /> <em>会员中心</em></div>
       <nav className="membership-nav" aria-label="产品导航">
         <button onClick={() => { window.location.hash = '/image'; }}>文生图</button>
         <button onClick={goHome}>PPT 生成</button>

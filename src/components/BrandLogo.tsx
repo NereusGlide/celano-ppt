@@ -1,18 +1,35 @@
 import React from 'react';
 
 /**
- * 品牌 Logo：C 字母 + 品牌色圆点，与网站 favicon 同源。
- * 描边跟随 currentColor（融入各页面容器文字色），圆点固定用品牌点缀色。
+ * 品牌视觉资产（与 favicon / 应用图标同源）：
+ * - BrandLogo：金属「A」图形标（public/brand/logo-mark.png）
+ * - BrandWordmark：金属「CELANO」字标（public/brand/logo-wordmark.png）
+ * 素材为透明底 PNG，直接置于深色场上方。
  */
-export const BrandLogo: React.FC<{ size?: number; className?: string }> = ({ size = 18, className }) => (
-  <svg viewBox="0 0 64 64" width={size} height={size} className={className} role="img" aria-label="CELANO">
-    <path
-      d="M41.5 25.2c-1.9-2.6-4.8-4.1-8.3-4.1-6.4 0-10.9 4.5-10.9 10.9s4.5 10.9 10.9 10.9c3.5 0 6.4-1.5 8.3-4.1"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="5.5"
-      strokeLinecap="round"
-    />
-    <circle cx="46" cy="46" r="4.5" fill="var(--accent, #7AA2F7)" />
-  </svg>
+
+const MARK_RATIO = 295 / 256;
+const WORDMARK_RATIO = 704 / 96;
+
+export const BrandLogo: React.FC<{ height?: number; className?: string; style?: React.CSSProperties }> = ({ height = 20, className, style }) => (
+  <img
+    src="/brand/logo-mark.png"
+    alt=""
+    width={Math.round(height * MARK_RATIO)}
+    height={height}
+    className={className}
+    style={{ display: 'block', flexShrink: 0, ...style }}
+    draggable={false}
+  />
+);
+
+export const BrandWordmark: React.FC<{ height?: number; className?: string; style?: React.CSSProperties }> = ({ height = 14, className, style }) => (
+  <img
+    src="/brand/logo-wordmark.png"
+    alt="CELANO"
+    width={Math.round(height * WORDMARK_RATIO)}
+    height={height}
+    className={className}
+    style={{ display: 'block', flexShrink: 0, ...style }}
+    draggable={false}
+  />
 );

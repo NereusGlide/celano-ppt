@@ -667,7 +667,7 @@ export const WorkspaceApp: React.FC = () => {
       <header className="ws-topbar">
         <div className="ws-header-tools" style={{ minWidth: 0 }}>
           <button className="ws-button ws-ghost" onClick={goHome} title="返回首页"><ArrowLeft size={14} /> 返回首页</button>
-          <span className="ws-brand-mark"><BrandLogo size={18} /></span>
+          <span className="ws-brand-mark"><BrandLogo height={26} /></span>
           <div style={{ minWidth: 0 }}>
             <strong style={{ fontSize: 14, letterSpacing: '.08em', color: '#F4F6F7' }}>PPT 工作台</strong>
             <small style={{ display: 'block', color: '#8A9299', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>

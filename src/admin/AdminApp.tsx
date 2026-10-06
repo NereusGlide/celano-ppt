@@ -3,7 +3,7 @@ import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, Gift, 
 import { AdminAccount } from '../types.js';
 import { adminApi, getAdminToken, setAdminToken, clearAdminToken } from './api.js';
 import { Button, TextInput, Alert, Field } from './ui.js';
-import { BrandLogo } from '../components/BrandLogo.js';
+import { BrandLogo, BrandWordmark } from '../components/BrandLogo.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { UsersPage } from './pages/Users.js';
 import { UsagePage } from './pages/UsageRecords.js';
@@ -48,8 +48,8 @@ const AdminLogin: React.FC<{ onSuccess: (admin: AdminAccount) => void }> = ({ on
     <div className="ws-root" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
       <form onSubmit={submit} className="ws-panel" style={{ width: 420, maxWidth: '100%', padding: 30, margin: 0 }}>
         <div style={{ textAlign: 'center', marginBottom: 26 }}>
-          <span className="ws-brand-mark" style={{ margin: '0 auto 14px' }}><BrandLogo size={18} /></span>
-          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>CELANO PPT 管理后台</h1>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 16 }}><BrandLogo height={30} /><BrandWordmark height={16} /></div>
+          <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>PPT 管理后台</h1>
           <p className="ws-subtitle">用户 · 使用记录 · 邀请码 · 充值码 · AI 接口</p>
         </div>
         {error && <Alert type="error">{error}</Alert>}
@@ -135,8 +135,8 @@ export const AdminApp: React.FC = () => {
     <div className="ws-root">
       <header className="ws-topbar">
         <div className="ws-brand">
-          <span className="ws-brand-mark"><BrandLogo size={18} /></span>
-          <span><strong>CELANO PPT</strong><small>管理后台 · 用户与 AI 接口维护</small></span>
+          <span className="ws-brand-mark"><BrandLogo height={26} /></span>
+          <span><span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BrandWordmark height={14} /><strong>PPT</strong></span><small>管理后台 · 用户与 AI 接口维护</small></span>
         </div>
         <div className="ws-header-tools">
           <button className="ws-button ws-ghost" onClick={refresh} title="刷新当前页数据"><RefreshCw className="ws-spin" size={14} style={{ animation: 'none' }} /> 刷新</button>
