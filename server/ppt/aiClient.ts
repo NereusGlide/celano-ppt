@@ -66,7 +66,8 @@ export async function chatText(
   cfg: Pick<PlanningModelConfig, 'baseUrl' | 'apiKey' | 'modelName' | 'reasoningEffort'>,
   messages: TextMessage[],
   signal?: AbortSignal,
-  timeoutMs = 240_000,
+  // 高推理档（xhigh）+ 整套页面大纲的长输出会远超 240s；此处均为后台异步任务，等得起，改用 600s
+  timeoutMs = 600_000,
 ): Promise<string> {
   if (!cfg || typeof cfg.baseUrl !== 'string' || !cfg.baseUrl.trim()) throw new Error('未配置规划模型接口，请在管理后台设置');
   if (!cfg.apiKey || !cfg.apiKey.trim()) throw new Error('规划模型 API Key 未配置，请在管理后台设置');
