@@ -35,8 +35,8 @@ export function spreadsheetText(xml: string, sharedStrings: string[]): string {
 export async function extractReferenceFile(file: ReferenceFile, savedPath: string): Promise<Extraction> {
   const name = file.filename.toLowerCase();
   if (file.contentType.startsWith('image/') || /\.(png|jpe?g|webp|svg)$/i.test(name)) return { extractedText: '', parseStatus: 'image' };
-  const supported = file.contentType.startsWith('text/') || /\.(txt|md|markdown|csv|json|pdf|docx|pptx|xlsx)$/i.test(name);
-  if (!supported) return { extractedText: '', parseStatus: 'unsupported', parseError: '该格式暂不支持正文分析，请使用 PDF、DOCX、PPTX、XLSX 或文本文件' };
+  const supported = file.contentType.startsWith('text/') || /\.(txt|md|markdown|csv|json|pdf|docx|pptx|xlsx|doc|ppt|xls)$/i.test(name);
+  if (!supported) return { extractedText: '', parseStatus: 'unsupported', parseError: '该格式暂不支持正文分析，请使用 PDF、Word、PPT、Excel 或文本文件' };
   try {
     let text = '';
     if (file.contentType.startsWith('text/') || /\.(txt|md|markdown|csv|json)$/i.test(name)) {
@@ -49,6 +49,17 @@ export async function extractReferenceFile(file: ReferenceFile, savedPath: strin
         const script = "import sys, fitz; d=fitz.open(sys.argv[1]); print('\\n'.join(p.get_text() for p in d))";
         text = (await runFile('python3', ['-c', script, savedPath], commandOptions)).stdout;
       }
+    } else if (/\.doc$/i.test(name)) {
+      // 旧版 Word 97-2003（OLE 复合文档），用 antiword 提取，缺工具时退回 catdoc
+      try { text = (await runFile('antiword', [savedPath], commandOptions)).stdout; }
+      catch { text = (await runFile('catdoc', [savedPath], commandOptions)).stdout; }
+    } else if (/\.xls$/i.test(name)) {
+      // 旧版 Excel 97-2003：xls2csv 或 catdoc -x
+      try { text = (await runFile('xls2csv', [savedPath], commandOptions)).stdout; }
+      catch { text = (await runFile('catdoc', ['-x', savedPath], commandOptions)).stdout; }
+    } else if (/\.ppt$/i.test(name)) {
+      // 旧版 PowerPoint 97-2003
+      text = (await runFile('catppt', [savedPath], commandOptions)).stdout;
     } else {
       const list = (await runFile('unzip', ['-Z1', savedPath], commandOptions)).stdout.split(/\r?\n/);
       const entries = list.filter(entry => /^(word\/(?:document|header\d+|footer\d+|footnotes|endnotes)|ppt\/(?:slides\/slide\d+|notesSlides\/notesSlide\d+)|xl\/(?:sharedStrings|worksheets\/sheet\d+))\.xml$/i.test(entry))

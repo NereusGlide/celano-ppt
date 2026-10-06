@@ -98,7 +98,7 @@ app.use((req, res, next) => {
   return (needsLargeBody ? largeBody : smallBody)(req, res, next);
 });
 app.use(express.urlencoded({ extended: true, limit: '256kb' }));
-app.use(express.raw({ type: 'multipart/form-data', limit: '64mb' }));
+app.use(express.raw({ type: 'multipart/form-data', limit: '120mb' }));
 
 // ---- 4. 分级限流 ----
 // 全局档：宽松，只用于阻断脚本化爬取；
@@ -551,7 +551,7 @@ app.post('/api/upload-reference', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   try {
-    const file = await readMultipartFile(req, ['file', 'reference']);
+    const file = await readMultipartFile(req, ['file', 'reference'], 100 * 1024 * 1024);
     if (!file) return jsonError(res, 400, '未找到参考文件，请使用 multipart/form-data 上传');
     const saved = saveLegacyUpload(user.id, file);
     const extraction = await extractReferenceFile(file, saved.full);

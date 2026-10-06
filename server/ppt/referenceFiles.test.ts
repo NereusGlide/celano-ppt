@@ -18,5 +18,6 @@ test('upload reports unreadable references explicitly and does not silently trun
   assert.equal(invalid.parseStatus, 'failed');
   assert.ok(invalid.parseError);
   const oldDoc = await extractReferenceFile({ filename: '旧格式.doc', contentType: 'application/msword', data: Buffer.alloc(0) }, 'unused');
-  assert.equal(oldDoc.parseStatus, 'unsupported');
+  // 旧版格式已纳入支持范围；空文件无论是否安装转换工具都会解析失败，而不再是「不支持」
+  assert.equal(oldDoc.parseStatus, 'failed');
 });
