@@ -676,7 +676,6 @@ export const WorkspaceApp: React.FC = () => {
           </div>
         </div>
         <div className="ws-header-tools">
-          {activeSlide?.width && activeSlide?.height ? <span className="ws-account-chip" title="接口返回的原图实际像素">原图 {activeSlide.width} × {activeSlide.height}</span> : null}
           <span className="ws-account-chip"><Clock size={14} /> 标记 {pages.reduce((n, p) => n + p.annotations.length, 0)} 处</span>
           <span className="ws-account-chip" title="这里只显示当前正在生成的任务，不支持切换历史任务">
             <Clock size={14} /> {deck?.running ? `生成进度 ${doneCount}/${totalSlides || '…'}` : deck?.finished ? '当前作品' : '任务后台'}

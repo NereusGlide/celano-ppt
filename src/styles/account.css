@@ -8,3 +8,5 @@
 .pc-membership{display:flex;align-items:center;gap:12px;padding:18px;border:1px solid rgba(150, 180, 220, .09);border-radius:14px;background:rgba(150, 180, 220, .02);margin-bottom:20px}.pc-membership strong{font-size:14px}.pc-membership p{font-size:11px;color:var(--text-secondary);line-height:1.7;margin:5px 0 0}.pc-membership button{margin-left:auto}.pc-welcome>.pc-membership{margin:0;flex-shrink:0;max-width:360px}@media(max-width:768px){.pc-welcome{flex-wrap:wrap;gap:20px}.pc-welcome>.pc-membership{width:100%;max-width:none}.pc-membership{flex-wrap:wrap}}
 
 .pc-work-expiry{color:#e0a96f;background:rgba(224,169,111,.12);border-radius:6px;padding:3px 6px;font-size:10px;white-space:nowrap;font-weight:600}
+
+.pc-work-prompt{color:var(--text-secondary);font-size:11px;line-height:1.5;margin:0 0 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.82}

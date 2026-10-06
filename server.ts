@@ -392,6 +392,8 @@ function legacyPresentationView(item: any) {
       userId: item.userId,
       title: item.title,
       description: item.subtitle || item.prompt,
+      /** 生成该作品时用户输入的原始提示词，作品记录始终保留 */
+      originalPrompt: item.prompt,
       style: 'business-clean',
       resolution: item.resolution || '2K',
       aspectRatio: '16:9',
