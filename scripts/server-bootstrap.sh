@@ -145,6 +145,8 @@ else
   cat > "$ENV_FILE" <<EOF
 PORT=$PORT
 NODE_ENV=production
+# 部署在 Nginx 后必须为 1，否则限流中间件无法识别真实客户端 IP
+TRUST_PROXY=1
 # 初始管理员口令：仅在 data/ 首次初始化时生效，改密请登录 /admin
 ADMIN_INITIAL_PASSWORD=$ADMIN_PW
 ADMIN_TOKEN_SECRET=$(gen)
