@@ -28,6 +28,12 @@ test('sanitizeFamousCharacters 覆盖角色本名与漫威专有名词', () => {
   assert.ok(!/史蒂夫|山姆|娜塔莎|克林特|托尼|沃米尔|灵魂宝石|量子领域|无限宝石/.test(out), '本名与专有名词应被替换');
 });
 
+test('sanitizeFamousCharacters 完整片名整体替换，不残留数字半替换', () => {
+  const out = sanitizeFamousCharacters('《复仇者联盟4：终局之战》加码臻享版观后感，以及《复仇者联盟5》独家片段');
+  assert.ok(!/复仇者|终局之战|加码臻享版/.test(out), '完整片名应整体替换');
+  assert.ok(!/超级英雄4/.test(out), '不应残留「超级英雄4」这种半替换');
+});
+
 test('sanitizeFamousCharacters 不误伤普通人名与普通文本', () => {
   const out = sanitizeFamousCharacters('团队协作、按时交作业、主动帮助同学');
   assert.equal(out, '团队协作、按时交作业、主动帮助同学');
