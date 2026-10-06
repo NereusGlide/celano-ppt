@@ -5,6 +5,7 @@
  */
 
 import type { PptPageType, PptPalette, PptSlidePlan } from '../../src/types.js';
+import { PORTRAIT_AVOIDANCE_RULE } from '../imagePrompt.js';
 
 export type PptDeckPlan = {
   title: string;
@@ -232,6 +233,7 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
       '输出前检查版式、字体层级、配色、图像处理和装饰语言是否与原始模版高度一致；若主题表达与模版不同，仅替换内容，不另设计一套视觉风格。',
     ].join('\n') : '排版、字体、配图、色彩、构图、材质、光影、镜头、信息层级和整体视觉风格全部由 Image 原生自主设计，选择最适合当前内容的表达方式，不套用预设模板。',
     input.editInstruction?.trim() ? `本页修改要求：${input.editInstruction.trim()}` : '',
+    PORTRAIT_AVOIDANCE_RULE,
   ];
   return lines.filter(Boolean).join('\n');
 }

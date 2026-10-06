@@ -13,3 +13,37 @@ export function withChineseTextAccuracy(prompt: string, resolution: ImageResolut
   if (resolution !== '2K' || prompt.includes(CHINESE_TEXT_ACCURACY_RULE)) return prompt;
   return prompt + '\n\n' + CHINESE_TEXT_ACCURACY_RULE;
 }
+
+/**
+ * 生图内容规范：不生成任何真实人物、演员或知名影视/动漫角色的可辨识形象。
+ * gpt-image 等生图接口会因版权角色形象（漫威/迪士尼等 IP）触发内容安全过滤并拒绝整页，
+ * 因此要求用剪影、背影或象征性元素表达人物，页面文字照常按原文呈现。
+ */
+export const PORTRAIT_AVOIDANCE_RULE = [
+  '画面内容规范：不生成任何真实人物、演员肖像或知名影视/动漫角色的可辨识形象（包括漫威、迪士尼等受版权保护的 IP 角色），',
+  '涉及人物时用剪影、背影、局部动作或象征性元素（盾牌、锤子、铠甲、传送门光效、星空、城市天际线等）表达，不要出现角色面部特写或标志性服装的正面形象。',
+  '页面标题与正文文字仍按原文准确呈现，不受上述限制。',
+].join('\n');
+
+/** 知名影视/动漫角色名 → 泛化描述，作为生图接口安全过滤兜底。 */
+const FAMOUS_CHARACTER_MAP: Array<[RegExp, string]> = [
+  [/复仇者联盟/g, '一群超级英雄'],
+  [/黑寡妇/g, '一位坚韧的女性特工'],
+  [/美国队长/g, '一位手持盾牌的战士'],
+  [/钢铁侠/g, '一位身着装甲的英雄'],
+  [/雷神/g, '一位挥动锤子的勇士'],
+  [/绿巨人|浩克/g, '一位体型魁梧的英雄'],
+  [/蜘蛛侠/g, '一位身手敏捷的年轻英雄'],
+  [/鹰眼/g, '一位擅长弓箭的战士'],
+  [/灭霸/g, '一位强大的宇宙反派'],
+  [/奇异博士/g, '一位使用法术的法师'],
+  [/黑豹/g, '一位身着战甲的战士'],
+  [/蚁人/g, '一位可以改变体型的英雄'],
+  [/惊奇队长/g, '一位拥有强大能量的女英雄'],
+];
+
+export function sanitizeFamousCharacters(text: string): string {
+  let out = String(text || '');
+  for (const [re, replacement] of FAMOUS_CHARACTER_MAP) out = out.replace(re, replacement);
+  return out;
+}

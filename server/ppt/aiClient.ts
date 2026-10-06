@@ -7,7 +7,7 @@ import { imageSizeFor, IMAGE_QUALITY, pixelResolution, MAX_IMAGE_BYTES } from '.
 import type { PlanningModelConfig, ThirdPartyApiConfig } from '../../src/types.js';
 import { normalizePlanningModelName } from '../planningModel.js';
 import { assertPptImageSize, dataUrlBytes } from './imageDimensions.js';
-import { withChineseTextAccuracy } from '../imagePrompt.js';
+import { withChineseTextAccuracy, sanitizeFamousCharacters, PORTRAIT_AVOIDANCE_RULE } from '../imagePrompt.js';
 
 export type TextMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 export type VisionContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
@@ -122,18 +122,33 @@ export async function generateImage(
 ): Promise<string> {
   if (!config || !config.apiKey) throw new Error('未配置生图模型接口，请在管理后台设置');
   const endpoint = joinV1(config.baseUrl, '/images/generations');
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + String(config.apiKey).trim(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: config.modelName || 'gpt-image-2.5-sunburst', prompt: withChineseTextAccuracy(prompt, pixelResolution(size) || '2K'), size, quality: IMAGE_QUALITY[pixelResolution(size) || '2K'], ...(pixelResolution(size) === '4K' ? { output_format: 'png', n: 1 } : {}) }),
-    signal: timeoutSignal(signal, timeoutMs),
-  });
-  if (!resp.ok) throw new Error('生图接口 HTTP ' + resp.status + '：' + await readApiError(resp));
-  const data: any = await resp.json();
-  const item = data?.data?.[0];
-  if (!item) throw new Error('生图接口未返回图像');
-  return materializeImage(item, signal, '生图结果', size);
+  const attempt = async (attemptPrompt: string) => {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + String(config.apiKey).trim(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: config.modelName || 'gpt-image-2.5-sunburst', prompt: withChineseTextAccuracy(attemptPrompt, pixelResolution(size) || '2K'), size, quality: IMAGE_QUALITY[pixelResolution(size) || '2K'], ...(pixelResolution(size) === '4K' ? { output_format: 'png', n: 1 } : {}) }),
+      signal: timeoutSignal(signal, timeoutMs),
+    });
+    if (!resp.ok) {
+      const message = await readApiError(resp);
+      if (isSafetyRejection(resp.status, message)) throw new SafetyRejectionError(message);
+      throw new Error('生图接口 HTTP ' + resp.status + '：' + message);
+    }
+    const data: any = await resp.json();
+    const item = data?.data?.[0];
+    if (!item) throw new Error('生图接口未返回图像');
+    return materializeImage(item, signal, '生图结果', size);
+  };
+  try {
+    return await attempt(prompt);
+  } catch (err) {
+    // 版权角色/真人形象触发安全过滤时，角色名泛化 + 强化规避指令后重试一次，避免整页永久失败。
+    if (err instanceof SafetyRejectionError && !signal?.aborted) return attempt(safetyRewritePrompt(prompt));
+    throw err;
+  }
 }
+
+class SafetyRejectionError extends Error {}
 
 function dataUrlToFormImage(dataUrl: string): { blob: Blob; ext: string } {
   const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
@@ -153,32 +168,55 @@ export async function editImage(
 ): Promise<string> {
   if (!config || !config.apiKey) throw new Error('未配置生图模型接口，请在管理后台设置');
   const endpoint = joinV1(config.baseUrl, '/images/edits');
-  const form = new FormData();
-  form.append('model', config.modelName || 'gpt-image-2.5-sunburst');
-  form.append('prompt', withChineseTextAccuracy(prompt, pixelResolution(size) || '2K'));
-  form.append('size', size);
-  form.append('quality', IMAGE_QUALITY[pixelResolution(size) || '2K']);
-  if (pixelResolution(size) === '4K') {
-    form.append('output_format', 'png');
-    form.append('n', '1');
+  const attempt = async (attemptPrompt: string) => {
+    const form = new FormData();
+    form.append('model', config.modelName || 'gpt-image-2.5-sunburst');
+    form.append('prompt', withChineseTextAccuracy(attemptPrompt, pixelResolution(size) || '2K'));
+    form.append('size', size);
+    form.append('quality', IMAGE_QUALITY[pixelResolution(size) || '2K']);
+    if (pixelResolution(size) === '4K') {
+      form.append('output_format', 'png');
+      form.append('n', '1');
+    }
+    for (const image of images) {
+      const converted = dataUrlToFormImage(image);
+      form.append(images.length > 1 ? 'image[]' : 'image', converted.blob, 'ref-' + Math.random().toString(36).slice(2, 8) + '.' + converted.ext);
+    }
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + String(config.apiKey).trim() },
+      body: form,
+      signal: timeoutSignal(signal, timeoutMs),
+    });
+    if (!resp.ok) {
+      const message = await readApiError(resp);
+      if (isSafetyRejection(resp.status, message)) throw new SafetyRejectionError(message);
+      throw new Error('图像编辑接口 HTTP ' + resp.status + '：' + message);
+    }
+    const data: any = await resp.json();
+    const item = data?.data?.[0];
+    if (!item) throw new Error('图像编辑接口未返回图像');
+    return materializeImage(item, signal, '图像编辑结果', size);
+  };
+  try {
+    return await attempt(prompt);
+  } catch (err) {
+    if (err instanceof SafetyRejectionError && !signal?.aborted) return attempt(safetyRewritePrompt(prompt));
+    throw err;
   }
-  for (const image of images) {
-    const converted = dataUrlToFormImage(image);
-    form.append(images.length > 1 ? 'image[]' : 'image', converted.blob, 'ref-' + Math.random().toString(36).slice(2, 8) + '.' + converted.ext);
-  }
-  const resp = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + String(config.apiKey).trim() },
-    body: form,
-    signal: timeoutSignal(signal, timeoutMs),
-  });
-  if (!resp.ok) throw new Error('图像编辑接口 HTTP ' + resp.status + '：' + await readApiError(resp));
-  const data: any = await resp.json();
-  const item = data?.data?.[0];
-  if (!item) throw new Error('图像编辑接口未返回图像');
-  return materializeImage(item, signal, '图像编辑结果', size);
 }
 
 export function isImageDataUrl(value: string): boolean {
   return /^data:image\/(png|jpeg|webp);base64,/.test(value);
+}
+
+/** 上游内容安全过滤（版权角色/真人形象等）导致整页被拒的特征判定。 */
+function isSafetyRejection(status: number, message: string): boolean {
+  if (status !== 400 && status !== 451) return false;
+  return /safety|not allowed|content safety|safety filter/i.test(message);
+}
+
+/** 安全过滤兜底改写：角色名泛化 + 强化肖像规避指令，去掉版权敏感描述后重试。 */
+function safetyRewritePrompt(prompt: string): string {
+  return sanitizeFamousCharacters(prompt) + '\n\n' + PORTRAIT_AVOIDANCE_RULE;
 }
