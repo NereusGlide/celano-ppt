@@ -13,7 +13,7 @@ import { referenceContext, type ReferenceParseStatus } from '../shared/reference
 import { subscribeLibraryChanges } from '../shared/libraryEvents.js';
 
 type Resolution = '2K' | '4K';
-type UploadedFile = { id: string; name: string; size: number; type: string; url: string; extractedText?: string; parseStatus?: ReferenceParseStatus; parseError?: string };
+type UploadedFile = { id: string; name: string; size: number; type: string; url: string; extractedText?: string; parseStatus?: ReferenceParseStatus; parseError?: string; progress?: number; parsePhase?: string };
 
 const costs = IMAGE_COST;
 const go = (route: string) => { window.location.hash = route; };
@@ -78,8 +78,8 @@ async function uploadFile(endpoint: string, file: File, field = 'file') {
 }
 
 function FileChip({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
-  const state = file.parseStatus === 'pending' ? ' · 分析中…' : file.parseStatus === 'ready' ? ' · 正文已读取' : file.parseStatus === 'failed' || file.parseStatus === 'unsupported' ? ' · 正文未读取' : '';
-  return <div className="celano-file-chip">{file.type.startsWith('image/') ? <img src={file.url} alt="" /> : file.parseStatus === 'pending' ? <LoaderCircle size={16} className="celano-spin" /> : <FileImage size={16} />}<span title={file.parseError || file.name}>{file.name}{state}</span><button onClick={onRemove} aria-label={`删除 ${file.name}`}><X size={13} /></button></div>;
+  const state = file.parseStatus === 'pending' ? ` · 分析中${file.progress ? ` ${file.progress}%` : '…'}` : file.parseStatus === 'ready' ? ' · 正文已读取' : file.parseStatus === 'failed' || file.parseStatus === 'unsupported' ? ' · 正文未读取' : '';
+  return <div className="celano-file-chip">{file.type.startsWith('image/') ? <img src={file.url} alt="" /> : file.parseStatus === 'pending' ? <LoaderCircle size={16} className="celano-spin" /> : <FileImage size={16} />}<span title={file.parseError || (file.parseStatus === 'pending' && file.parsePhase ? `${file.parsePhase}（${file.progress ?? 0}%）` : file.name)}>{file.name}{state}</span><button onClick={onRemove} aria-label={`删除 ${file.name}`}><X size={13} /></button></div>;
 }
 
 export const PptGenerateApp: React.FC = () => {
@@ -112,12 +112,25 @@ export const PptGenerateApp: React.FC = () => {
     const setter = style ? setStyleReferences : setReferences;
     const apply = (update: Partial<UploadedFile>) => setter(prev => prev.map(item => item.id === file.id ? { ...item, ...update } : item));
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 600_000);
+    const timer = setTimeout(() => controller.abort(), 900_000);
     try {
-      const response = await fetch('/api/references/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: file.id }), signal: controller.signal });
+      const response = await fetch('/api/references/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: file.id, poll: true }), signal: controller.signal });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.success) throw new Error(result?.error || '正文分析失败');
-      apply({ extractedText: result.file.extractedText, parseStatus: result.file.parseStatus, parseError: result.file.parseError });
+      // 轮询真实进度：后端按批次/页数回报百分比，完成时返回最终 file
+      for (;;) {
+        controller.signal.throwIfAborted();
+        const progressResponse = await fetch('/api/references/progress?id=' + encodeURIComponent(file.id), { credentials: 'same-origin', signal: controller.signal });
+        const progress = await progressResponse.json().catch(() => null);
+        if (!progressResponse.ok || !progress?.success) throw new Error(progress?.error || '正文分析进度查询失败');
+        if (progress.file) {
+          apply({ extractedText: progress.file.extractedText, parseStatus: progress.file.parseStatus, parseError: progress.file.parseError, progress: undefined, parsePhase: undefined });
+          setNotice(progress.file.parseStatus === 'ready' ? `「${file.name}」正文已读取，可开始生成` : `「${file.name}」${progress.file.parseError || '正文分析失败'}`);
+          return;
+        }
+        apply({ progress: Math.max(1, Math.min(99, Math.round(progress.progress?.percent ?? 1))), parsePhase: progress.progress?.phase });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
     } catch (error) {
       apply({ parseStatus: 'failed', parseError: error instanceof Error && error.name === 'AbortError' ? '正文分析超时，请重试' : error instanceof Error ? error.message : '正文分析失败' });
     } finally {

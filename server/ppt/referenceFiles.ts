@@ -11,20 +11,27 @@ const runFile = promisify(execFile);
 const commandOptions = { encoding: 'utf8' as const, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 };
 type ReferenceFile = { filename: string; contentType: string; data: Buffer };
 type Extraction = { extractedText: string; parseStatus: ReferenceParseStatus; parseError?: string };
+/** 进度回调：percent 0-100，phase 为给用户看的阶段描述。 */
+export type ReferenceProgressFn = (percent: number, phase: string) => void;
 
 /** 扫描版 PDF 无文字层时，转图片后用 tesseract OCR（中英混排）。 */
-async function ocrPdf(savedPath: string): Promise<string> {
+async function ocrPdf(savedPath: string, onProgress?: ReferenceProgressFn): Promise<string> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-ocr-'));
   try {
+    onProgress?.(4, 'PDF 转换为图片');
     await runFile('pdftoppm', ['-png', '-r', '150', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
     const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('OCR 图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
+    onProgress?.(12, `OCR 识别（共 ${files.length} 页）`);
     const parts: string[] = [];
+    let done = 0;
     for (const file of files) {
       const out = (await runFile('tesseract', [path.join(tmpDir, file), '-', '-l', 'chi_sim+eng', '--psm', '6'], { ...commandOptions, timeout: 90_000 })).stdout;
       const clean = out.replace(/\f/g, '').replace(/\s+$/gm, '').trim();
       if (clean) parts.push(clean);
+      done++;
+      onProgress?.(12 + Math.round(done / files.length * 86), `OCR 识别 ${done}/${files.length} 页`);
       if (parts.join('\n').length > MAX_REFERENCE_TEXT) break;
     }
     return parts.join('\n\n');
@@ -34,11 +41,12 @@ async function ocrPdf(savedPath: string): Promise<string> {
 }
 
 /** 扫描版 PDF 转图后，分批交给多模态模型直接「看懂」页面内容。 */
-async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Promise<string> {
+async function visionReadPdf(config: PlanningModelConfig, savedPath: string, onProgress?: ReferenceProgressFn): Promise<string> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-vision-'));
   try {
     // 扫描件用 JPEG + 120 DPI + 75 质量，体积远小于 PNG（约 1/5~1/8），
     // 减小批量请求体、加快上游传输，且 75 质量对文字转录可读性几乎无影响。
+    onProgress?.(4, 'PDF 转换为图片');
     await runFile('pdftoppm', ['-jpeg', '-r', '120', '-jpegopt', 'quality=75', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
     const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('视觉读取图片转换失败');
@@ -47,8 +55,10 @@ async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Pr
     const CONCURRENCY = 5;
     const batches: string[][] = [];
     for (let i = 0; i < files.length; i += BATCH) batches.push(files.slice(i, i + BATCH));
+    onProgress?.(12, `视觉读取（共 ${files.length} 页）`);
     const results: string[] = new Array(batches.length).fill('');
     let cursor = 0;
+    let doneBatches = 0;
     const worker = async () => {
       for (;;) {
         const index = cursor++;
@@ -61,9 +71,12 @@ async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Pr
         ];
         const text = await chatVision(config, [{ role: 'user', content }]);
         results[index] = text.trim();
+        doneBatches++;
+        onProgress?.(12 + Math.round(doneBatches / batches.length * 86), `视觉读取 ${Math.min(doneBatches * BATCH, files.length)}/${files.length} 页`);
       }
     };
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    onProgress?.(98, '整理转录结果');
     return results.filter(Boolean).join('\n\n');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -95,7 +108,7 @@ export function spreadsheetText(xml: string, sharedStrings: string[]): string {
   ).filter(Boolean).join('\n');
 }
 
-export async function extractReferenceFile(file: ReferenceFile, savedPath: string, visionConfig?: PlanningModelConfig): Promise<Extraction> {
+export async function extractReferenceFile(file: ReferenceFile, savedPath: string, visionConfig?: PlanningModelConfig, onProgress?: ReferenceProgressFn): Promise<Extraction> {
   const name = file.filename.toLowerCase();
   if (file.contentType.startsWith('image/') || /\.(png|jpe?g|webp|svg)$/i.test(name)) return { extractedText: '', parseStatus: 'image' };
   const supported = file.contentType.startsWith('text/') || /\.(txt|md|markdown|csv|json|pdf|docx|pptx|xlsx|doc|ppt|xls)$/i.test(name);
@@ -108,6 +121,7 @@ export async function extractReferenceFile(file: ReferenceFile, savedPath: strin
       catch { text = new TextDecoder('gb18030', { fatal: true }).decode(file.data); }
     } else if (/\.pdf$/i.test(name)) {
       let pdfText = '';
+      onProgress?.(3, '读取 PDF 文字层');
       try { pdfText = (await runFile('pdftotext', ['-layout', savedPath, '-'], commandOptions)).stdout; }
       catch {
         try {
@@ -119,10 +133,10 @@ export async function extractReferenceFile(file: ReferenceFile, savedPath: strin
       if (pdfText.trim()) text = pdfText;
       else {
         if (visionConfig?.baseUrl && visionConfig?.apiKey && visionConfig?.visionModelName) {
-          try { text = await visionReadPdf(visionConfig, savedPath); } catch { /* 视觉读取失败，回退 OCR */ }
+          try { text = await visionReadPdf(visionConfig, savedPath, onProgress); } catch { /* 视觉读取失败，回退 OCR */ }
         }
         if (!text.trim()) {
-          try { text = await ocrPdf(savedPath); }
+          try { text = await ocrPdf(savedPath, onProgress); }
           catch { throw new Error('扫描版 PDF 未识别到文字，请上传可复制文字的 PDF'); }
         }
       }

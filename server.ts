@@ -261,6 +261,19 @@ function rememberReferenceMeta(id: string, entry: { userId: string; filename: st
   referenceMeta.set(id, { ...entry, at: Date.now() });
 }
 
+// 参考文件分析任务进度表：分析在后台执行，前端轮询 GET /api/references/progress 获取真实百分比。
+// 完成结果保留 10 分钟供轮询取走；容量超限时淘汰最旧的一半，避免长期残留。
+type ReferenceJob = { userId: string; percent: number; phase: string; running: boolean; file?: Record<string, unknown>; at: number };
+const referenceJobs = new Map<string, ReferenceJob>();
+const REFERENCE_JOB_LIMIT = 2000;
+function rememberReferenceJob(id: string, job: ReferenceJob) {
+  if (referenceJobs.size >= REFERENCE_JOB_LIMIT) {
+    const keys = [...referenceJobs.keys()].sort((a, b) => referenceJobs.get(a)!.at - referenceJobs.get(b)!.at);
+    for (const k of keys.slice(0, Math.ceil(REFERENCE_JOB_LIMIT / 2))) referenceJobs.delete(k);
+  }
+  referenceJobs.set(id, job);
+}
+
 /** 活跃度落盘节流表容量上限：无上限时每个历史用户都会永久占一条记录。 */
 const ACTIVE_PERSIST_LIMIT = 20_000;
 const activePersist = new Map<string, number>();
@@ -609,17 +622,57 @@ app.post('/api/references/analyze', async (req, res) => {
   if (!meta || meta.userId !== user.id) return jsonError(res, 404, '参考文件不存在或已过期，请重新上传');
   const extension = path.extname(meta.filename).toLowerCase().slice(0, 10);
   const base = { id, name: meta.filename.slice(0, 160), type: meta.contentType, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + id + extension };
-  try {
+  const runExtraction = async (onProgress?: (percent: number, phase: string) => void) => {
     const data = fs.existsSync(meta.full) ? fs.readFileSync(meta.full) : Buffer.alloc(0);
-    if (!data.length) return jsonError(res, 404, '参考文件已不存在，请重新上传');
-    const extraction = await extractReferenceFile({ filename: meta.filename, contentType: meta.contentType, data }, meta.full, db.getPlanningConfig());
+    if (!data.length) throw new Error('参考文件已不存在，请重新上传');
+    const extraction = await extractReferenceFile({ filename: meta.filename, contentType: meta.contentType, data }, meta.full, db.getPlanningConfig(), onProgress);
     // 正文已提取进 store.json，磁盘原件立即删除以释放空间（图片型不走此流程）。
     if (extraction.parseStatus === 'ready') { try { fs.unlinkSync(meta.full); } catch { /* 删除失败不阻塞 */ } }
     referenceMeta.delete(id);
+    return extraction;
+  };
+  // 渐进模式：后台执行，前端轮询 GET /api/references/progress 拿真实百分比
+  if ((req.body || {}).poll === true) {
+    const existing = referenceJobs.get(id);
+    if (existing?.running) return res.json({ success: true, started: true });
+    rememberReferenceJob(id, { userId: user.id, percent: 0, phase: '排队中', running: true, at: Date.now() });
+    void (async () => {
+      const onProgress = (percent: number, phase: string) => {
+        const job = referenceJobs.get(id);
+        if (job?.running) { job.percent = percent; job.phase = phase; }
+      };
+      try {
+        const extraction = await runExtraction(onProgress);
+        const job = referenceJobs.get(id);
+        if (job) { job.running = false; job.percent = 100; job.phase = '完成'; job.file = { ...base, ...extraction }; job.at = Date.now(); }
+      } catch (err: any) {
+        referenceMeta.delete(id);
+        const job = referenceJobs.get(id);
+        if (job) { job.running = false; job.file = { ...base, extractedText: '', parseStatus: 'failed', parseError: String(err?.message || '正文解析失败').slice(0, 200) }; job.at = Date.now(); }
+      }
+    })();
+    return res.json({ success: true, started: true });
+  }
+  // 兼容旧前端：同步等待并直接返回结果
+  try {
+    const extraction = await runExtraction();
     res.json({ success: true, file: { ...base, ...extraction } });
   } catch (err: any) {
     res.json({ success: true, file: { ...base, extractedText: '', parseStatus: 'failed', parseError: String(err?.message || '正文解析失败').slice(0, 200) } });
   }
+});
+app.get('/api/references/progress', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const id = String(req.query.id || '');
+  const job = referenceJobs.get(id);
+  // 完成结果保留 10 分钟，过期即清理
+  if (job && !job.running && Date.now() - job.at > 10 * 60_000) {
+    referenceJobs.delete(id);
+    return jsonError(res, 404, '分析结果已过期，请重新上传');
+  }
+  if (!job || job.userId !== user.id) return jsonError(res, 404, '分析任务不存在或已过期，请重新上传');
+  res.json({ success: true, progress: { percent: job.percent, phase: job.phase, running: job.running }, file: job.file });
 });
 app.post('/api/upload-logo', async (req, res) => {
   const user = requireUser(req, res);
