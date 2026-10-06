@@ -240,6 +240,8 @@ export interface PlanningModelConfig {
   reasoningEffort: string;
   /** 提示词优化类轻量调用的思考强度（如 medium），单独配置以便控制速度 */
   optimizeReasoningEffort?: string;
+  /** 扫描版参考文件视觉读取用的多模态模型（如 gpt-4o）；留空则退回 OCR */
+  visionModelName?: string;
 }
 
 /** AI 接口配置（后台统一维护，供前台取用） */

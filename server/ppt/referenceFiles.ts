@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { MAX_REFERENCE_TEXT, type ReferenceParseStatus } from '../../src/shared/referenceFiles.js';
+import { chatVision } from './aiClient.js';
+import type { PlanningModelConfig } from '../../src/types.js';
 
 const runFile = promisify(execFile);
 const commandOptions = { encoding: 'utf8' as const, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 };
@@ -23,6 +25,33 @@ async function ocrPdf(savedPath: string): Promise<string> {
       const out = (await runFile('tesseract', [path.join(tmpDir, file), '-', '-l', 'chi_sim+eng', '--psm', '6'], { ...commandOptions, timeout: 90_000 })).stdout;
       const clean = out.replace(/\f/g, '').replace(/\s+$/gm, '').trim();
       if (clean) parts.push(clean);
+      if (parts.join('\n').length > MAX_REFERENCE_TEXT) break;
+    }
+    return parts.join('\n\n');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+/** 扫描版 PDF 转图后，分批交给多模态模型直接「看懂」页面内容。 */
+async function visionReadPdf(config: PlanningModelConfig, savedPath: string): Promise<string> {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-vision-'));
+  try {
+    await runFile('pdftoppm', ['-png', '-r', '150', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
+    const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    if (!files.length) throw new Error('视觉读取图片转换失败');
+    if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
+    const parts: string[] = [];
+    const BATCH = 6;
+    for (let i = 0; i < files.length; i += BATCH) {
+      const batch = files.slice(i, i + BATCH);
+      const images = batch.map(f => 'data:image/png;base64,' + fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
+      const content = [
+        { type: 'text' as const, text: `请按顺序完整转录以下 ${batch.length} 张扫描页面的全部文字内容。保留原有结构（标题、正文、要点、表格），逐页输出，不要添加解释、评论或 Markdown 标记；某页无文字则跳过。` },
+        ...images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
+      ];
+      const text = await chatVision(config, [{ role: 'user', content }]);
+      if (text.trim()) parts.push(text.trim());
       if (parts.join('\n').length > MAX_REFERENCE_TEXT) break;
     }
     return parts.join('\n\n');
@@ -56,7 +85,7 @@ export function spreadsheetText(xml: string, sharedStrings: string[]): string {
   ).filter(Boolean).join('\n');
 }
 
-export async function extractReferenceFile(file: ReferenceFile, savedPath: string): Promise<Extraction> {
+export async function extractReferenceFile(file: ReferenceFile, savedPath: string, visionConfig?: PlanningModelConfig): Promise<Extraction> {
   const name = file.filename.toLowerCase();
   if (file.contentType.startsWith('image/') || /\.(png|jpe?g|webp|svg)$/i.test(name)) return { extractedText: '', parseStatus: 'image' };
   const supported = file.contentType.startsWith('text/') || /\.(txt|md|markdown|csv|json|pdf|docx|pptx|xlsx|doc|ppt|xls)$/i.test(name);
@@ -76,11 +105,16 @@ export async function extractReferenceFile(file: ReferenceFile, savedPath: strin
           pdfText = (await runFile('python3', ['-c', script, savedPath], commandOptions)).stdout;
         } catch { /* 保留为空，走 OCR 兜底 */ }
       }
-      // 扫描版 PDF 无文字层：转图片后 OCR
+      // 扫描版 PDF 无文字层：优先多模态视觉读取，失败再回退 OCR
       if (pdfText.trim()) text = pdfText;
       else {
-        try { text = await ocrPdf(savedPath); }
-        catch { throw new Error('扫描版 PDF 未识别到文字，请上传可复制文字的 PDF'); }
+        if (visionConfig?.baseUrl && visionConfig?.apiKey && visionConfig?.visionModelName) {
+          try { text = await visionReadPdf(visionConfig, savedPath); } catch { /* 视觉读取失败，回退 OCR */ }
+        }
+        if (!text.trim()) {
+          try { text = await ocrPdf(savedPath); }
+          catch { throw new Error('扫描版 PDF 未识别到文字，请上传可复制文字的 PDF'); }
+        }
       }
     } else if (/\.doc$/i.test(name)) {
       // 旧版 Word 97-2003（OLE 复合文档），用 antiword 提取，缺工具时退回 catdoc

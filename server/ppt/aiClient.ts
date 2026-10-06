@@ -10,6 +10,8 @@ import { assertPptImageSize, dataUrlBytes } from './imageDimensions.js';
 import { withChineseTextAccuracy } from '../imagePrompt.js';
 
 export type TextMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+export type VisionContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+export type VisionMessage = { role: 'system' | 'user' | 'assistant'; content: string | VisionContentPart[] };
 
 function joinV1(baseUrl: string, path: string): string {
   const base = String(baseUrl || '').replace(/\/+$/, '');
@@ -83,6 +85,29 @@ export async function chatText(
   const data: any = await resp.json();
   const text = String(data?.choices?.[0]?.message?.content || '').trim();
   if (!text) throw new Error('规划模型未返回内容');
+  return text;
+}
+
+/** 视觉读取：扫描版文件转图后，用多模态模型直接理解页面内容。 */
+export async function chatVision(
+  cfg: Pick<PlanningModelConfig, 'baseUrl' | 'apiKey' | 'modelName' | 'visionModelName'>,
+  messages: VisionMessage[],
+  signal?: AbortSignal,
+  timeoutMs = 300_000,
+): Promise<string> {
+  if (!cfg || typeof cfg.baseUrl !== 'string' || !cfg.baseUrl.trim()) throw new Error('未配置规划模型接口，请在管理后台设置');
+  if (!cfg.apiKey || !cfg.apiKey.trim()) throw new Error('规划模型 API Key 未配置，请在管理后台设置');
+  const model = String(cfg.visionModelName || cfg.modelName || 'gpt-4o').trim();
+  const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + String(cfg.apiKey).trim(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages }),
+    signal: timeoutSignal(signal, timeoutMs),
+  });
+  if (!resp.ok) throw new Error('视觉模型接口 HTTP ' + resp.status + '：' + await readApiError(resp));
+  const data: any = await resp.json();
+  const text = String(data?.choices?.[0]?.message?.content || '').trim();
+  if (!text) throw new Error('视觉模型未返回内容');
   return text;
 }
 

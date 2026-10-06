@@ -559,7 +559,7 @@ app.post('/api/upload-reference', async (req, res) => {
     const file = await readMultipartFile(req, ['file', 'reference'], 100 * 1024 * 1024);
     if (!file) return jsonError(res, 400, '未找到参考文件，请使用 multipart/form-data 上传');
     const saved = saveLegacyUpload(user.id, file);
-    const extraction = await extractReferenceFile(file, saved.full);
+    const extraction = await extractReferenceFile(file, saved.full, db.getPlanningConfig());
     res.json({ success: true, file: { id: saved.id, name: file.filename.slice(0, 160), size: file.data.length, type: file.contentType, ...extraction, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension } });
   } catch (err: any) {
     res.status(413).json({ success: false, error: String(err?.message || '参考文件上传失败').slice(0, 160) });

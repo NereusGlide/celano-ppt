@@ -464,13 +464,15 @@ adminRouter.get('/planning-config', requireAdmin, (_req, res) => {
 });
 
 adminRouter.put('/planning-config', requireAdmin, (req, res) => {
-  const { baseUrl, apiKey, modelName, reasoningEffort, optimizeReasoningEffort } = req.body || {};
+  const { baseUrl, apiKey, modelName, reasoningEffort, optimizeReasoningEffort, visionModelName } = req.body || {};
   const updates: any = {};
   if (typeof baseUrl === 'string' && baseUrl.trim()) updates.baseUrl = baseUrl.trim();
   if (typeof apiKey === 'string' && apiKey.trim()) updates.apiKey = apiKey.trim();
   if (typeof modelName === 'string' && modelName.trim()) updates.modelName = modelName.trim();
   if (typeof reasoningEffort === 'string' && reasoningEffort.trim()) updates.reasoningEffort = reasoningEffort.trim();
   if (typeof optimizeReasoningEffort === 'string' && optimizeReasoningEffort.trim()) updates.optimizeReasoningEffort = optimizeReasoningEffort.trim();
+  // 视觉模型允许清空（清空即回退 OCR）
+  if (typeof visionModelName === 'string') updates.visionModelName = visionModelName.trim();
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ success: false, error: '没有可更新的配置项' });
   }
