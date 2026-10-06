@@ -7,3 +7,6 @@
 .celano-page-count{width:54px;min-width:0;background:transparent;border:0;border-radius:4px;color:var(--text-primary);font:inherit;padding:3px 0;outline:none}.celano-select-pill input:focus,.celano-select-pill select:focus{outline:none;box-shadow:none}.celano-select-pill:focus-within{border-color:rgba(150, 180, 220, .38);background:rgba(150, 180, 220, .03)}
 
 .celano-recent-work{position:relative;min-width:0}.celano-recent-work>.celano-work-card{width:100%}.celano-work-remove{position:absolute;top:10px;right:10px;display:grid;place-items:center;width:32px;height:32px;border-radius:9px;border:1px solid rgba(150, 180, 220, .13);background:#111b;color:#adb4bb;cursor:pointer;transition:background .16s,color .16s,transform .16s}.celano-work-remove:hover{background:#30201e;color:var(--danger-text)}.celano-work-remove:active{transform:scale(.93)}
+
+.celano-hero-orbit{display:inline-block;vertical-align:middle;margin-left:20px;width:116px;height:116px;pointer-events:none;filter:drop-shadow(0 0 14px rgba(122,162,247,.25))}
+@media(max-width:640px){.celano-hero-orbit{width:72px;height:72px;margin-left:10px}}

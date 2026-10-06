@@ -4,6 +4,7 @@ import { ArrowRight, Check, FileImage, Image as ImageIcon, Layers3, LoaderCircle
 import { deleteAccountWork, fetchAccountSummary } from '../services/account.js';
 import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
 import { BrandLogo } from '../components/BrandLogo.js';
+import { HeroOrbitParticles } from '../components/HeroOrbitParticles.js';
 import type { Presentation, User } from '../types.js';
 import { CreationHeading } from '../components/CreationHeading.js';
 import { PrimaryNav } from '../components/PrimaryNav.js';
@@ -49,7 +50,7 @@ export const HomeApp: React.FC = () => {
   }, []);
   return <div className="celano-home-app"><Nav />
     <main>
-      <section className="celano-hero"><BrandPill /><p className="celano-eyebrow">CREATE WITH CLARITY</p><h1>把想法，变成<br /><em>有表现力的作品</em></h1><p className="celano-hero-copy">从一个主题开始，生成演示文稿、画面与无限画布。<br />内容由你定义，视觉交给原生模型完成。</p><div className="celano-hero-actions"><button className="celano-main-cta" onClick={() => go('/ppt')}><Plus size={18} /> 开始制作 PPT</button><button className="celano-secondary-cta" onClick={() => go('/templates')}>浏览模版库 <ArrowRight size={15} /></button></div></section>
+      <section className="celano-hero"><BrandPill /><p className="celano-eyebrow">CREATE WITH CLARITY</p><h1>把想法，变成<br /><em>有表现力的作品</em><HeroOrbitParticles /></h1><p className="celano-hero-copy">从一个主题开始，生成演示文稿、画面与无限画布。<br />内容由你定义，视觉交给原生模型完成。</p><div className="celano-hero-actions"><button className="celano-main-cta" onClick={() => go('/ppt')}><Plus size={18} /> 开始制作 PPT</button><button className="celano-secondary-cta" onClick={() => go('/templates')}>浏览模版库 <ArrowRight size={15} /></button></div></section>
       <section className="celano-capability-grid" id="celano-discovery"><ProductCard icon={<Layers3 size={22} />} title="PPT 生成" text="围绕主题，生成 16:9 原生演示文稿。" action="开始创作" onClick={() => go('/ppt')} /><ProductCard icon={<ImageIcon size={22} />} title="文生图" text="把描述直接变成画面，保留创意自由度。" action="去生成" onClick={() => go('/image')} /><ProductCard icon={<WandSparkles size={22} />} title="智能画布" text="在无限画布上组合、连接和继续创作。" action="打开画布" onClick={() => go('/canvas')} /></section>
       <section className="celano-recent-section"><div className="celano-section-heading"><div><p className="celano-eyebrow">YOUR CREATIONS</p><h2>{user ? `${user.name || user.username} 的最近作品` : '最近作品'}</h2></div><button onClick={() => go('/account')}>打开作品库 <ArrowRight size={14} /></button></div>{works.length ? <div className="celano-work-grid">{works.map(work => <div key={work.id} className="celano-recent-work"><button className="celano-work-card" onClick={() => go('/account')}><div className="celano-work-preview">{work.slides?.[0]?.imageUrl ? <img src={work.slides[0].imageUrl} alt="" /> : <span>CELANO PPT</span>}</div><strong>{work.title || '未命名演示文稿'}</strong><small>{work.slides?.length || 0} 页 · {work.resolution || '2K'} · 16:9</small></button><button className="celano-work-remove" aria-label={`删除作品 ${work.title}`} title="删除作品" onClick={() => { setDeleteError(''); setRemoveWork(work); }}><Trash2 size={15} /></button></div>)}</div> : <div className="celano-empty-works"><FileImage size={19} /><span>完成一次创作后，作品会自动保存在你的作品库。</span><button onClick={() => go('/ppt')}>开始第一份作品 <ArrowRight size={14} /></button></div>}</section>
     </main>
