@@ -7,7 +7,7 @@ import React from 'react';
  * favicon 等方形图标场景使用图形标单独版本。
  */
 
-const LOCKUP_RATIO = 588 / 144;
+const LOCKUP_RATIO = 1160 / 134;
 
 export const BrandLogo: React.FC<{ height?: number; className?: string; style?: React.CSSProperties }> = ({ height = 20, className, style }) => (
   <img
