@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, LogOut, ChevronDown, RefreshCw, Lock, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, Gift, LogOut, ChevronDown, RefreshCw, Lock, Sparkles } from 'lucide-react';
 import { AdminAccount } from '../types.js';
 import { adminApi, getAdminToken, setAdminToken, clearAdminToken } from './api.js';
 import { Button, TextInput, Alert, Field } from './ui.js';
@@ -10,6 +10,7 @@ import { InviteCodesPage } from './pages/InviteCodes.js';
 import { RechargeCodesPage } from './pages/RechargeCodes.js';
 import { AiConfigsPage } from './pages/AiConfigs.js';
 import { MembershipPlansPage } from './pages/MembershipPlans.js';
+import { MembershipCodesPage } from './pages/MembershipCodes.js';
 import '../styles/workspace.css';
 
 const MENUS = [
@@ -19,6 +20,7 @@ const MENUS = [
   { key: 'invites', label: '邀请码管理', Icon: Ticket },
   { key: 'recharge', label: '充值码管理', Icon: CreditCard },
   { key: 'membership', label: '会员套餐管理', Icon: Crown },
+  { key: 'membership-codes', label: '会员兑换码', Icon: Gift },
   { key: 'ai', label: 'AI 接口配置', Icon: Cpu }
 ];
 
@@ -185,6 +187,7 @@ export const AdminApp: React.FC = () => {
             {menu === 'invites' && <InviteCodesPage key={version} />}
             {menu === 'recharge' && <RechargeCodesPage key={version} />}
             {menu === 'membership' && <MembershipPlansPage key={version} />}
+            {menu === 'membership-codes' && <MembershipCodesPage key={version} />}
             {menu === 'ai' && <AiConfigsPage key={version} />}
           </div>
         </main>

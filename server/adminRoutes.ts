@@ -11,7 +11,8 @@ import {
   RechargeCode,
   AiProviderConfig,
   ImageResolution,
-  MembershipPlanConfig
+  MembershipPlanConfig,
+  MembershipCode
 } from '../src/types.js';
 
 export const adminRouter = express.Router();
@@ -472,6 +473,48 @@ adminRouter.patch('/recharge-codes/:code', requireAdmin, (req, res) => {
 adminRouter.delete('/recharge-codes/:code', requireAdmin, (req, res) => {
   const ok = db.deleteRechargeCode(req.params.code);
   if (!ok) return res.status(404).json({ success: false, error: '充值码不存在' });
+  res.json({ success: true });
+});
+
+/* =========================================================
+   会员兑换码管理
+   ========================================================= */
+
+adminRouter.get('/membership-codes', requireAdmin, (req, res) => {
+  const { keyword = '', status = '' } = req.query as any;
+  const kw = String(keyword).trim().toUpperCase();
+
+  let list = db.getMembershipCodes().slice().sort((a, b) => b.createdAt - a.createdAt);
+  if (kw) list = list.filter(c => c.code.includes(kw) || (c.note || '').includes(String(keyword)));
+  if (status) list = list.filter(c => c.status === status);
+
+  const page = paginate(list, req.query);
+  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, membershipCodes: page.list });
+});
+
+adminRouter.post('/membership-codes', requireAdmin, (req, res) => {
+  const { count = 1, planId = '', months = 1, prefix = 'MC', note = '' } = req.body || {};
+  const n = Math.min(100, Math.max(1, parseInt(String(count), 10) || 1));
+  const m = Math.min(36, Math.max(1, parseInt(String(months), 10) || 1));
+  const plan = db.getMembershipPlans().find(p => p.id === String(planId));
+  if (!plan) return res.status(400).json({ success: false, error: '请选择有效的会员套餐' });
+  const created: MembershipCode[] = [];
+  const existing = new Set(db.getMembershipCodes().map(c => c.code.toUpperCase()));
+
+  for (let i = 0; i < n; i++) {
+    let code = generateCode(String(prefix || '').toUpperCase(), 3, 4);
+    while (existing.has(code.toUpperCase())) code = generateCode(String(prefix || '').toUpperCase(), 3, 4);
+    existing.add(code.toUpperCase());
+    created.push({ code, planId: plan.id, months: m, status: 'unused', note: String(note || ''), createdAt: now() });
+  }
+
+  db.createMembershipCodes(created);
+  res.json({ success: true, created });
+});
+
+adminRouter.delete('/membership-codes/:code', requireAdmin, (req, res) => {
+  const ok = db.deleteMembershipCode(req.params.code);
+  if (!ok) return res.status(404).json({ success: false, error: '会员兑换码不存在' });
   res.json({ success: true });
 });
 

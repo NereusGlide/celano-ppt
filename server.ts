@@ -321,6 +321,14 @@ app.post('/api/wallet/redeem',(req,res)=>{
   if(!result.ok)return jsonError(res,result.error==='充值码不存在'?404:400,result.error);
   res.json({success:true,added:result.added,credits:result.credits});
 });
+app.post('/api/wallet/redeem-membership',(req,res)=>{
+  const user=requireUser(req,res);if(!user)return;
+  const {code}=req.body||{};
+  if(!code)return jsonError(res,400,'缺少会员兑换码');
+  const result=db.redeemMembershipCode(user.id,String(code));
+  if(!result.ok)return jsonError(res,result.error==='会员兑换码不存在'?404:400,result.error);
+  res.json({success:true,planName:result.planName,months:result.months,expiresAt:result.expiresAt,granted:result.granted,user:publicUser(db.getUserById(user.id)||user)});
+});
 app.get('/api/account/summary',(req,res)=>{
   const user=requireUser(req,res);if(!user)return;
   const records=db.getUsageRecords().filter(x=>x.userId===user.id).sort((a,b)=>b.createdAt-a.createdAt).slice(0,200);

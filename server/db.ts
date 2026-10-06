@@ -15,7 +15,8 @@ import {
   ImageResolution,
   PlanningModelConfig,
   PptDeck,
-  MembershipPlanConfig
+  MembershipPlanConfig,
+  MembershipCode
 } from '../src/types.js';
 import {
   PasswordCredential,
@@ -39,6 +40,7 @@ interface DatabaseSchema {
   admins: AdminAccount[];
   inviteCodes: InviteCode[];
   rechargeCodes: RechargeCode[];
+  membershipCodes: MembershipCode[];
   usageRecords: UsageRecord[];
   aiConfigs: AiProviderConfig[];
   /** 内容规划模型配置（仅管理端可见） */
@@ -166,6 +168,7 @@ class Database {
       admins: [],
       inviteCodes: [],
       rechargeCodes: [],
+      membershipCodes: [],
       usageRecords: [],
       aiConfigs: [],
       planningConfig: { baseUrl: '', apiKey: '', modelName: '', reasoningEffort: '', visionModelName: '' },
@@ -219,6 +222,7 @@ class Database {
     if (!this.data.admins) this.data.admins = [];
     if (!this.data.inviteCodes) this.data.inviteCodes = [];
     if (!this.data.rechargeCodes) this.data.rechargeCodes = [];
+    if (!this.data.membershipCodes) this.data.membershipCodes = [];
     if (!this.data.usageRecords) this.data.usageRecords = [];
     if (!this.data.aiConfigs) this.data.aiConfigs = [];
     if (!Array.isArray(this.data.membershipPlans) || !this.data.membershipPlans.length) this.data.membershipPlans = [...DEFAULT_MEMBERSHIP_PLANS];
@@ -729,6 +733,74 @@ class Database {
     this.data.rechargeCodes.splice(idx, 1);
     this.save();
     return true;
+  }
+
+  // ---------- 会员兑换码 ----------
+  getMembershipCodes(): MembershipCode[] {
+    return this.data.membershipCodes;
+  }
+
+  getMembershipCode(code: string): MembershipCode | undefined {
+    const q = String(code || '').trim().toUpperCase();
+    return this.data.membershipCodes.find(c => c.code.toUpperCase() === q);
+  }
+
+  createMembershipCodes(items: MembershipCode[]): MembershipCode[] {
+    this.data.membershipCodes.unshift(...items);
+    this.save();
+    return items;
+  }
+
+  deleteMembershipCode(code: string): boolean {
+    const q = String(code || '').trim().toUpperCase();
+    const idx = this.data.membershipCodes.findIndex(c => c.code.toUpperCase() === q);
+    if (idx === -1) return false;
+    this.data.membershipCodes.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
+  /**
+   * 原子会员兑换码兑换：校验 → 标记已用 → 开通/顺延会员 + 首月到账 → 流水，一次落盘。
+   */
+  redeemMembershipCode(userId: string, rawCode: string): { ok: true; planName: string; months: number; expiresAt: number; granted: number } | { ok: false; error: string } {
+    const code = String(rawCode || '').trim().toUpperCase();
+    const item = this.data.membershipCodes.find(entry => entry.code.toUpperCase() === code);
+    if (!item) return { ok: false, error: '会员兑换码不存在' };
+    if (item.status === 'disabled') return { ok: false, error: '该兑换码已停用' };
+    if (item.status === 'used') return { ok: false, error: '该兑换码已被使用' };
+    const user = this.data.users.find(entry => entry.id === userId);
+    if (!user) return { ok: false, error: '账号不存在' };
+    const plan = this.data.membershipPlans.find(p => p.id === item.planId);
+    if (!plan) return { ok: false, error: '兑换码对应的会员套餐已下线' };
+    const now = Date.now();
+    const activeNow = user.membership?.status === 'active' && Number(user.membership.expiresAt) > now;
+    const base = activeNow ? Number(user.membership!.expiresAt) : now;
+    const months = Math.max(1, Math.floor(Number(item.months) || 1));
+    const expiresAt = base + months * 30 * 24 * 3600 * 1000;
+    // 同套餐续费不重复送首月点数；新开通或换套餐送一次首月
+    const samePlan = activeNow && user.membership!.planId === item.planId;
+    const granted = samePlan ? 0 : Math.max(0, Math.floor(Number(plan.points) || 0));
+    item.status = 'used';
+    item.usedBy = userId;
+    item.usedByName = user.username;
+    item.usedAt = now;
+    user.membership = {
+      planId: item.planId,
+      status: 'active',
+      expiresAt,
+      lastGrantAt: samePlan && user.membership!.lastGrantAt ? user.membership!.lastGrantAt : now,
+    };
+    if (granted > 0) user.credits = Math.max(0, Math.floor(Number(user.credits) || 0)) + granted;
+    this.pushUsageRecord(this.newUsageRecord({
+      userId,
+      username: user.username,
+      type: 'membership_grant',
+      detail: '会员兑换码 ' + item.code + ' 开通「' + plan.name + '」' + months + ' 个月' + (granted > 0 ? '，赠送 ' + granted + ' 点' : ''),
+      credits: granted,
+    }));
+    this.save();
+    return { ok: true, planName: plan.name, months, expiresAt, granted };
   }
 
   // ---------- 使用记录 ----------

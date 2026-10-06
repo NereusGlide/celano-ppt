@@ -6,7 +6,8 @@ import {
   UsageRecord,
   AiProviderConfig,
   PlanningModelConfig,
-  MembershipPlanConfig
+  MembershipPlanConfig,
+  MembershipCode
 } from '../types.js';
 
 /** 管理端生图档位配置。apiKey 由服务端脱敏返回，空值代表保留现有密钥。 */
@@ -158,6 +159,15 @@ export const adminApi = {
 
   deleteRechargeCode: (code: string) =>
     request<{ success: boolean }>('DELETE', '/recharge-codes/' + encodeURIComponent(code)),
+
+  membershipCodes: (query: Record<string, any>) =>
+    request<Paged<MembershipCode[]> & { membershipCodes: MembershipCode[] }>('GET', '/membership-codes?' + new URLSearchParams(query as any).toString()),
+
+  createMembershipCodes: (payload: { count: number; planId: string; months: number; prefix: string; note?: string }) =>
+    request<{ success: boolean; created: MembershipCode[] }>('POST', '/membership-codes', payload),
+
+  deleteMembershipCode: (code: string) =>
+    request<{ success: boolean }>('DELETE', '/membership-codes/' + encodeURIComponent(code)),
 
   planningConfig: () => request<{ success: boolean; planningConfig: PlanningModelConfig }>('GET', '/planning-config'),
 

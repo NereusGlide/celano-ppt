@@ -222,6 +222,20 @@ export interface RechargeCode {
   createdAt: number;
 }
 
+/** 会员兑换码：用户兑换后开通对应套餐并顺延时长。 */
+export interface MembershipCode {
+  code: string;
+  planId: string;
+  /** 会员时长（月） */
+  months: number;
+  status: 'unused' | 'used' | 'disabled';
+  usedBy?: string;
+  usedByName?: string;
+  usedAt?: number;
+  note?: string;
+  createdAt: number;
+}
+
 /** 使用记录 */
 export interface UsageRecord {
   id: string;
