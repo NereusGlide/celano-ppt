@@ -414,6 +414,7 @@ function legacyPresentationView(item: any) {
       })),
       createdAt: item.startedAt,
       updatedAt: item.updatedAt,
+      finishedAt: item.finishedAt,
       // 个人中心需要区分生成中、暂停和已完成的新版任务；这些字段为旧首页
       // 兼容字段之外的附加信息，不影响旧编辑器读取。
       finished: !!item.finished,

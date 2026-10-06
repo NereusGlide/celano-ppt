@@ -70,6 +70,8 @@ export interface Presentation {
   referenceFiles?: ReferenceFile[];
   createdAt: number;
   updatedAt: number;
+  /** 全部页面生成完成的时间，作为 7 天自动删除保留期的起点（个人中心倒计时） */
+  finishedAt?: number;
   modelProvider?: string; // 'gemini' | 'openai' | 'siliconflow' | 'custom'
   /** 规划阶段产出的统一视觉方向（英文提示词片段，注入每页生图） */
   visualDirection?: string;
