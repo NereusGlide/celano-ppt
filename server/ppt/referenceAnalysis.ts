@@ -16,7 +16,7 @@ export async function analyzeStyleReferences(config: PlanningModelConfig, styleI
   const content: VisionContentPart[] = [
     {
       type: 'text',
-      text: '下面是多张 PPT 风格参考图。请逐张反推出各自最值得借鉴的设计点（构图、配色、字体气质、排版节奏、光影层次、装饰语言、留白处理、图像处理方式等），再综合成一套可延申的视觉语言，作为后续页面设计的统一指导。只输出设计层面的借鉴点，不评价图片优劣，不输出无关内容。',
+      text: '下面是多张 PPT 风格参考图（可能是多页展示拼图）。请先识别每张图里包含几个独立的单页画面，然后逐个画面反推其版式结构（布局方向、图文关系、信息层级）与设计亮点（构图、配色、字体气质、光影层次、装饰语言、留白处理、图像处理方式），最后综合成一套可延申的视觉语言，并列出可复用的版式模板清单，作为后续各页排版设计的依据。只输出设计层面的借鉴点与版式清单，不评价图片优劣，不输出无关内容。',
     },
     ...styleImageUrls.map(url => ({ type: 'image_url' as const, image_url: { url } })),
   ];
