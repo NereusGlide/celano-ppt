@@ -37,7 +37,7 @@ async function readApiError(resp: Response): Promise<string> {
 function isRetryableNetworkError(err: unknown): boolean {
   const cause = (err as any)?.cause?.message;
   const msg = String((err as any)?.message || cause || err || '');
-  return /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|Connect Timeout|connect timeout|socket hang up|network error|undici|UND_ERR/i.test(msg);
+  return /fetch failed|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|Connect Timeout|connect timeout|socket hang up|network error|undici|UND_ERR|terminated/i.test(msg);
 }
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
