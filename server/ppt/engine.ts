@@ -194,8 +194,12 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
         db.updatePptDeck(deckId, { referenceAnalysisStatus: 'done', referenceAnalysis });
       }
       const batched = deck.pageCount > PLAN_BATCH_SIZE;
+      const totalBatches = batched ? Math.ceil(deck.pageCount / PLAN_BATCH_SIZE) : 1;
+      let batchIndex = 0;
       for (let from = 1; from <= deck.pageCount; from += batched ? PLAN_BATCH_SIZE : deck.pageCount) {
         if (!isCurrent()) return false;
+        batchIndex += 1;
+        if (isCurrent()) db.updatePptDeck(deckId, { planningProgress: { batch: batchIndex, totalBatches } });
         const to = batched ? Math.min(deck.pageCount, from + PLAN_BATCH_SIZE - 1) : deck.pageCount;
         const prompts = buildPlanPrompts({
           topic: deck.prompt,

@@ -353,6 +353,8 @@ export interface PptDeck {
   referenceAnalysisStatus?: 'analyzing' | 'done' | 'failed';
   referenceAnalysisProgress?: { done: number; total: number };
   referenceAnalysis?: string;
+  /** 大纲分批规划进度（页数超过单批上限时，前端显示「第 X/Y 批」） */
+  planningProgress?: { batch: number; totalBatches: number };
   referencesText: string;
   referenceImages: PptReferenceImage[];
   /** 首页上传的品牌标识配置，随任务保存并在工作台/导出时复用。 */

@@ -822,7 +822,7 @@ export const WorkspaceApp: React.FC = () => {
               <div className="ws-panel ws-generation-status">
                 <>
                   <div style={{ fontSize: 12, color: '#8A9299', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span>{deck.stage === 'planning' ? '大纲规划中…（已 ' + Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000)) + ' 秒）' : deck.finished ? '已全部完成' + retentionLabel(deck.finishedAt, nowMs) : deck.running ? '逐页生成 ' + doneCount + '/' + totalSlides : '已暂停'}</span>
+                    <span>{deck.stage === 'planning' ? (deck.planningProgress && deck.planningProgress.totalBatches > 1 ? `大纲规划中… 第 ${deck.planningProgress.batch}/${deck.planningProgress.totalBatches} 批（已 ${Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000))} 秒）` : `大纲规划中…（已 ${Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000))} 秒）`) : deck.finished ? '已全部完成' + retentionLabel(deck.finishedAt, nowMs) : deck.running ? '逐页生成 ' + doneCount + '/' + totalSlides : '已暂停'}</span>
                     {failedCount > 0 ? <span style={{ color: '#E8836F' }}>失败 {failedCount} 页{refundedCredits > 0 ? ` · 已退回 ${refundedCredits} 点` : ''}</span> : null}
                     {deck.running ? (
                       <button className="ws-button ws-ghost" style={{ marginLeft: 'auto', padding: '2px 8px' }} onClick={() => void handleStop()}><Square size={12} /> 停止</button>
