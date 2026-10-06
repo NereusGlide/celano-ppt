@@ -1,0 +1,31 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "includes": ["src/**/*.ts", "src/**/*.tsx", "server/**/*.ts", "server.ts"]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noDoubleEquals": "error",
+        "noDebugger": "error",
+        "noAsyncPromiseExecutor": "error"
+      },
+      "style": {
+        "useConst": "error",
+        "noNonNullAssertion": "warn"
+      },
+      "correctness": {
+        "noUnsafeFinally": "error"
+      }
+    }
+  },
+  "assist": {
+    "enabled": false
+  },
+  "formatter": {
+    "enabled": false
+  }
+}

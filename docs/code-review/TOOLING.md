@@ -1,28 +1,31 @@
 # 自动化门禁落地说明
 
-规范靠人执行会退化，能自动化的部分必须交给机器。以下配置已随规范一并生成，只需装依赖即可生效。
+> **状态（2026-10-07）：已落地。** TypeScript 7 与 typescript-eslint 不兼容（peer 要求 <6.1.0），
+> 最终采用 **Biome** 替代 ESLint + Prettier（本文件「§1 安装」所述 ESLint 方案已废弃，保留作历史参考）。
+> 实际配置见根目录 `biome.json`；`npm run lint` 现在 = `tsc --noEmit` + `biome check`，CI 已自动生效。
 
-## 1. 安装
+## 1. 安装（当前生效方案：Biome）
 
 ```bash
-npm i -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks prettier
+npm i -D @biomejs/biome
 ```
 
-> 若 `typescript-eslint` 与当前 TypeScript 版本（^7）出现兼容告警，可改用 **Biome** 替代 ESLint + Prettier：
-> `npm i -D @biomejs/biome && npx biome init`，规则等价项为 `noExplicitAny`、`noNonNullAssertion`、`useConst`。
+配置 `biome.json`（已生成）：只启用「不需要类型信息」的规则，error 级为
+`noDoubleEquals` / `noDebugger` / `noAsyncPromiseExecutor` / `useConst` / `noUnsafeFinally`；
+warn 级为 `noExplicitAny` / `noNonNullAssertion`（记账不阻断）。
+
+> ~~ESLint 方案（已废弃）：~~ `npm i -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks`
+> —— 因 typescript-eslint 运行时不支持 TS 7，弃用。
 
 ## 2. 接入脚本
 
-在 `package.json` 的 `scripts` 中追加（**不要替换原有 `lint`**，避免依赖未装时构建中断）：
+`package.json` 已配置：
 
 ```json
-"lint:es": "eslint .",
+"lint": "npm run lint:types && npm run lint:biome",
 "lint:types": "tsc --noEmit",
-"format": "prettier --write \"{src,server,docs}/**/*.{ts,tsx,css,md,json}\"",
-"format:check": "prettier --check \"{src,server,docs}/**/*.{ts,tsx,css,md,json}\""
+"lint:biome": "biome check src server server.ts"
 ```
-
-依赖装好后，再把 `lint` 改为 `npm run lint:types && npm run lint:es`，CI 即自动生效。
 
 ## 3. 提交前钩子（可选，推荐）
 

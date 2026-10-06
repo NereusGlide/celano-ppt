@@ -52,7 +52,9 @@ export function refundCredits(userId: string, amount: number, detail: string): n
     if (!refund) return Math.max(0, Math.floor(Number(db.getUserById(userId)?.credits) || 0));
     const user = db.getUserById(userId);
     if (!user) return 0;
-    const updated = db.updateUser(userId, { credits: Math.max(0, Math.floor(Number(user.credits) || 0)) + refund }) || user;
+    const updated = db.updateUser(userId, { credits: Math.max(0, Math.floor(Number(user.credits) || 0)) + refund });
+    // 余额更新失败时不记流水，避免出现「流水显示已退款、余额却未变」的对账不一致。
+    if (!updated) return Math.max(0, Math.floor(Number(user.credits) || 0));
     addUsage(userId, user.username, refund, detail);
     return updated.credits || 0;
   });

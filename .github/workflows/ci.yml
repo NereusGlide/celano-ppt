@@ -27,9 +27,10 @@ jobs:
       # 两份 lock 已含 Linux/Windows/macOS 的原生二进制条目，可直接 npm ci
       - run: npm ci
 
-      # 目前 lint 只包含 tsc --noEmit；ESLint 接入属于 docs/code-review/TOOLING.md 的 Wave 1 未完成项，
-      # 接入前不要把它写成 ESLint 步骤，避免形成「已有静态门禁」的错觉。
-      - name: 类型检查
+      # lint = tsc --noEmit + biome check。
+      # TypeScript 7 与 typescript-eslint 不兼容（peer <6.1.0），故用 Biome 替代 ESLint；
+      # noExplicitAny / noNonNullAssertion 为 warn（记账不阻断），error 级规则见 biome.json。
+      - name: 类型与规范检查
         run: npm run lint
 
       - name: 单元测试
