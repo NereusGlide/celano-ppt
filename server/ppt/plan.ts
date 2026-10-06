@@ -5,7 +5,6 @@
  */
 
 import type { PptPageType, PptPalette, PptSlidePlan } from '../../src/types.js';
-import { PORTRAIT_AVOIDANCE_RULE, sanitizeFamousCharacters } from '../imagePrompt.js';
 
 export type PptDeckPlan = {
   title: string;
@@ -213,8 +212,8 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
   const { slide } = input;
   const content = [slide.title, slide.subtitle, slide.summary, ...slide.bullets].filter(Boolean).join('；');
   const lines = [
-    `用户原始需求：${sanitizeFamousCharacters(cleanImagePrompt(input.deckPrompt))}`,
-    `页面内容方向：${sanitizeFamousCharacters(cleanImagePrompt(slide.imagePrompt || content || input.deckPrompt))}`,
+    `用户原始需求：${cleanImagePrompt(input.deckPrompt)}`,
+    `页面内容方向：${cleanImagePrompt(slide.imagePrompt || content || input.deckPrompt)}`,
     slide.title ? `页面标题：${slide.title}` : '',
     slide.subtitle ? `页面副标题：${slide.subtitle}` : '',
     slide.bullets.length ? `页面要点：${slide.bullets.join('；')}` : '',
@@ -233,7 +232,6 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
       '输出前检查版式、字体层级、配色、图像处理和装饰语言是否与原始模版高度一致；若主题表达与模版不同，仅替换内容，不另设计一套视觉风格。',
     ].join('\n') : '排版、字体、配图、色彩、构图、材质、光影、镜头、信息层级和整体视觉风格全部由 Image 原生自主设计，选择最适合当前内容的表达方式，不套用预设模板。',
     input.editInstruction?.trim() ? `本页修改要求：${input.editInstruction.trim()}` : '',
-    PORTRAIT_AVOIDANCE_RULE,
   ];
   return lines.filter(Boolean).join('\n');
 }
