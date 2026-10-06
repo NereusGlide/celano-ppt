@@ -91,14 +91,13 @@ install -d -m 700 "$SSH_DIR"
 if [[ ! -f "$DEPLOY_KEY" ]]; then
   log "生成仓库 Deploy Key（只读用途）"
   ssh-keygen -t ed25519 -N '' -C "celano-ppt@$(hostname -f 2>/dev/null || hostname)" -f "$DEPLOY_KEY" -q
-  install -m 600 "$DEPLOY_KEY" "$SSH_DIR/config_celano_ppt.tmp"
-  cat >> "$SSH_DIR/config_celano_ppt.tmp" <<EOF
+  # 只生成 SSH config 片段；私钥内容绝不能混入 config，否则 git 会把密钥当配置解析并报错
+  mkdir -p "$SSH_DIR/config.d"
+  cat > "$SSH_DIR/config.d/celano-ppt.conf" <<EOF
 Host github.com
   IdentityFile $DEPLOY_KEY
   IdentitiesOnly yes
 EOF
-  mkdir -p "$SSH_DIR/config.d"
-  mv "$SSH_DIR/config_celano_ppt.tmp" "$SSH_DIR/config.d/celano-ppt.conf"
   chmod 600 "$SSH_DIR/config.d/celano-ppt.conf"
   grep -q 'Include.*config.d' "$SSH_DIR/config" 2>/dev/null || echo "Include $SSH_DIR/config.d/*" >> "$SSH_DIR/config"
   chmod 600 "$SSH_DIR/config"
@@ -110,6 +109,17 @@ EOF
 fi
 chmod 600 "$DEPLOY_KEY"
 
+# 幂等修复：历史版本可能把私钥内容写进了 config 片段，这里始终重写为正确内容
+mkdir -p "$SSH_DIR/config.d"
+cat > "$SSH_DIR/config.d/celano-ppt.conf" <<EOF
+Host github.com
+  IdentityFile $DEPLOY_KEY
+  IdentitiesOnly yes
+EOF
+chmod 600 "$SSH_DIR/config.d/celano-ppt.conf"
+grep -q 'Include.*config.d' "$SSH_DIR/config" 2>/dev/null || echo "Include $SSH_DIR/config.d/*" >> "$SSH_DIR/config"
+chmod 600 "$SSH_DIR/config"
+
 # ── 5. 获取代码 ──────────────────────────────────────────
 if [[ -d "$APP_DIR/.git" ]]; then
   log "更新已有代码"
@@ -119,7 +129,8 @@ if [[ -d "$APP_DIR/.git" ]]; then
 else
   log "克隆代码到 $APP_DIR"
   install -d -o "$APP_USER" -g "$APP_USER" "$APP_DIR"
-  git clone --branch "$BRANCH" --single-branch "$REPO" "$APP_DIR"
+  # --depth 1 浅克隆：只拉最新提交，避免跨境网络中断导致全量克隆失败；后续 pull 会自动补全历史
+  git clone --depth 1 --branch "$BRANCH" --single-branch "$REPO" "$APP_DIR"
 fi
 
 # ── 6. 环境变量 ──────────────────────────────────────────
