@@ -613,9 +613,13 @@ export const WorkspaceApp: React.FC = () => {
       const slideWidth = PPT_PAGE_WIDTH;
       const slideHeight = PPT_PAGE_HEIGHT;
       const slideRatio = slideWidth / slideHeight;
-      for (const slide of slides) {
+      // 并行拉取所有页面图片，避免逐页串行等待网络；浏览器会按域名并发上限自动排队。
+      const slidesWithData = await Promise.all(slides.map(async (slide) => {
         const data = await urlToDataUrl(slide.imageUrl as string);
         const ratio = await readImageRatio(data);
+        return { data, ratio };
+      }));
+      for (const { data, ratio } of slidesWithData) {
         const page = pptx.addSlide();
         if (!ratio || Math.abs(ratio - slideRatio) < 0.02) {
           page.addImage({ data, x: 0, y: 0, w: slideWidth, h: slideHeight });

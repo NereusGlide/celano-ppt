@@ -391,7 +391,7 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     // 远程 URL 下载本身会跨越异步边界，期间可能发生 stop/resume；
     // 丢弃已经过期的一轮结果，避免旧请求覆盖新一轮页面。
     if (rt.runToken !== token) return;
-    patchSlide(deckId, slideId, { status: 'done', storageKey, width: dimensions.width, height: dimensions.height });
+    patchSlide(deckId, slideId, { status: 'done', storageKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now() });
     console.log('[ppt] 页面生成完成:', deckId, slideId);
   } catch (err: any) {
     // 停止后立即继续时，旧请求不能覆盖新一轮任务的状态。
@@ -738,7 +738,7 @@ export function replaceSlideImage(userId: string, deckId: string, slideId: strin
     return { error: '保存单页图片失败：' + String(err?.message || err).slice(0, 120) };
   }
   const dimensions = assertNative16x9(dataUrlBytes(dataUrl));
-  patchSlide(deckId, slideId, { status: 'done', storageKey: nextKey, width: dimensions.width, height: dimensions.height, error: undefined });
+  patchSlide(deckId, slideId, { status: 'done', storageKey: nextKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), error: undefined });
   const fresh = db.getPptDeck(deckId);
   if (!fresh) return { error: '任务不存在' };
   const finished = !fresh.running && fresh.slides.every(item => item.status === 'done');
@@ -828,8 +828,8 @@ export function deckView(deck: PptDeck) {
       error: s.error,
       width: s.width,
       height: s.height,
-      // updatedAt 作为缓存版本号：单页重生成写回同一路径时，浏览器必须拉取新图片。
-      imageUrl: s.status === 'done' && s.storageKey ? '/api/ppt/decks/' + deck.id + '/slides/' + s.id + '/image?v=' + encodeURIComponent(String(deck.updatedAt)) : undefined,
+      // slide.updatedAt 作为缓存版本号：单页重生成只改变本页 URL，其他页图片继续命中长缓存。
+      imageUrl: s.status === 'done' && s.storageKey ? '/api/ppt/decks/' + deck.id + '/slides/' + s.id + '/image?v=' + encodeURIComponent(String(s.updatedAt || deck.updatedAt)) : undefined,
     })),
   };
 }

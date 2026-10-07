@@ -211,7 +211,7 @@
 }
 .ws-editor .ws-toolbar{margin-bottom:0;padding:10px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ws-editor .ws-canvas-frame{flex:1;min-height:0;overflow:auto;display:flex;padding:2px}
-.ws-editor .ws-canvas-inner{width:100%;max-width:920px;margin:auto}
+.ws-editor .ws-canvas-inner{width:100%;max-width:1280px;margin:auto}
 .ws-editor .ws-canvas-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .ws-editor .ws-canvas-title{font-size:13px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ws-editor .ws-canvas-meta{font-size:11px;color:var(--text-tertiary);white-space:nowrap}

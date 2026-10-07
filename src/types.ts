@@ -334,6 +334,8 @@ export interface PptDeckSlide {
   /** 原图实际像素，2K 为接口画质档位，不将返回图缩放成请求尺寸。 */
   width?: number;
   height?: number;
+  /** 本页图片最后生成/重生成时间，作为图片 URL 的缓存版本号（避免单页重生成使全库缓存失效） */
+  updatedAt?: number;
   error?: string;
 }
 

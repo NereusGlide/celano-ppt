@@ -224,7 +224,7 @@ pptRouter.get('/decks/:id/slides/:slideId/image', (req, res) => {
   }
   const ext = filePath.toLowerCase().split('.').pop();
   res.set('Content-Type', ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png');
-  res.set('Cache-Control', 'private, max-age=60');
+  res.set('Cache-Control', 'private, immutable, max-age=31536000');
   res.set('X-Content-Type-Options', 'nosniff');
   fs.createReadStream(filePath).on('error', () => {
     if (!res.headersSent) res.status(404).json({ success: false, error: '页面图片不存在' });
