@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { ArrowRight, CircleHelp, Search, X, Sparkles, Image, Presentation, Paperclip, PanelsTopLeft, UserRound, LifeBuoy, ChevronRight } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowRight, Check, CircleHelp, ClipboardList, Copy, Search, X, Sparkles, Image, Presentation, Paperclip, PanelsTopLeft, UserRound, LifeBuoy, ChevronRight } from 'lucide-react';
 import { PrimaryNav } from '../components/PrimaryNav.js';
 import { IMAGE_COST } from '../shared/imageSpecs.js';
 import { TutorialGuide, tutorialMatches, countMatchingTutorials } from './TutorialGuide.js';
@@ -39,7 +39,7 @@ const topics: Topic[] = [
   ] },
   { id: 'account', title: '个人中心、作品与会员点数', description: '账号归属、会员有效期和消费记录集中管理。', articles: [
     { title: '我的作品保存在哪里？能否继续编辑或删除？', paragraphs: ['PPT 在个人中心“我的作品”中管理，打开后进入同一套 PPT 工作台。文生图和画布保存的图片、文本在“画布素材”中查看。', '可以从结果页、工作台或个人中心删除对应作品；删除后相关列表同步更新。删除不退回已经完成的生成消耗。被取消或删除的 PPT 任务中，未完成部分的预扣点数按任务结算退回。', '删除后无法通过普通页面恢复，请先下载需要保留的内容。在其他画布项目中已有的引用副本可能仍然保留。'] },
-    { title: '本次消耗怎样计算？', paragraphs: ['PPT 每页及普通文生图/画布每张：2K ' + IMAGE_COST['2K'] + ' 点，4K ' + IMAGE_COST['4K'] + ' 点。PPT 总消耗为页数乘以每页点数；多张图片总消耗为数量乘以每张点数。', '单页修改与画布图片编辑每次 2 点。文生图上传参考图后使用图片编辑接口，当前按每次 2 点计费。确认框会展示当前操作的总消耗与余额，请以提交前的确认信息为准。', '点数不足时需先补充余额。服务器确认的失败或未完成生成会退回对应的预扣点数，可在个人中心使用记录中核对；已成功生成再删除的作品不退费。'] },
+    { title: '本次消耗怎样计算？', paragraphs: ['PPT 每页及普通文生图/画布每张：2K ' + IMAGE_COST['2K'] + ' 点，4K ' + IMAGE_COST['4K'] + ' 点（会员按档位享受 7–9 折画质折扣）。PPT 总消耗为页数乘以每页点数；多张图片总消耗为数量乘以每张点数。', '图生图与局部重绘按对应画质档位计费。文生图上传参考图后使用图片编辑接口，与所选画质同价。确认框会展示当前操作的总消耗与余额，请以提交前的确认信息为准。', '免费用户每天可免费生成 3 张 2K 文生图。点数不足时需先补充余额。服务器确认的失败或未完成生成会退回对应的预扣点数，可在个人中心使用记录中核对；已成功生成再删除的作品不退费。'] },
     { title: '已开通会员，为什么不应继续看到“开通会员”？', paragraphs: ['会员套餐、状态与到期时间由服务器保存，并与个人中心、创作页导航和会员中心共用。会员有效期内，导航显示当前套餐，个人中心展示到期时间；到期或取消后显示非会员状态。', '会员资格与点数余额、账号角色独立。充值点数不会自动变成会员，管理员角色也不等于付费会员。', '当前在线支付通道尚未启用。页面选择套餐不会完成付款，也不会自动开通；经确认办理后由管理员登记套餐和有效期。真实支付开通需要后续接入支付及支付成功回调。'] },
     { title: '怎样查看消耗、充值点数和修改账号资料？', paragraphs: ['个人中心“使用记录”可查看近期生成、充值等记录；“点数与充值”展示余额，可输入管理员提供的充值码兑换点数。充值码兑换与会员资格分别管理。', '在“账号资料”修改显示名称和手机号，在“账号安全”验证当前密码后修改登录密码。修改密码会使旧会话失效，请重新登录。'] },
   ] },
@@ -66,6 +66,18 @@ const sections = [
 export const SupportApp: React.FC = () => {
   const [search, setSearch] = useState('');
   const [active, setActive] = useState('ppt');
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'manual'>('idle');
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const feedbackChecklist = '操作页面：\n发生时间：\n作品或任务标题：\n画质 / 页数 / 数量：\n操作步骤：\n报错文字（请附截图）：\n请勿填写密码、API Key 或支付凭据。';
+  const copyChecklist = async () => {
+    try {
+      await navigator.clipboard.writeText(feedbackChecklist);
+      if (mounted.current) setCopyState('copied');
+    } catch {
+      if (mounted.current) setCopyState('manual');
+    }
+  };
   const content = useRef<HTMLDivElement>(null);
   const selectSection = (id: string) => {
     setActive(id);
@@ -82,11 +94,27 @@ export const SupportApp: React.FC = () => {
   const count = results.reduce((total, section) => total + section.articles.length, 0);
   const tutorialCount = results.reduce((total, section) => total + (section.tutorial ? countMatchingTutorials(section.tutorial, query) : 0), 0);
   return <div className="support-app celano-page-surface"><PrimaryNav active="support" /><main className="support-main celano-feature-main">
-    <header className="support-hero"><div className="support-kicker"><CircleHelp size={15} /> CELANO HELP CENTER</div><h1>让每一步创作，都有清晰指引。</h1><p className="support-intro">选择你正在使用的功能，图文步骤与详细说明一起查看。</p>
-      <div className="support-search"><Search size={18} /><input aria-label="搜索技术支持" placeholder="搜索参考文件、涂抹修改、点数或生成失败…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button aria-label="清空搜索" onClick={() => setSearch('')}><X size={16} /></button> : null}</div>
+    <header className="support-hero">
+      <div className="support-hero-copy">
+        <h1>技术支持</h1>
+        <p className="support-intro">看清当前状态，让创作继续。</p>
+      </div>
+      <div className="support-search-wrap">
+        <div className="support-search"><Search size={18} /><input aria-label="搜索技术支持" placeholder="搜索参考文件、涂抹修改、点数或生成失败…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button aria-label="清空搜索" onClick={() => setSearch('')}><X size={16} /></button> : null}</div>
+        <div className="support-search-terms" aria-label="热门问题">{['保存失败', '参考文件', '点数', '局部修改'].map(term => <button key={term} type="button" onClick={() => setSearch(term)}>{term}</button>)}</div>
+      </div>
     </header>
+    <div className="support-quickbar" aria-label="常见入口">
+      <span className="support-quick-label">从这里开始</span>
+      <button type="button" onClick={() => selectSection('image')}>图片保存失败 <ChevronRight size={13} /></button>
+      <button type="button" onClick={() => selectSection('references')}>参考文件解析 <ChevronRight size={13} /></button>
+      <button type="button" onClick={() => selectSection('troubleshooting')}>生成超时 <ChevronRight size={13} /></button>
+    </div>
     <div className="support-layout">
-      <nav className="support-sections" aria-label="按功能查看技术支持"><p>按功能查找</p>{sections.map(section => { const Icon = section.icon; return <button key={section.id} aria-current={!query && active === section.id ? 'true' : undefined} onClick={() => selectSection(section.id)}><Icon size={17} /><span>{section.label}</span><ChevronRight size={14} /></button>; })}<div className="support-sidebar-note">先查看任务状态，再决定保存或重试，避免重复提交。</div></nav>
+      <aside className="support-index">
+        <nav className="support-sections" aria-label="按功能查看技术支持"><h2>创作指南</h2>{sections.map(section => { const Icon = section.icon; return <button key={section.id} type="button" aria-current={!query && active === section.id ? 'true' : undefined} onClick={() => selectSection(section.id)}><Icon size={17} /><span>{section.label}</span><ChevronRight size={14} /></button>; })}</nav>
+        <div className="support-checkpoint"><LifeBuoy size={18} /><h3>先确认，再重试</h3><p>已经看到图片？先尝试保存。没有结果？核对任务状态与消耗记录。</p><button type="button" onClick={() => selectSection('troubleshooting')}>查看排查建议 <ArrowRight size={14} /></button></div>
+      </aside>
       <div className="support-content" ref={content}>
         {query ? <p className="support-search-count" role="status">搜索“{search.trim()}”：{count} 条说明 · {tutorialCount} 篇图文教程</p> : null}
         {visible.map(section => <section className="support-topic" key={section.id} aria-labelledby={'support-' + section.id}>
@@ -97,6 +125,11 @@ export const SupportApp: React.FC = () => {
         {!visible.length ? <div className="support-empty"><CircleHelp size={24} /><h2>没有找到相关说明</h2><p>试试“上传”“图片”“会员”或“失败”等关键词。</p><button onClick={() => setSearch('')}>清空搜索</button></div> : null}
       </div>
     </div>
-    <footer className="support-footer">需要进一步排查时，请记录发生时间、操作步骤与报错文字，联系产品管理员。请勿发送账号密码或接口密钥。</footer>
+    <footer className="support-footer">
+      <div className="support-feedback-title"><ClipboardList size={21} /><div><h2>让问题更容易被定位。</h2><p>整理这些信息，通过现有联系渠道交给产品管理员。</p></div></div>
+      <ul className="support-feedback-fields"><li>操作页面与发生时间</li><li>任务标题与画质设置</li><li>操作步骤与报错截图</li></ul>
+      <div className="support-feedback-actions"><button type="button" onClick={copyChecklist}>{copyState === 'copied' ? <Check size={15} /> : <Copy size={15} />}{copyState === 'copied' ? '已复制反馈清单' : '复制反馈清单'}</button><p role="status">{copyState === 'manual' ? '无法复制，请选择下方清单并复制。' : '请勿发送密码、接口密钥或支付凭据。'}</p></div>
+      {copyState === 'manual' ? <textarea className="support-feedback-fallback" aria-label="反馈清单" readOnly value={feedbackChecklist} onFocus={event => event.currentTarget.select()} /> : null}
+    </footer>
   </main></div>;
 };

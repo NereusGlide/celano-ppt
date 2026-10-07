@@ -1,0 +1,748 @@
+/**
+ * kimi 外壳 · 主题令牌覆盖 + 承载项目页面的适配层
+ *
+ * 一、主题令牌覆盖（关键）
+ *   项目页面的颜色全部走 :root 上的语义令牌（--bg-canvas / --text-primary …）。
+ *   在 .kimi-shell 作用域内重新定义这些令牌，即可让「所有内嵌页面」跟随
+ *   kimi 的日夜主题同步换肤，无需逐页改造样式。
+ *
+ * 二、适配层
+ *   被嵌入页面原本是整页设计（自带顶部导航 + 100vh），需隐藏其导航并放开高度。
+ *
+ * 三、品牌 logo
+ *   折叠态 = 小图标；展开态浅色 = 黑字标；展开态深色 = 白字标。
+ */
+
+/* ================= 主题令牌覆盖 ================= */
+
+/* 深色（kimi dark） */
+.kimi-shell[data-theme="dark"] {
+  --bg-canvas: #181817;
+  --bg-surface: #1f1f1f;
+  --bg-subtle: #121212;
+  --bg-raised: #262626;
+  --border-subtle: rgba(255, 255, 255, .08);
+  --border-default: rgba(255, 255, 255, .13);
+  --border-control: rgba(255, 255, 255, .2);
+  --text-primary: rgba(255, 255, 255, .84);
+  --text-secondary: rgba(255, 255, 255, .42);
+  --text-tertiary: rgba(255, 255, 255, .28);
+  --text-inverse: #181817;
+  --fill-primary: rgba(255, 255, 255, .84);
+  --fill-primary-hover: #ffffff;
+  --on-fill-primary: #181817;
+  --fill-emphasis: #1f1f1f;
+  --accent: #1a88ff;
+  --accent-soft: rgba(26, 136, 255, .14);
+  --on-accent: #ffffff;
+  --focus-ring: #1a88ff;
+}
+
+/* ================= 品牌 logo ================= */
+.kimi-brand-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  transition: background-color .15s;
+}
+.kimi-brand-icon-btn:hover { background: var(--k-hover, rgba(150, 180, 220, .08)); }
+.kimi-brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: block;
+}
+.kimi-brand-wordmark {
+  display: block;
+  height: 18px;
+  width: auto;
+}
+
+/* ================= 适配层 ================= */
+
+/* 1. 隐藏被嵌入页面自带的顶部导航（避免与外壳侧边栏双重导航） */
+.kimi-shell .celano-home-topbar { display: none !important; }
+
+/* 2. 页面根容器：去掉整页高度，背景透明以继承外壳 */
+.kimi-shell .celano-home-app,
+.kimi-shell .celano-ppt-app,
+.kimi-shell .image-app,
+.kimi-shell .canvas-app,
+.kimi-shell .celano-canvas-landing,
+.kimi-shell .support-app,
+.kimi-shell .account-app,
+.kimi-shell .celano-account-app {
+  min-height: 0 !important;
+  height: auto;
+  background: transparent;
+}
+
+/* 3. 主区滚动 */
+.kimi-shell .kimi-shell-stage {
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 4. 加载占位 */
+.kimi-shell-loading {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* 5. 内层主容器内边距收敛 */
+.kimi-shell .celano-ppt-main,
+.kimi-shell .image-main,
+.kimi-shell .celano-feature-main { padding-top: 104px; }
+.kimi-shell .template-main h1,
+.kimi-shell .support-main h1 { margin-top: 0; }
+
+/* 6. 画布落地页在壳内可滚动 */
+.kimi-shell .celano-canvas-landing { overflow-y: auto; }
+
+/* ================= 字体与排版（kimi 化） =================
+   项目原设计用 Didot 衬线 + 92px 大字号做标题，是「CELANO 奢华」风格；
+   改为 kimi 的 MiSans 无衬线 + 克制字号后，整体气质立刻贴近 kimi。 */
+.kimi-shell {
+  --font-sans: "MiSans VF", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-display: "MiSans VF", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ================= 组件视觉细节（kimi 化） ================= */
+
+/* 主标题：去衬线、收紧字距、克制字号 */
+.kimi-shell .celano-hero h1,
+.kimi-shell .celano-ppt-heading h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.14;
+  font-size: clamp(32px, 6vw, 54px);
+}
+.kimi-shell .celano-hero h1 em,
+.kimi-shell .celano-ppt-heading h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+/* 副标题 */
+.kimi-shell .celano-hero-copy {
+  font-size: 14px;
+  line-height: 1.8;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* 品牌 pill：kimi 轻描边胶囊 */
+.kimi-shell .celano-brand-pill {
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  font-size: 12.5px;
+  padding: 8px 16px;
+}
+
+/* 产品卡片：kimi 16px 圆角 + 细描边 + 微 hover，去掉渐变厚重感 */
+.kimi-shell .celano-product-card {
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: none;
+  min-height: 0;
+  color: var(--text-primary);
+}
+.kimi-shell .celano-product-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-default);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .07);
+}
+.kimi-shell .celano-product-card p { color: var(--text-secondary); }
+
+/* 卡片图标：更小更克制 */
+.kimi-shell .celano-card-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  margin-bottom: 16px;
+  border-color: var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+/* 卡片箭头 */
+.kimi-shell .celano-card-arrow { color: var(--text-secondary); }
+
+/* section 标题去衬线 */
+.kimi-shell .celano-section-heading,
+.kimi-shell .celano-ppt-heading {
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+}
+
+/* 输入卡（PPT 输入区）：kimi composer 的细描边 + 大圆角 */
+.kimi-shell .celano-compose-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 24px;
+  background: var(--bg-surface);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .04), 0 5px 16px -4px rgba(0, 0, 0, .07);
+}
+
+/* 主/次 CTA：kimi 高对比 + 圆角 */
+.kimi-shell .celano-main-cta,
+.kimi-shell .celano-generate-button {
+  border-radius: 12px;
+  font-weight: 550;
+}
+
+/* 全局按钮 hover 收敛 */
+.kimi-shell button { transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+
+/* ================= 全页面精修 v5：文字 / 输入框 / 控件 / 交互 =================
+   目标：把各业务页面（PPT / 文生图 / 智能画布 / 模版库 / 技术支持 / 个人中心）
+   的控件统一到 kimi 语言：双主题令牌、胶囊按钮、静默 hover、accent 焦点环。 */
+
+.kimi-shell[data-theme="dark"] { --ks-hover: rgba(255, 255, 255, .07); --ks-focus: rgba(255, 255, 255, .30); }
+
+/* ---- 0. 交互基座：统一过渡 / 按压 / 焦点环 ---- */
+.kimi-shell button {
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease,
+    box-shadow .15s ease, transform .12s ease;
+}
+.kimi-shell button:not(:disabled):active { transform: scale(.98); }
+.kimi-shell button:focus-visible,
+.kimi-shell a:focus-visible { outline: 2px solid var(--ks-focus); outline-offset: 2px; }
+
+/* ---- 1. 创作页标题与说明（PPT / 文生图 / 画布） ---- */
+.kimi-shell .celano-creation-heading h1 {
+  font-size: clamp(30px, 4.2vw, 44px);
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.25;
+}
+.kimi-shell .celano-creation-description {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--text-secondary);
+}
+
+/* ---- 2. 输入区（textarea） ---- */
+.kimi-shell .celano-compose-card > textarea,
+.kimi-shell .celano-composer-input,
+.kimi-shell .image-card textarea {
+  resize: none;
+  font-size: 15px;
+  line-height: 1.75;
+  padding: 20px 20px 8px;
+  color: var(--text-primary);
+}
+.kimi-shell .celano-ppt-main .celano-compose-card > textarea,
+.kimi-shell .celano-feature-main .celano-compose-card > textarea,
+.kimi-shell .image-card textarea { height: 150px; min-height: 150px; }
+.kimi-shell .celano-compose-card > textarea::placeholder,
+.kimi-shell .image-card textarea::placeholder { color: var(--text-tertiary); }
+
+/* ---- 3. 输入卡工具栏：统一 34px 胶囊控件 ---- */
+.kimi-shell .celano-select-pill,
+.kimi-shell .celano-tool-pill,
+.kimi-shell .celano-optimize-button,
+.kimi-shell .image-upload {
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 17px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  gap: 7px;
+}
+.kimi-shell .celano-select-pill:hover,
+.kimi-shell .celano-tool-pill:hover,
+.kimi-shell .celano-optimize-button:hover:not(:disabled),
+.kimi-shell .image-upload:hover:not(:disabled) {
+  background: var(--ks-hover);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+.kimi-shell .celano-select-pill:focus-within { border-color: var(--ks-focus); box-shadow: none; background: var(--ks-hover); }
+.kimi-shell .celano-optimize-button { margin-left: auto; }
+.kimi-shell .image-options label { font-size: 13px; gap: 8px; }
+
+/* Select 触发器 / 下拉菜单（双主题） */
+.kimi-shell .celano-select-trigger {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  gap: 6px;
+}
+.kimi-shell .celano-select-trigger:hover:not(:disabled) { background: var(--ks-hover); border-color: var(--border-default); }
+.kimi-shell .celano-select.bare .celano-select-trigger { height: auto; padding: 0; border: 0; background: transparent; }
+.kimi-shell .celano-select-menu {
+  border-radius: 14px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-raised);
+  box-shadow: 0 18px 44px -14px rgba(0, 0, 0, .5);
+  padding: 5px;
+  gap: 2px;
+}
+.kimi-shell .celano-select-option {
+  min-height: 34px;
+  border-radius: 9px;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.kimi-shell .celano-select-option:hover { background: var(--ks-hover); color: var(--text-primary); }
+.kimi-shell .celano-select-option.active { color: var(--accent); background: var(--accent-soft); }
+
+/* ---- 4. 主 CTA（生成按钮）：kimi 胶囊 ---- */
+.kimi-shell .celano-generate-button,
+.kimi-shell .image-generate {
+  height: 36px;
+  padding: 0 20px;
+  border-radius: 18px;
+  background: var(--fill-primary);
+  color: var(--on-fill-primary);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12);
+}
+.kimi-shell .celano-generate-button:hover:not(:disabled),
+.kimi-shell .image-generate:hover:not(:disabled) { background: var(--fill-primary-hover); }
+.kimi-shell .celano-generate-button:active:not(:disabled) { background: var(--fill-primary-hover); }
+.kimi-shell .celano-generate-button:disabled,
+.kimi-shell .image-generate:disabled { opacity: .4; box-shadow: none; }
+.kimi-shell .image-cost { font-size: 12px; color: var(--text-tertiary); }
+
+/* 成本行 / 提示行 / 添加参考资料 */
+.kimi-shell .celano-cost-line { border-radius: 12px; font-size: 12.5px; }
+.kimi-shell .celano-ppt-tip,
+.kimi-shell .image-hint { font-size: 12px; color: var(--text-tertiary); }
+.kimi-shell .celano-add-reference:hover { color: var(--text-primary); }
+.kimi-shell .image-library-entry {
+  border-radius: 18px;
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+.kimi-shell .image-library-entry:hover { background: var(--ks-hover); }
+.kimi-shell .image-confirm-overlay section {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+  box-shadow: 0 28px 72px -28px rgba(0, 0, 0, .6);
+}
+.kimi-shell .image-confirm-overlay button { height: 36px; border-radius: 18px; border-color: var(--border-default); color: var(--text-primary); }
+.kimi-shell .image-confirm-overlay button:hover { background: var(--ks-hover); }
+.kimi-shell .image-confirm-overlay .image-confirm-primary { border-color: transparent; }
+.kimi-shell .image-confirm-overlay .image-confirm-primary:hover { background: var(--fill-primary-hover); }
+
+/* ---- 5. 首页 CTA 胶囊化 ---- */
+.kimi-shell .celano-main-cta,
+.kimi-shell .celano-secondary-cta {
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 21px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.kimi-shell .celano-main-cta { background: var(--fill-primary); color: var(--on-fill-primary); border: 0; }
+.kimi-shell .celano-main-cta:hover { background: var(--fill-primary-hover); }
+.kimi-shell .celano-secondary-cta {
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+}
+.kimi-shell .celano-secondary-cta:hover { background: var(--ks-hover); color: var(--text-primary); }
+
+/* ---- 6. 智能画布 ---- */
+.kimi-shell .celano-canvas-entry {
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: 0 20px 56px -20px rgba(0, 0, 0, .4);
+}
+.kimi-shell .celano-canvas-entry-actions { border-top-color: var(--border-subtle); }
+.kimi-shell .celano-canvas-entry-actions h2 { font-size: 15px; font-weight: 600; }
+.kimi-shell .celano-canvas-entry-actions p { font-size: 12.5px; }
+.kimi-shell .canvas-entry-buttons button { height: 38px; padding: 0 18px; border-radius: 19px; font-size: 13px; }
+.kimi-shell .canvas-entry-primary { background: var(--fill-primary); color: var(--on-fill-primary); border: 0; }
+.kimi-shell .canvas-entry-primary:hover { background: var(--fill-primary-hover); }
+.kimi-shell .canvas-entry-secondary { background: transparent; border: 1px solid var(--border-default); color: var(--text-primary); }
+.kimi-shell .canvas-entry-secondary:hover { background: var(--ks-hover); }
+.kimi-shell .celano-canvas-entry-note { color: var(--text-tertiary); }
+
+/* ---- 7. 模版库 ---- */
+.kimi-shell .template-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--bg-surface);
+  transition: border-color .15s ease, box-shadow .2s ease, transform .2s ease;
+}
+.kimi-shell .template-card:hover {
+  border-color: var(--border-default);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, .2);
+  transform: translateY(-2px);
+}
+.kimi-shell .template-intro { font-size: 13.5px; line-height: 1.8; }
+.kimi-shell .template-card-info h2 { font-size: 14.5px; }
+.kimi-shell .template-card-info button,
+.kimi-shell .template-use {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 0;
+  background: var(--fill-primary);
+  color: var(--on-fill-primary);
+  font-size: 12px;
+  font-weight: 550;
+}
+.kimi-shell .template-card-info button:hover,
+.kimi-shell .template-use:hover { background: var(--fill-primary-hover); }
+
+/* ---- 8. 技术支持 ---- */
+.kimi-shell .support-search {
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  border-radius: 14px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.kimi-shell .support-search:focus-within { border-color: var(--ks-focus); box-shadow: none; }
+.kimi-shell .support-search input { font-size: 14px; }
+.kimi-shell .support-search input::placeholder { color: var(--text-tertiary); }
+.kimi-shell .support-topic { border: 1px solid var(--border-subtle); background: var(--bg-surface); border-radius: 16px; }
+.kimi-shell .support-topic > header { border-bottom-color: var(--border-subtle); }
+.kimi-shell .support-feature-link {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.kimi-shell .support-feature-link:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.kimi-shell .support-answer { color: var(--text-secondary); }
+.kimi-shell .support-answer li::marker { color: var(--text-tertiary); }
+.kimi-shell .support-sections button { border-radius: 10px; color: var(--text-secondary); }
+.kimi-shell .support-sections button:hover { background: var(--ks-hover); color: var(--text-primary); }
+.kimi-shell .support-sections button[aria-current] { border-color: var(--border-default); background: var(--ks-hover); color: var(--text-primary); }
+.kimi-shell .support-empty { border-color: var(--border-default); }
+.kimi-shell .support-empty h2 { color: var(--text-primary); }
+.kimi-shell .support-empty button { border-radius: 16px; border-color: var(--border-default); color: var(--text-primary); }
+.kimi-shell .support-empty button:hover { background: var(--ks-hover); }
+
+/* ---- 9. 个人中心（pc-*） ---- */
+.kimi-shell .pc-button {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12.5px !important;
+}
+.kimi-shell .pc-button:hover:not(:disabled) { background: var(--ks-hover); border-color: var(--border-control); }
+.kimi-shell .pc-button.pc-primary { background: var(--fill-primary); color: var(--on-fill-primary); border-color: transparent; }
+.kimi-shell .pc-button.pc-primary:hover:not(:disabled) { background: var(--fill-primary-hover); }
+.kimi-shell .pc-button.pc-icon-button { width: 34px; padding: 0; border-radius: 10px; }
+.kimi-shell .pc-search { border-radius: 12px; border-color: var(--border-default); background: var(--bg-surface); }
+.kimi-shell .pc-search:focus-within { border-color: var(--ks-focus); box-shadow: none; }
+.kimi-shell .pc-search input { color: var(--text-primary); }
+.kimi-shell .pc-root .pc-input {
+  border-radius: 12px;
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  height: 40px;
+}
+.kimi-shell .pc-root .pc-input:focus { border-color: var(--ks-focus); box-shadow: none; outline: none; }
+.kimi-shell .pc-empty-icon { width: 56px; height: 56px; border-radius: 16px; border-color: var(--border-default); background: var(--bg-subtle); }
+.kimi-shell .pc-empty .pc-button { margin: 0 3px; }
+.kimi-shell .pc-nav button:hover { color: var(--text-primary); }
+.kimi-shell .pc-nav button[aria-current="page"] { border-color: transparent; }
+
+/* ---- 10. 侧边栏「个人中心」条目（外观下方，登录后显示） ---- */
+.kimi-shell .kimi-account-entry { margin-top: 3px; }
+
+/* ---- 11. 焦点修正：去掉输入类蓝色描边，统一中性灰 ---- */
+.kimi-shell .celano-auth-input:focus { border-color: var(--ks-focus); box-shadow: none; }
+.kimi-shell input:focus,
+.kimi-shell textarea:focus,
+.kimi-shell select:focus { outline: none; }
+.kimi-shell .celano-compose-card:focus-within,
+.kimi-shell .image-card:focus-within { border-color: var(--border-default); }
+.kimi-shell .image-library-entry:focus-visible { outline-color: var(--ks-focus); }
+
+/* ---- 12. 特异性加固：压过懒加载页面后注入的同等权重规则 ---- */
+.kimi-shell.kimi-app .celano-feature-main .celano-compose-card > textarea,
+.kimi-shell.kimi-app .celano-ppt-main .celano-compose-card > textarea {
+  font-size: 15px;
+  line-height: 1.75;
+  padding: 20px 20px 8px;
+  height: 150px;
+  min-height: 150px;
+}
+.kimi-shell.kimi-app .celano-generate-button,
+.kimi-shell.kimi-app .image-generate { height: 36px; min-height: 36px; padding: 0 20px; }
+.kimi-shell.kimi-app .celano-optimize-button { min-height: 34px; }
+.kimi-shell.kimi-app .celano-compose-toolbar,
+.kimi-shell.kimi-app .celano-composer-toolbar,
+.kimi-shell.kimi-app .image-options { min-height: 0; }
+
+/* ---- 13. 创作页标题区：收紧与输入框的距离 ---- */
+.kimi-shell .celano-feature-main .celano-creation-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 20px;
+  text-align: center;
+}
+.kimi-shell .celano-feature-main .celano-creation-heading h1 {
+  font-size: clamp(28px, 3.6vw, 40px);
+  letter-spacing: -.02em;
+  line-height: 1.25;
+}
+.kimi-shell .celano-feature-main .celano-creation-description {
+  font-size: 13.5px;
+  line-height: 1.75;
+  max-width: 640px;
+}
+
+/* ================= 顶部导航（替代侧边栏） ================= */
+.kimi-shell .kimi-topnav { padding: 0 20px; }
+.kimi-shell .kimi-topnav-brand {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 8px;
+  margin-right: 12px;
+  border-radius: 10px;
+  flex: none;
+}
+.kimi-shell .kimi-topnav-brand:hover { background: var(--k-hover); }
+.kimi-shell .kimi-topnav-brand .kimi-brand-wordmark { height: 22px; display: block; }
+.kimi-shell .kimi-topnav-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.kimi-shell .kimi-topnav-nav::-webkit-scrollbar { display: none; }
+.kimi-shell .kimi-topnav-nav .kimi-nav-item {
+  width: auto;
+  flex: none;
+  padding: 0 12px;
+  height: 36px;
+  gap: 6px;
+  font-size: 13.5px;
+}
+@media (max-width: 860px) {
+  .kimi-shell .kimi-topnav { padding: 0 12px; gap: 6px; }
+  /* 字标高 22px 时宽度达 211px，会把导航挤成 0 宽，小屏按比例缩小 */
+  .kimi-shell .kimi-topnav-brand { margin-right: 4px; padding: 0 4px; }
+  .kimi-shell .kimi-topnav-brand .kimi-brand-wordmark { height: 16px; }
+  .kimi-shell .kimi-topnav-nav { margin: 0 4px; flex: 1 1 auto; }
+  .kimi-shell .kimi-topnav-nav .kimi-nav-item { padding: 0 10px; }
+  /* 右侧按钮不允许被压缩换行，否则文字会竖排 */
+  .kimi-shell .kimi-topnav > .kimi-btn-quiet,
+  .kimi-shell .kimi-topnav > .kimi-btn-outline { flex: none; white-space: nowrap; }
+}
+@media (max-width: 640px) {
+  /* 小屏：导航收成图标条、会员按钮只留图标，把宽度让给导航与账号区 */
+  .kimi-shell .kimi-topnav-nav .kimi-nav-item > span { display: none; }
+  .kimi-shell .kimi-topnav-nav .kimi-nav-item { padding: 0 8px; }
+  .kimi-shell .kimi-topnav > .kimi-btn-quiet > span { display: none; }
+}
+
+/* ================= 顶部账号模块（头像 + 用户名 + 剩余点数） =================
+   取代原先单一的「个人中心」文字按钮：三者合成一个胶囊，点击进入个人中心。
+   在断点上依次收起点数、用户名，只保留头像，保证窄屏不挤压导航。 */
+.kimi-shell .kimi-account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px 0 4px;
+  flex: none;
+  white-space: nowrap;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: background-color .15s, border-color .15s;
+}
+.kimi-shell .kimi-account-chip:hover { background: var(--bg-raised); border-color: var(--border-default); }
+.kimi-shell .kimi-account-chip[aria-current="page"] { background: var(--bg-raised); border-color: var(--border-default); }
+.kimi-shell .kimi-account-avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-raised);
+}
+.kimi-shell .kimi-account-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 550;
+}
+.kimi-shell .kimi-account-credits {
+  padding-left: 9px;
+  border-left: 1px solid var(--border-subtle);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+@media (max-width: 860px) {
+  .kimi-shell .kimi-account-credits { display: none; }
+}
+@media (max-width: 640px) {
+  .kimi-shell .kimi-account-name { display: none; }
+  .kimi-shell .kimi-account-chip { padding: 0 4px; gap: 0; }
+}
+
+/* ================= 主标题光影扫过（光从第一个字扫到最后一个字，循环） ================= */
+.kimi-shell .celano-creation-heading h1,
+.kimi-shell .celano-hero h1 {
+  background-image: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, .84) 0%,
+    rgba(255, 255, 255, .84) 30%,
+    #ffffff 42%,
+    #cfe2ff 50%,
+    #ffffff 58%,
+    rgba(255, 255, 255, .84) 70%,
+    rgba(255, 255, 255, .84) 100%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: celano-title-shine 4.5s ease-in-out infinite;
+}
+.kimi-shell .celano-hero h1 em { -webkit-text-fill-color: var(--accent); }
+@keyframes celano-title-shine {
+  0% { background-position: 100% 0; }
+  30% { background-position: 0% 0; }
+  100% { background-position: 0% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kimi-shell .celano-creation-heading h1,
+  .kimi-shell .celano-hero h1 { animation: none; }
+}
+
+/* ================= 会员页 / 个人中心 · 壳内适配 =================
+   这两页原为独立整页设计（自带顶栏 / 侧边栏、100vh）。接入外壳后：
+   1) 隐藏与外壳重复的导航；
+   2) 放开整页高度，交给 .kimi-shell-stage 滚动；
+   3) 版式与令牌对齐首页（顶部留白 104px、细边框、16px 圆角）。 */
+
+.kimi-shell .membership-page,
+.kimi-shell .pc-root {
+  min-height: 0 !important;
+  height: auto;
+  background: transparent;
+}
+
+/* 1. 隐藏两页自带的重复导航（外壳已提供） */
+.kimi-shell .membership-topbar,
+.kimi-shell .pc-topbar { display: none !important; }
+
+/* 2. 会员页内容顶部留白对齐首页 hero 标题高度；
+   个人中心右侧留白取 28px，与左侧侧边栏「个人中心」标签顶边齐平。 */
+.kimi-shell .membership-content { padding-top: 104px; }
+.kimi-shell .pc-main { padding-top: 28px; }
+
+/* 3. 会员页版式收敛 */
+.kimi-shell .membership-hero { margin-bottom: 40px; }
+.kimi-shell .membership-hero h1 {
+  font-size: clamp(30px, 3.4vw, 44px);
+  line-height: 1.16;
+  letter-spacing: -.02em;
+  margin: 0 0 14px;
+  text-wrap: balance;
+}
+.kimi-shell .membership-plan {
+  border-radius: 16px;
+  background: var(--bg-surface);
+  border-color: var(--tier-line);
+  min-height: 0;
+  padding: 20px;
+}
+.kimi-shell .membership-plan:hover { transform: none; border-color: var(--tier); box-shadow: 0 0 0 1px var(--tier); }
+.kimi-shell .membership-plan.selected {
+  transform: none;
+  border-color: var(--tier);
+  box-shadow: 0 0 0 1px var(--tier);
+  background: var(--bg-surface);
+}
+.kimi-shell .membership-plan-mark {
+  border-radius: 10px;
+  margin-bottom: 16px;
+  background: var(--tier-soft);
+  border-color: var(--tier);
+  color: var(--tier);
+}
+.kimi-shell .membership-points { font-size: 32px; letter-spacing: -.03em; }
+.kimi-shell .membership-current {
+  margin-bottom: 24px;
+  border-radius: 14px;
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+.kimi-shell .membership-mode-tabs,
+.kimi-shell .membership-period-picker { background: var(--bg-surface); border-color: var(--border-subtle); }
+.kimi-shell .membership-period-hint span { background: var(--bg-surface); border-color: var(--border-subtle); }
+.kimi-shell .membership-action {
+  border-radius: 14px;
+  border-color: var(--border-default);
+  background: var(--bg-surface);
+}
+
+/* 4. 个人中心：保留侧边栏作为二级导航
+   高度固定为「视口高 − 外壳导航高」，配合 .pc-sidebar-bottom 的
+   margin-top:auto，侧边栏始终铺满右侧内容区高度，不会短一截。 */
+.kimi-shell .pc-layout { min-height: 0; }
+.kimi-shell .pc-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: calc(100dvh - 58px);
+  overflow-y: auto;
+  border-right-color: var(--border-subtle);
+}
+.kimi-shell .pc-credit-mini { background: var(--bg-surface); border-color: var(--border-subtle); }
+@media (max-width: 860px) {
+  .kimi-shell .pc-sidebar { position: static; height: auto; max-height: none; overflow: visible; }
+}
+
+/* 5. 个人中心面板：与外壳卡片同语言 */
+.kimi-shell .pc-panel {
+  border-radius: 16px;
+  border-color: var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+@media (max-width: 640px) {
+  .kimi-shell .membership-content { padding-top: 72px; }
+}
+

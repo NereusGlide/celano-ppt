@@ -15,10 +15,17 @@ export const DEFAULT_ADMIN_USERNAME = 'admin';
  * 服务端会在生产模式下检测并告警，见 server.ts 的 assertNotDefaultAdminPassword。
  */
 export const DEFAULT_ADMIN_PASSWORD = 'admin123';
+const MIN_INITIAL_ADMIN_PASSWORD_LENGTH = 12;
 
-/** 初始口令解析：环境变量优先，弱口令或空值回落到默认值（会触发启动告警）。 */
+/** 初始口令解析：开发环境允许演示默认值；生产环境缺失或过弱时直接拒绝创建管理员。 */
 export function resolveInitialAdminPassword(): string {
   const configured = process.env.ADMIN_INITIAL_PASSWORD?.trim();
+  if (process.env.NODE_ENV === 'production') {
+    if (!configured || configured.length < MIN_INITIAL_ADMIN_PASSWORD_LENGTH || configured === DEFAULT_ADMIN_PASSWORD) {
+      throw new Error('生产环境必须通过 ADMIN_INITIAL_PASSWORD 注入至少 12 位且非公开默认值的初始管理员口令');
+    }
+    return configured;
+  }
   return configured && configured.length >= 8 ? configured : DEFAULT_ADMIN_PASSWORD;
 }
 
@@ -31,13 +38,21 @@ const TOKEN_SECRET = resolveRuntimeSecret(
 );
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 小时
 
-export function signAdminToken(adminId: string): string {
-  const payload = Buffer.from(JSON.stringify({ id: adminId, exp: Date.now() + TOKEN_TTL_MS })).toString('base64url');
+type AdminCredentialLike = { salt: string; hash: string };
+
+export function credentialFingerprint(credential?: AdminCredentialLike | null): string {
+  if (!credential?.salt || !credential.hash) return '';
+  return crypto.createHash('sha256').update(credential.salt + ':' + credential.hash).digest('hex');
+}
+
+export function signAdminToken(adminId: string, credential?: AdminCredentialLike | null): string {
+  const tag = credentialFingerprint(credential);
+  const payload = Buffer.from(JSON.stringify({ id: adminId, tag, exp: Date.now() + TOKEN_TTL_MS })).toString('base64url');
   const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
   return payload + '.' + sig;
 }
 
-export function verifyAdminToken(token?: string | null): { id: string } | null {
+export function verifyAdminToken(token?: string | null): { id: string; credentialTag: string } | null {
   if (!token || !token.includes('.')) return null;
   const [payload, sig] = token.split('.');
   const expected = crypto.createHmac('sha256', TOKEN_SECRET).update(payload).digest('base64url');
@@ -45,8 +60,8 @@ export function verifyAdminToken(token?: string | null): { id: string } | null {
   try {
     if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (!data.id || !data.exp || data.exp < Date.now()) return null;
-    return { id: data.id };
+    if (!data.id || typeof data.tag !== 'string' || !data.tag || !data.exp || data.exp < Date.now()) return null;
+    return { id: data.id, credentialTag: data.tag };
   } catch {
     return null;
   }

@@ -116,15 +116,22 @@ export interface User {
     /** 最近一次自动发放月点数的时间（每月到账的周期起点） */
     lastGrantAt?: number;
   };
+  /** 免费版每日额度（每日 3 张 2K 文生图，跨天自动重置） */
+  freeDaily?: {
+    /** 当日日期（YYYY-MM-DD），与服务端本地时区对齐 */
+    date: string;
+    /** 当日已消耗的免费 2K 张数 */
+    used: number;
+  };
 }
 
 /** 会员套餐目录项：管理端可配置，前端会员中心据此渲染套餐卡片。 */
 export interface MembershipPlanConfig {
   id: string;
   name: string;
-  /** 首月展示价（如 ¥33），仅作产品目录展示 */
+  /** 月价展示（如 ¥29） */
   price: string;
-  /** 续费价（元），用于计算年/季/单买价格 */
+  /** 月价（元），用于计算续费/到账与折扣展示 */
   renewalPrice: number;
   /** 每月发放点数 */
   points: number;
@@ -133,6 +140,10 @@ export interface MembershipPlanConfig {
   recommended?: boolean;
   benefits: string[];
   enabled: boolean;
+  /** 2K 实扣点数（会员画质折扣，如 9 折 = 9 点） */
+  discount2k: number;
+  /** 4K 实扣点数（会员画质折扣，如 8 折 = 16 点） */
+  discount4k: number;
 }
 
 export interface ThirdPartyApiConfig {
@@ -247,6 +258,11 @@ export interface UsageRecord {
   detail: string;
   credits: number;
   createdAt: number;
+  /**
+   * 客户端 IP（登录、注册等由 HTTP 请求直接触发的记录才有）。
+   * 早期版本只把它拼在 detail 文本尾部，服务启动时会回填到本字段。
+   */
+  ip?: string;
 }
 
 /** 内容规划模型配置（仅管理端可见与配置，前台不可见） */
@@ -260,6 +276,53 @@ export interface PlanningModelConfig {
   optimizeReasoningEffort?: string;
   /** 扫描版参考文件视觉读取用的多模态模型（如 gpt-4o）；留空则退回 OCR */
   visionModelName?: string;
+}
+
+/**
+ * 提示词优化模型配置（仅管理端可见与配置，前台不可见）。
+ *
+ * 提示词优化是比整篇规划轻得多的文本调用，往往希望走更快/更便宜的通道，
+ * 因此与内容规划模型分开配置：
+ * - enabled 且三项连接信息填齐时，所有提示词优化接口走本配置；
+ * - 否则回退内容规划模型（PlanningModelConfig），保持升级前的行为。
+ *
+ * 数值型参数用字符串保存，便于表单直接编辑与「留空表示使用上游默认」。
+ */
+export interface PromptOptimizeModelConfig {
+  /** 是否启用独立配置；关闭时回退内容规划模型 */
+  enabled: boolean;
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+  /** 思考强度：auto / low / medium / high / xhigh；留空使用上游默认 */
+  reasoningEffort: string;
+  /** 采样温度 0–2；留空使用上游默认 */
+  temperature: string;
+  /** 单次最大输出 token；留空使用上游默认 */
+  maxOutputTokens: string;
+  /** 追加到内置系统提示词之后的补充要求；留空表示只用内置提示词 */
+  systemPrompt: string;
+}
+
+/**
+ * 文本类模型调用的连接信息与可选调用参数。
+ * 「内容规划」与「提示词优化」共用这一形态，保证两侧调用参数口径一致。
+ */
+export interface TextModelCallConfig {
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+  /** 思考强度：auto / low / medium / high / xhigh */
+  reasoningEffort?: string;
+  /** 采样温度 0–2；留空使用上游默认 */
+  temperature?: number;
+  /** 单次最大输出 token；留空使用上游默认 */
+  maxOutputTokens?: number;
+}
+
+/** 提示词优化实际生效的调用配置：在通用文本配置之上追加系统提示词补充。 */
+export interface PromptOptimizeCallConfig extends TextModelCallConfig {
+  systemPrompt?: string;
 }
 
 /** AI 接口配置（后台统一维护，供前台取用） */
@@ -329,6 +392,14 @@ export interface PptDeckSlide {
   id: string;
   plan: PptSlidePlan;
   status: PptSlideStatus;
+  /** 本页每次生成实际扣费快照，重试始终沿用该值。 */
+  billingCost?: number;
+  /** 本页在任务预扣/失败重试中的累计实际扣费快照。 */
+  chargedCredits?: number;
+  /** 本页累计退款快照；只增不减，重试扣费不会抹掉历史退款。 */
+  refundedCredits?: number;
+  /** 已成功交付的累计扣费，后续修改失败不能退回已交付的生成费用。 */
+  deliveredCredits?: number;
   /** 服务端磁盘上的图片相对路径（data/images 下） */
   storageKey?: string;
   /** 原图实际像素，2K 为接口画质档位，不将返回图缩放成请求尺寸。 */

@@ -9,7 +9,7 @@ test('native dimension mismatch stops the PPT batch and refunds all unfinished p
   let images = 0;
   let textRequests = 0;
   let refund = 0;
-  let credits = 100;
+  let credits = 200;
   t.mock.method(db, 'getPptDecks', () => []);
   t.mock.method(db, 'getPptDeck', () => deck);
   t.mock.method(db, 'createPptDeck', (value: PptDeck) => { deck = value; return value; });
@@ -43,7 +43,7 @@ test('native dimension mismatch stops the PPT batch and refunds all unfinished p
   });
   const created = startDeck('mock-user', { prompt: '测试主题', pageCount: 20, concurrency: 6, resolution: '2K', referencesText: '参考资料正文'.repeat(3500) });
   assert.ok('id' in created);
-  assert.equal(deckView(created).chargedCredits, 60);
+  assert.equal(deckView(created).chargedCredits, 200);
   assert.equal(deckView(created).refundedCredits, 0);
   for (let i = 0; i < 200 && deck?.running; i++) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(deck?.running, false);
@@ -55,9 +55,9 @@ test('native dimension mismatch stops the PPT batch and refunds all unfinished p
   assert.ok(images <= 6, 'remaining pages must not be sent after a size mismatch');
   assert.equal(deck?.slides.filter(slide => slide.status === 'failed').length, 20);
   assert.match(deck?.error || '', /原生尺寸要求/);
-  assert.equal(refund, 60);
-  assert.equal(credits, 100);
-  assert.equal(deckView(deck!).refundedCredits, 60);
+  assert.equal(refund, 200);
+  assert.equal(credits, 200);
+  assert.equal(deckView(deck!).refundedCredits, 200);
 });
 
 test('failed reference analysis pauses before any image requests and refunds the task', async t => {
@@ -89,10 +89,10 @@ test('failed reference analysis pauses before any image requests and refunds the
   assert.equal(deck?.referenceAnalysisStatus, 'failed');
   assert.match(deck?.error || '', /AI 内容规划失败/);
   assert.equal(images, 0);
-  assert.equal(deck?.refundedCredits, 9);
+  assert.equal(deck?.refundedCredits, 30);
   assert.equal(credits, 30);
-  assert.equal(deckView(deck!).chargedCredits, 9);
-  assert.equal(deckView(deck!).refundedCredits, 9);
+  assert.equal(deckView(deck!).chargedCredits, 30);
+  assert.equal(deckView(deck!).refundedCredits, 30);
 });
 
 test('deleting pages and decks respects ownership, synchronizes page counts and refunds only unfinished prepaid pages', t => {
@@ -100,11 +100,12 @@ test('deleting pages and decks respects ownership, synchronizes page counts and 
     id: 'delete-test', userId: 'delete-test-user', title: '测试', prompt: '主题', resolution: '2K', pageCount: 3,
     running: false, finished: false, stage: 'paused', concurrency: 6, referenceImages: [], referencesText: '', startedAt: 1, updatedAt: 1,
     subtitle: '', visualDirection: '', palette: { accent: '#fff', deep: '#000', ink: '#000', muted: '#ccc' },
-    chargedCredits: 9, refundedCredits: 3, refundedSlideIds: ['failed'],
+    chargedCredits: 30, refundedCredits: 10, refundedSlideIds: ['failed'],
     slides: (['done', 'idle', 'failed'] as const).map(status => ({ id: status, status, plan: { title: status, bullets: [], pageType: 'core-insight' } })),
   } as PptDeck;
   let refunded = 0;
   t.mock.method(db, 'getPptDeck', () => deck);
+  t.mock.method(db, 'getUserById', () => undefined);
   t.mock.method(db, 'updatePptDeck', (_id: string, patch: Partial<PptDeck>) => { Object.assign(deck!, patch); return deck; });
   t.mock.method(db, 'deletePptDeck', () => { deck = undefined; });
   t.mock.method(db, 'refundPptFailedSlides', (_userId: string, _deckId: string, ids: string[], amount: number) => {
@@ -123,8 +124,8 @@ test('deleting pages and decks respects ownership, synchronizes page counts and 
   const partial = deleteSlide('delete-test-user', 'delete-test', 'idle');
   assert.ok('id' in partial);
   assert.equal(partial.pageCount, 1);
-  assert.equal(refunded, 3);
+  assert.equal(refunded, 10);
   assert.deepEqual(deleteSlide('delete-test-user', 'delete-test', 'failed'), { deleted: true });
   assert.equal(deck, undefined, 'removing the last page removes its work from the library');
-  assert.equal(refunded, 3, 'already refunded pages must not be refunded twice');
+  assert.equal(refunded, 10, 'already refunded pages must not be refunded twice');
 });

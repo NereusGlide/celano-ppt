@@ -3,7 +3,6 @@ import { LayoutDashboard, Users, History, Ticket, CreditCard, Cpu, Crown, Gift, 
 import { AdminAccount } from '../types.js';
 import { adminApi, getAdminToken, setAdminToken, clearAdminToken } from './api.js';
 import { Button, TextInput, Alert, Field } from './ui.js';
-import { BrandLogo } from '../components/BrandLogo.js';
 import { Dashboard } from './pages/Dashboard.js';
 import { UsersPage } from './pages/Users.js';
 import { UsagePage } from './pages/UsageRecords.js';
@@ -45,10 +44,10 @@ const AdminLogin: React.FC<{ onSuccess: (admin: AdminAccount) => void }> = ({ on
     finally { setLoading(false); }
   };
   return (
-    <div className="ws-root" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
+    <div className="ws-root ws-admin" style={{ display: 'grid', placeItems: 'center', padding: 20 }}>
       <form onSubmit={submit} className="ws-panel" style={{ width: 420, maxWidth: '100%', padding: 30, margin: 0 }}>
         <div style={{ textAlign: 'center', marginBottom: 26 }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><BrandLogo height={36} /></div>
+          <img src="/brand/celano-wordmark-white.png" alt="CELANO" className="ws-login-wordmark" />
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>PPT 管理后台</h1>
           <p className="ws-subtitle">用户 · 使用记录 · 邀请码 · 充值码 · AI 接口</p>
         </div>
@@ -125,18 +124,24 @@ export const AdminApp: React.FC = () => {
   const refresh = useCallback(() => setVersion(v => v + 1), []);
 
   if (booting) {
-    return <div className="ws-root" style={{ display: 'grid', placeItems: 'center', color: '#8A9299', fontSize: 14 }}>正在加载管理后台…</div>;
+    return <div className="ws-root ws-admin" style={{ display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', fontSize: 14 }}>正在加载管理后台…</div>;
   }
   if (!admin) return <AdminLogin onSuccess={setAdmin} />;
 
   const current = MENUS.find(m => m.key === menu) || MENUS[0];
 
   return (
-    <div className="ws-root">
+    <div className="ws-root ws-admin">
       <header className="ws-topbar">
-        <div className="ws-brand">
-          <span className="ws-brand-mark"><BrandLogo height={26} /></span>
-          <span><strong>管理后台</strong><small>用户与 AI 接口维护</small></span>
+        <div className="ws-topbar-left">
+          <span className="ws-brand ws-brand-static">
+            <img src="/brand/celano-wordmark-white.png" alt="CELANO" className="ws-brand-wordmark" />
+          </span>
+          <span className="ws-topbar-divider" aria-hidden="true" />
+          <div className="ws-topbar-title">
+            <strong>管理后台</strong>
+            <small>用户与 AI 接口维护</small>
+          </div>
         </div>
         <div className="ws-header-tools">
           <button className="ws-button ws-ghost" onClick={refresh} title="刷新当前页数据"><RefreshCw className="ws-spin" size={14} style={{ animation: 'none' }} /> 刷新</button>
@@ -149,14 +154,14 @@ export const AdminApp: React.FC = () => {
             {userMenuOpen && (
               <div className="ws-panel" style={{ position: 'absolute', right: 0, top: 46, width: 200, zIndex: 40, margin: 0 }}
                 onMouseLeave={() => setUserMenuOpen(false)}>
-                <div style={{ padding: '10px 14px', borderBottom: '1px solid #ffffff0f', fontSize: 11, color: '#8A9299' }}>
+                <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', fontSize: 11, color: 'var(--text-secondary)' }}>
                   {admin.username} · {admin.role === 'super' ? '超级管理员' : '运营'}
                 </div>
-                <button className="ws-nav button-clear" style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 0, color: '#8A9299', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}
+                <button className="ws-nav button-clear" style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 0, color: 'var(--text-secondary)', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}
                   onClick={() => { setPwdOpen(true); setUserMenuOpen(false); }}>
                   <Lock size={13} /> 修改密码
                 </button>
-                <button style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 0, color: '#E8836F', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}
+                <button style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 0, color: 'var(--danger-text)', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}
                   onClick={logout}>
                   <LogOut size={13} /> 退出登录
                 </button>

@@ -7,17 +7,17 @@ import '../styles/workspace.css';
    ========================================================= */
 
 export const COLORS = {
-  primary: '#F4F6F7',
-  success: '#8A9299',
-  warning: '#E8836F',
-  danger: '#E8836F',
-  info: '#8A9299',
-  border: '#ffffff14',
-  borderLight: '#ffffff0f',
-  textPrimary: '#E2E5E8',
-  textRegular: '#8A9299',
-  textSecondary: '#8A9299',
-  bg: '#0B0E10'
+  primary: 'var(--text-primary)',
+  success: 'var(--text-secondary)',
+  warning: 'var(--danger-text)',
+  danger: 'var(--danger-text)',
+  info: 'var(--text-secondary)',
+  border: 'var(--border-subtle)',
+  borderLight: 'var(--border-subtle)',
+  textPrimary: 'var(--text-primary)',
+  textRegular: 'var(--text-secondary)',
+  textSecondary: 'var(--text-secondary)',
+  bg: 'var(--bg-surface)'
 };
 
 type ButtonVariant = 'primary' | 'default' | 'danger' | 'success' | 'warning' | 'text';
@@ -33,10 +33,10 @@ export const Button: React.FC<{
     warning: 'ws-warning',
     text: 'ws-ghost'
   };
-  const sizing = size === 'small' ? ' height:32px; padding:0 10px; font-size:11px;' : '';
   return (
     <button type={type} title={title} disabled={disabled || loading} onClick={onClick}
-      className={'ws-button ' + variants[variant]} style={sizing ? { height: 32, padding: '0 10px', fontSize: 11 } : undefined}>
+      className={'ws-button ' + variants[variant]}
+      style={size === 'small' ? { height: 32, padding: '0 12px', fontSize: 11 } : undefined}>
       {loading && <span className="ws-spin" style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent', display: 'inline-block' }} />}
       {children}
     </button>
@@ -46,12 +46,12 @@ export const Button: React.FC<{
 export const Card: React.FC<{ title?: React.ReactNode; extra?: React.ReactNode; children: React.ReactNode; bodyClass?: string }> = ({ title, extra, children, bodyClass }) => (
   <div className="ws-panel">
     {title && (
-      <div className="ws-panel-head" style={{ height: 48 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#E2E5E8' }}>{title}</span>
+      <div className="ws-panel-head">
+        <h2>{title}</h2>
         {extra}
       </div>
     )}
-    <div style={{ padding: 20 }} className={bodyClass || ''}>{children}</div>
+    <div className={'ws-panel-pad ' + (bodyClass || '')}>{children}</div>
   </div>
 );
 
@@ -112,8 +112,8 @@ export function Table<T>({ columns, data, rowKey, loading }: { columns: Column<T
           <tr>{columns.map((c, i) => <th key={i} style={{ width: c.width, textAlign: c.align || 'left' }}>{c.title}</th>)}</tr>
         </thead>
         <tbody>
-          {loading && <tr><td colSpan={columns.length} style={{ height: 80, textAlign: 'center', color: '#8A9299' }}>加载中…</td></tr>}
-          {!loading && data.length === 0 && <tr><td colSpan={columns.length} style={{ height: 80, textAlign: 'center', color: '#8A9299' }}>暂无数据</td></tr>}
+          {loading && <tr><td colSpan={columns.length} style={{ height: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>加载中…</td></tr>}
+          {!loading && data.length === 0 && <tr><td colSpan={columns.length} style={{ height: 80, textAlign: 'center', color: 'var(--text-secondary)' }}>暂无数据</td></tr>}
           {!loading && data.map((row, ri) => (
             <tr key={rowKey(row, ri)}>
               {columns.map((c, ci) => <td key={ci} style={{ textAlign: c.align || 'left' }}>{c.render(row, ri)}</td>)}
@@ -178,10 +178,10 @@ export const Alert: React.FC<{ type?: 'info' | 'success' | 'warning' | 'error'; 
 };
 
 export const PageHeader: React.FC<{ title: string; desc?: string; extra?: React.ReactNode }> = ({ title, desc, extra }) => (
-  <div className="ws-page-head" style={{ marginBottom: 18 }}>
+  <div className="ws-page-head" style={{ marginBottom: 16 }}>
     <div>
       <p className="ws-eyebrow">ADMIN</p>
-      <h1 style={{ fontSize: 20 }}>{title}</h1>
+      <h1>{title}</h1>
       {desc && <p>{desc}</p>}
     </div>
     {extra && <div className="ws-button-group">{extra}</div>}

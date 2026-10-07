@@ -1,4 +1,4 @@
-import type { PlanningModelConfig } from '../../src/types.js';
+import type { PlanningModelConfig, TextModelCallConfig } from '../../src/types.js';
 import { chatText, chatVision, type VisionContentPart } from './aiClient.js';
 
 import { MAX_REFERENCE_TEXT } from '../../src/shared/referenceFiles.js';
@@ -38,7 +38,7 @@ export function splitReferenceText(text: string): string[] {
 }
 
 /** Read every extracted segment before asking for a slide plan. */
-export async function analyzeReferences(config: PlanningModelConfig, topic: string, text: string, signal?: AbortSignal, onProgress?: (done: number, total: number) => void): Promise<string> {
+export async function analyzeReferences(config: TextModelCallConfig, topic: string, text: string, signal?: AbortSignal, onProgress?: (done: number, total: number) => void): Promise<string> {
   if (!text.trim()) return '';
   if (text.length > MAX_REFERENCE_TEXT) throw new Error('参考资料内容超过分析上限，请拆分上传');
   const chunks = splitReferenceText(text);

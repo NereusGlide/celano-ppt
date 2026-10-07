@@ -24,7 +24,6 @@ export function CanvasTopBar({
     onDeleteProject,
     onExportProject,
     onImportImage,
-    onOpenPlugins,
     onUndo,
     onRedo,
 }: {
@@ -43,7 +42,6 @@ export function CanvasTopBar({
     onDeleteProject: () => void;
     onExportProject: () => void;
     onImportImage: () => void;
-    onOpenPlugins: () => void;
     onUndo: () => void;
     onRedo: () => void;
 }) {
@@ -130,7 +128,7 @@ export function CanvasTopBar({
                 </div>
 
                 <div className="pointer-events-auto flex items-center gap-1.5">
-                    <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} onOpenPlugins={onOpenPlugins} />
+                    <UserStatusActions variant="canvas" onOpenShortcuts={() => setShortcutsOpen(true)} />
                 </div>
             </div>
             <Modal title={t("canvas.shortcuts")} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>

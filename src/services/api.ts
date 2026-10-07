@@ -72,3 +72,8 @@ export async function appendPptSlide(id: string, plan: { title: string; subtitle
 export async function optimizePptPrompt(prompt: string): Promise<{ prompt: string }> {
   return json<{ prompt: string }>('/ppt/optimize-prompt', { method: 'POST', body: JSON.stringify({ prompt }) });
 }
+
+/** 文生图提示词优化：与其它优化入口走同一配置通道（独立通道未启用时回退内容规划模型）。 */
+export async function optimizeImagePrompt(prompt: string): Promise<{ prompt: string }> {
+  return json<{ prompt: string }>('/ai/optimize-image-prompt', { method: 'POST', body: JSON.stringify({ prompt }) });
+}

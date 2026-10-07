@@ -1,8 +1,12 @@
 /* =========================================================================
-   账户弹窗（登录 / 注册）
-   使用设计系统语义令牌，与全站视觉保持一致。
+   账户弹窗（登录 / 注册）— celano-ai-studio JiMeng 风格移植版
+   参考项目使用 Tailwind，此处全部翻译为项目自定义 CSS（cxauth-* 前缀）。
+   所有规则都挂在 .cxauth-backdrop / .cxauth-legal-backdrop 作用域下：
+   外壳的 `.kimi-app :where(button)` 特异性为 (0,1,0)，会与单 class 规则
+   打平并按加载顺序反超，因此这里必须抬到 (0,2,0) 以上。
+   仅供本地测试使用，未提交、未部署。
    ========================================================================= */
-.celano-auth-backdrop {
+.cxauth-backdrop {
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -10,178 +14,417 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(12, 18, 32, 0.78);
-  backdrop-filter: blur(10px);
-  animation: celano-auth-fade var(--m-base) var(--ease-enter) both;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(12px);
+  animation: cxauth-fade 0.2s ease both;
 }
-@keyframes celano-auth-fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes cxauth-fade { from { opacity: 0 } to { opacity: 1 } }
 
-.celano-auth-dialog {
+.cxauth-backdrop .cxauth-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: #12151e;
+  color: #e5e5e5;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.8);
+  animation: cxauth-rise 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes cxauth-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.98) }
+  to { opacity: 1; transform: none }
+}
+.cxauth-backdrop .cxauth-dialog:focus { outline: none; }
+
+/* 顶部氛围光 */
+.cxauth-backdrop .cxauth-glow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 75%;
+  height: 112px;
+  background: rgba(99, 102, 241, 0.1);
+  filter: blur(48px);
+  pointer-events: none;
+}
+
+/* ---------- 顶栏 ---------- */
+.cxauth-backdrop .cxauth-topbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.cxauth-backdrop .cxauth-logo { display: inline-flex; align-items: center; }
+.cxauth-backdrop .cxauth-topbar-logo svg { display: block; height: 20px; width: auto; }
+.cxauth-backdrop .cxauth-logo-sub {
+  margin-top: 2px;
+  padding-left: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: #a3a3a3;
+}
+.cxauth-backdrop .cxauth-close {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #a3a3a3;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.cxauth-backdrop .cxauth-close:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+
+/* ---------- 模式切换 ---------- */
+.cxauth-backdrop .cxauth-tabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cxauth-backdrop .cxauth-tabs-left { display: flex; align-items: center; gap: 24px; }
+.cxauth-backdrop .cxauth-tab {
+  position: relative;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
+  color: #a3a3a3;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.cxauth-backdrop .cxauth-tab:hover { color: #e5e5e5; }
+.cxauth-backdrop .cxauth-tab.is-active { color: #fff; }
+.cxauth-backdrop .cxauth-tab-ind {
+  position: absolute;
+  left: 0; right: 0; bottom: -9px;
+  height: 2px;
+  border-radius: 999px;
+  background: #6366f1;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.8);
+}
+.cxauth-backdrop .cxauth-vip {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #6366f1, #06b6d4);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* ---------- 副标题 ---------- */
+.cxauth-backdrop .cxauth-subhead { padding: 12px 24px 8px; }
+.cxauth-backdrop .cxauth-sub-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+.cxauth-backdrop .cxauth-sub-desc { margin: 3px 0 0; font-size: 12px; color: #a3a3a3; }
+
+/* ---------- 表单 ---------- */
+.cxauth-backdrop .cxauth-form { display: grid; gap: 13px; padding: 4px 24px 16px; min-height: 482px; align-content: start; }
+.cxauth-backdrop .cxauth-field { display: grid; gap: 4px; }
+.cxauth-backdrop .cxauth-label { font-size: 11px; font-weight: 500; color: #a3a3a3; }
+.cxauth-backdrop .cxauth-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.cxauth-backdrop .cxauth-row { display: flex; align-items: center; gap: 8px; }
+.cxauth-backdrop .cxauth-grow { flex: 1; min-width: 0; }
+
+.cxauth-backdrop .cxauth-input-wrap { position: relative; }
+.cxauth-backdrop .cxauth-ico {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 36px;
+  display: grid;
+  place-items: center;
+  color: #a3a3a3;
+  pointer-events: none;
+}
+.cxauth-backdrop .cxauth-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cxauth-backdrop .cxauth-input::placeholder { color: #737373; }
+.cxauth-backdrop .cxauth-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 1px #6366f1;
+}
+.cxauth-backdrop .cxauth-input[aria-invalid="true"] { border-color: #f87171; }
+.cxauth-backdrop .cxauth-input:disabled { opacity: 0.55; cursor: not-allowed; }
+.cxauth-backdrop .cxauth-input.has-action { padding-right: 40px; }
+.cxauth-backdrop .cxauth-input.cxauth-mono { font-family: "Geist Mono", "JetBrains Mono", monospace; letter-spacing: 0.04em; }
+.cxauth-backdrop .cxauth-input.cxauth-captcha-input { text-transform: uppercase; letter-spacing: 0.28em; }
+.cxauth-backdrop .cxauth-input.cxauth-captcha-input::placeholder { text-transform: none; letter-spacing: normal; }
+
+.cxauth-backdrop .cxauth-eye {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #a3a3a3;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.cxauth-backdrop .cxauth-eye:hover { color: #fff; }
+
+/* ---------- 区号徽标 ---------- */
+.cxauth-backdrop .cxauth-dial {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e5e5e5;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ---------- 验证码 Canvas ---------- */
+.cxauth-backdrop .cxauth-captcha { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.cxauth-backdrop .cxauth-captcha-canvas {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.cxauth-backdrop .cxauth-captcha-canvas canvas { display: block; }
+.cxauth-backdrop .cxauth-captcha-canvas:hover,
+.cxauth-backdrop .cxauth-captcha-canvas:focus-visible { border-color: rgba(99, 102, 241, 0.5); outline: none; }
+.cxauth-backdrop .cxauth-captcha-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(1px);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.cxauth-backdrop .cxauth-captcha-canvas:hover .cxauth-captcha-veil,
+.cxauth-backdrop .cxauth-captcha-canvas:focus-visible .cxauth-captcha-veil { opacity: 1; }
+.cxauth-backdrop .cxauth-captcha-refresh {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #a3a3a3;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+}
+.cxauth-backdrop .cxauth-captcha-refresh:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+.cxauth-backdrop .cxauth-captcha-refresh:active { transform: scale(0.95); }
+
+.cxauth-spin { animation: cxauth-spin 0.8s linear infinite; }
+@keyframes cxauth-spin { to { transform: rotate(360deg) } }
+
+/* ---------- 记住我 / 忘记密码 ---------- */
+.cxauth-backdrop .cxauth-checkrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #a3a3a3;
+}
+.cxauth-backdrop .cxauth-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+.cxauth-backdrop .cxauth-check input {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 4px;
+  accent-color: #6366f1;
+  cursor: pointer;
+}
+
+.cxauth-backdrop .cxauth-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #818cf8;
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.cxauth-backdrop .cxauth-link:hover { color: #a5b4fc; text-decoration: underline; }
+.cxauth-backdrop .cxauth-link.cxauth-strong { font-weight: 600; }
+
+/* ---------- 错误提示 ---------- */
+.cxauth-backdrop .cxauth-ferr {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 11px;
+  color: #f87171;
+}
+.cxauth-backdrop .cxauth-formerr {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 24px 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.08);
+  font-size: 12px;
+  color: #f87171;
+}
+
+/* ---------- 密码强度 ---------- */
+.cxauth-backdrop .cxauth-strength-label { font-size: 10px; color: #a3a3a3; }
+.cxauth-backdrop .cxauth-strength-label b { font-weight: 600; color: #e5e5e5; }
+.cxauth-backdrop .cxauth-strength-label b.is-l1 { color: #ef4444; }
+.cxauth-backdrop .cxauth-strength-label b.is-l2 { color: #f59e0b; }
+.cxauth-backdrop .cxauth-strength-label b.is-l3 { color: #10b981; }
+.cxauth-backdrop .cxauth-strength-bar { display: flex; gap: 4px; margin-top: 5px; }
+.cxauth-backdrop .cxauth-seg { height: 4px; flex: 1; border-radius: 999px; background: rgba(255, 255, 255, 0.1); transition: background-color 0.2s ease; }
+.cxauth-backdrop .cxauth-seg.is-l1 { background: #ef4444; }
+.cxauth-backdrop .cxauth-seg.is-l2 { background: #f59e0b; }
+.cxauth-backdrop .cxauth-seg.is-l3 { background: #10b981; }
+
+/* ---------- 提交按钮 ---------- */
+.cxauth-backdrop .cxauth-submit {
+  height: 42px;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(to right, #4f46e5, #6366f1, #06b6d4);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 8px 24px -6px rgba(79, 70, 229, 0.35);
+  transition: filter 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+.cxauth-backdrop .cxauth-submit:hover { filter: brightness(1.12); }
+.cxauth-backdrop .cxauth-submit:active { transform: scale(0.99); }
+.cxauth-backdrop .cxauth-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- 底部切换 ---------- */
+.cxauth-backdrop .cxauth-switch {
+  padding: 2px 24px 20px;
+  text-align: center;
+  font-size: 12px;
+  color: #a3a3a3;
+}
+.cxauth-backdrop .cxauth-switch p { margin: 0; }
+
+/* ---------- 法律条款弹窗 ---------- */
+.cxauth-legal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  animation: cxauth-fade 0.18s ease both;
+}
+.cxauth-legal-backdrop .cxauth-legal {
   width: 100%;
   max-width: 420px;
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: 22px;
-  background: var(--bg-surface);
-  box-shadow: 0 32px 80px -20px rgba(0, 0, 0, 0.9);
-  animation: celano-auth-rise var(--m-slow) var(--ease-enter) both;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: #141824;
+  box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.9);
+  animation: cxauth-rise 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-@keyframes celano-auth-rise {
-  from { opacity: 0; transform: translateY(10px) scale(.985) }
-  to { opacity: 1; transform: none }
-}
-.celano-auth-dialog:focus { outline: none; }
-
-/* ---------- 头部 ---------- */
-.celano-auth-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 24px 24px 20px;
-}
-.celano-auth-ident { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.celano-auth-mark {
-  width: 36px; height: 36px; flex: none;
-  display: grid; place-items: center;
-  border: 1px solid var(--border-subtle);
-  border-radius: 50%;
-  background: rgba(150, 180, 220, 0.06);
-  color: var(--text-primary);
-}
-.celano-auth-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--text-primary); }
-.celano-auth-sub { margin: 2px 0 0; font-size: 12px; color: var(--text-tertiary); }
-.celano-auth-close {
-  width: 32px; height: 32px; flex: none;
-  display: grid; place-items: center;
-  border: 1px solid transparent;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: background-color var(--m-fast) var(--ease-standard), color var(--m-fast) var(--ease-standard);
-}
-.celano-auth-close:hover { background: rgba(150, 180, 220, 0.08); color: var(--text-primary); }
-
-/* ---------- 模式切换（tablist） ---------- */
-.celano-auth-tabs {
-  display: flex;
-  gap: 2px;
-  margin: 0 24px 20px;
-  padding: 4px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  background: var(--bg-subtle);
-}
-.celano-auth-tab {
-  flex: 1;
-  height: 34px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--m-fast) var(--ease-standard), color var(--m-fast) var(--ease-standard);
-}
-.celano-auth-tab:hover { color: var(--text-primary); }
-.celano-auth-tab[aria-selected="true"] {
-  background: var(--fill-primary);
-  color: var(--on-fill-primary);
-  font-weight: 600;
-}
-
-/* ---------- 表单 ---------- */
-.celano-auth-form { display: grid; gap: 16px; padding: 0 24px 24px; }
-.celano-auth-field { display: grid; gap: 6px; }
-.celano-auth-field > label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-.celano-auth-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-.celano-auth-input {
-  width: 100%;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--border-control);
-  border-radius: 12px;
-  background: var(--bg-canvas);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
-  outline: none;
-  transition: border-color var(--m-fast) var(--ease-standard), box-shadow var(--m-fast) var(--ease-standard);
-}
-.celano-auth-input::placeholder { color: var(--text-tertiary); }
-.celano-auth-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.celano-auth-input[aria-invalid="true"] { border-color: var(--danger-text); }
-.celano-auth-input:disabled { opacity: 0.5; cursor: not-allowed; }
-.celano-auth-input-wrap { position: relative; }
-.celano-auth-input-wrap .celano-auth-input { padding-right: 44px; }
-.celano-auth-reveal {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 32px; height: 32px;
-  display: grid; place-items: center;
-  border: 0; border-radius: 8px;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: color var(--m-fast) var(--ease-standard);
-}
-.celano-auth-reveal:hover { color: var(--text-primary); }
-
-.celano-auth-check {
+.cxauth-legal-backdrop .cxauth-legal-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  padding: 14px 16px 10px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.cxauth-legal-backdrop .cxauth-legal-head h3 { margin: 0; font-size: 13px; font-weight: 600; color: #fff; }
+.cxauth-legal-backdrop .cxauth-legal-body {
+  padding: 14px 18px;
   font-size: 12px;
-  color: var(--text-secondary);
-  cursor: pointer;
+  line-height: 1.8;
+  color: #d4d4d4;
+  white-space: pre-line;
 }
-.celano-auth-check input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.cxauth-legal-backdrop .cxauth-legal-ok { margin: 0 18px 16px; width: calc(100% - 36px); }
+.cxauth-legal-backdrop .cxauth-close { color: #a3a3a3; }
+.cxauth-legal-backdrop .cxauth-close:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
 
-/* ---------- 反馈 ---------- */
-.celano-auth-error {
-  margin: 0 24px 16px;
-  padding: 10px 14px;
-  border: 1px dashed var(--danger-line);
-  border-radius: 12px;
-  background: var(--danger-soft);
-  color: var(--danger-text);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.celano-auth-submit {
-  height: 44px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--fill-primary);
-  color: var(--on-fill-primary);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color var(--m-fast) var(--ease-standard);
-}
-.celano-auth-submit:hover { background: var(--fill-primary-hover); }
-.celano-auth-submit:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.celano-auth-hint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-tertiary);
-}
-
-@media(max-width:640px) {
-  .celano-auth-field-row { grid-template-columns: 1fr; }
-  .celano-auth-head { padding: 20px 18px 16px; }
-  .celano-auth-tabs { margin: 0 18px 16px; }
-  .celano-auth-form { padding: 0 18px 20px; }
-  .celano-auth-error { margin: 0 18px 14px; }
+/* ---------- 移动端 ---------- */
+@media (max-width: 640px) {
+  .cxauth-backdrop .cxauth-topbar { padding: 14px 18px 10px; }
+  .cxauth-backdrop .cxauth-topbar-logo svg { height: 17px; }
+  .cxauth-backdrop .cxauth-tabs { padding: 12px 18px 0; }
+  .cxauth-backdrop .cxauth-tabs-left { gap: 18px; }
+  .cxauth-backdrop .cxauth-subhead { padding: 10px 18px 6px; }
+  .cxauth-backdrop .cxauth-form { padding: 4px 18px 14px; }
+  .cxauth-backdrop .cxauth-formerr { margin: 0 18px 10px; }
+  .cxauth-backdrop .cxauth-switch { padding: 2px 18px 16px; }
+  .cxauth-backdrop .cxauth-row { flex-wrap: wrap; }
 }

@@ -44,17 +44,75 @@ const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
 type PersistedCanvasState = Pick<CanvasStore, "projects" | "deletedProjects">;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
+let canvasStorageReadFailed = false;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isOptionalString(value: unknown) {
+    return value === undefined || typeof value === "string";
+}
+
+function isNodeResult(value: unknown) {
+    return isRecord(value) && typeof value.id === "string" && typeof value.status === "string" && typeof value.content === "string" && isOptionalString(value.storageKey);
+}
+
+function isCanvasNode(value: unknown) {
+    if (!isRecord(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string" || !isRecord(value.position) || typeof value.position.x !== "number" || typeof value.position.y !== "number" || typeof value.width !== "number" || typeof value.height !== "number") return false;
+    if (value.metadata === undefined) return true;
+    const metadata = value.metadata;
+    if (!isRecord(metadata)) return false;
+    return isOptionalString(metadata.content) && isOptionalString(metadata.storageKey)
+        && (metadata.references === undefined || Array.isArray(metadata.references) && metadata.references.every((url) => typeof url === "string"))
+        && (metadata.images === undefined || Array.isArray(metadata.images) && metadata.images.every(isNodeResult))
+        && (metadata.texts === undefined || Array.isArray(metadata.texts) && metadata.texts.every(isNodeResult));
+}
+
+function isCanvasConnection(value: unknown) {
+    return isRecord(value) && typeof value.id === "string" && typeof value.fromNodeId === "string" && typeof value.toNodeId === "string";
+}
+
+function isCanvasAssistantMessage(value: unknown) {
+    if (!isRecord(value) || typeof value.id !== "string" || typeof value.role !== "string" || typeof value.text !== "string") return false;
+    return value.references === undefined || Array.isArray(value.references) && value.references.every((reference) => isRecord(reference) && typeof reference.id === "string" && typeof reference.type === "string" && typeof reference.title === "string" && isOptionalString(reference.dataUrl) && isOptionalString(reference.storageKey) && isOptionalString(reference.text));
+}
+
+function isCanvasAssistantSession(value: unknown) {
+    return isRecord(value) && typeof value.id === "string" && typeof value.title === "string" && typeof value.createdAt === "string" && typeof value.updatedAt === "string" && Array.isArray(value.messages) && value.messages.every(isCanvasAssistantMessage);
+}
+
+function isCanvasProject(value: unknown): value is CanvasProject {
+    return isRecord(value) && typeof value.id === "string" && typeof value.title === "string" && typeof value.createdAt === "string" && typeof value.updatedAt === "string" && Array.isArray(value.nodes) && value.nodes.every(isCanvasNode) && Array.isArray(value.connections) && value.connections.every(isCanvasConnection) && Array.isArray(value.chatSessions) && value.chatSessions.every(isCanvasAssistantSession) && (value.activeChatId === null || typeof value.activeChatId === "string") && (value.backgroundMode === "dots" || value.backgroundMode === "lines" || value.backgroundMode === "blank") && typeof value.showImageInfo === "boolean" && isRecord(value.viewport) && typeof value.viewport.x === "number" && typeof value.viewport.y === "number" && typeof value.viewport.k === "number";
+}
+
+function isDeletedProject(value: unknown): value is CanvasDeletedProject {
+    return isRecord(value) && typeof value.id === "string" && typeof value.deletedAt === "string";
+}
 
 const canvasStorage: PersistStorage<CanvasStore> = {
     getItem: async (name) => {
         const value = await localForageStorage.getItem(name);
         if (!value) return null;
-        const parsed = JSON.parse(value) as StorageValue<CanvasStore>;
+        let parsed: StorageValue<CanvasStore>;
+        try {
+            parsed = JSON.parse(value) as StorageValue<CanvasStore>;
+            if (!parsed?.state || typeof parsed.state !== "object" || !Array.isArray(parsed.state.projects) || !parsed.state.projects.every(isCanvasProject) || (parsed.state.deletedProjects !== undefined && (!Array.isArray(parsed.state.deletedProjects) || !parsed.state.deletedProjects.every(isDeletedProject)))) throw new Error("画布缓存结构无效");
+            // 旧版缓存尚未记录 deletedProjects，继续按空删除记录恢复。
+            parsed.state.deletedProjects ??= [];
+            canvasStorageReadFailed = false;
+        } catch {
+            canvasStorageReadFailed = true;
+            console.warn("画布缓存读取失败，原始数据已保留");
+            return null;
+        }
         queuedPersistState = parsed.state as PersistedCanvasState;
         return parsed;
     },
     setItem: (name, value) => {
         const nextState = value.state as PersistedCanvasState;
+        if (canvasStorageReadFailed && !nextState.projects.length && !nextState.deletedProjects.length) return;
+        canvasStorageReadFailed = false;
         if (queuedPersistState && queuedPersistState.projects === nextState.projects && queuedPersistState.deletedProjects === nextState.deletedProjects) return;
         queuedPersistState = nextState;
         if (saveTimer) clearTimeout(saveTimer);

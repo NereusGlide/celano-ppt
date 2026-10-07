@@ -5,7 +5,6 @@
 import express from 'express';
 import fs from 'fs';
 import { db } from '../db.js';
-import { chargeCredits, refundCredits, resolutionCost } from '../billing.js';
 import { requireUser } from '../sessionGuard.js';
 import { MAX_REFERENCE_TEXT } from './referenceAnalysis.js';
 import { optimizePrompt } from './promptOptimization.js';
@@ -35,12 +34,12 @@ pptRouter.post('/optimize-prompt', async (req, res) => {
   if (!prompt) return res.status(400).json({ success: false, error: '请输入需要优化的主题或需求' });
   const referencesText = typeof req.body.referencesText === 'string' ? req.body.referencesText : '';
   if (referencesText.length > MAX_REFERENCE_TEXT) return res.status(400).json({ success: false, error: '参考资料内容超过分析上限，请拆分上传' });
-  const planning = db.getPlanningConfig();
-  if (!planning?.apiKey || !planning.baseUrl) {
-    return res.status(503).json({ success: false, error: '未配置内容规划模型，无法进行 AI 提示词优化，请在管理后台设置' });
+  // 提示词优化走独立通道；未启用或未填齐时自动回退内容规划模型
+  const optimizeConfig = db.resolvePromptOptimizeConfig();
+  if (!optimizeConfig.baseUrl || !optimizeConfig.apiKey) {
+    return res.status(503).json({ success: false, error: '未配置提示词优化模型，无法进行 AI 提示词优化，请在管理后台「AI 接口配置 → 提示词优化模型」中设置' });
   }
   try {
-    const optimizeConfig = { ...planning, reasoningEffort: planning.optimizeReasoningEffort || planning.reasoningEffort };
     const result = await optimizePrompt(optimizeConfig, prompt, referencesText);
     res.json({ success: true, prompt: result.slice(0, 4000), fallback: false });
   } catch (err: any) {
@@ -103,7 +102,7 @@ pptRouter.post('/decks/:id/stop', (req, res) => {
   const deck = ownDeck(req, res, user);
   if (!deck) return;
   const result = stopDeck(user.id, deck.id);
-  if ('error' in result) return res.status(400).json({ success: false, error: result.error });
+  if (!('id' in result)) return res.status(400).json({ success: false, error: result.error });
   res.json({ success: true, deck: deckView(result) });
 });
 
@@ -113,7 +112,7 @@ pptRouter.post('/decks/:id/resume', (req, res) => {
   const deck = ownDeck(req, res, user);
   if (!deck) return;
   const result = resumeDeck(user.id, deck.id);
-  if ('error' in result) {
+  if (!('id' in result)) {
     const error = result.error || '任务继续失败';
     return res.status(error.startsWith('点数不足') ? 402 : 400).json({ success: false, error });
   }
@@ -126,57 +125,37 @@ pptRouter.post('/decks/:id/retry-failed', (req, res) => {
   const deck = ownDeck(req, res, user);
   if (!deck) return;
   const result = retryFailedDeck(user.id, deck.id);
-  if ('error' in result) {
+  if (!('id' in result)) {
     const error = result.error || '失败页面重试失败';
     return res.status(error.startsWith('点数不足') ? 402 : 400).json({ success: false, error });
   }
   res.json({ success: true, deck: deckView(result) });
 });
 
-pptRouter.post('/decks/:id/slides/:slideId/regenerate', (req, res) => {
+pptRouter.post('/decks/:id/slides/:slideId/regenerate', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   const deck = ownDeck(req, res, user);
   if (!deck) return;
   const instruction = typeof (req.body || {}).instruction === 'string' ? (req.body as { instruction: string }).instruction : '';
-  const editCost = 2;
-  const charged = chargeCredits(user.id, editCost, '单页重新生成：' + deck.title.slice(0, 40));
-  if (!charged.ok) return res.status(402).json({ success: false, error: charged.error, credits: charged.credits });
   const slideId = String(req.params.slideId || '');
-  /** 无论走哪条失败分支，已预扣的点数都必须回到账上，且只能退一次。 */
-  const refundOnce = (reason: string) => {
-    if (!db.refundPptSlide(user.id, deck.id, slideId, editCost, reason)) {
-      refundCredits(user.id, editCost, reason);
+  const target = deck.slides.find(item => item.id === slideId);
+  if (!target) return res.status(404).json({ success: false, error: '页面不存在' });
+  if (deck.running || target.status === 'generating') return res.status(409).json({ success: false, error: deck.running ? '任务正在生成中，请先停止任务再修改页面' : '该页面正在生成中' });
+  try {
+    const result = await regenerateSlide(user.id, deck.id, slideId, instruction);
+    if (!('id' in result)) {
+      const error = result.error || '单页重新生成失败';
+      return res.status(result.cancelled || error.includes('生成中') ? 409 : error.startsWith('点数不足') ? 402 : 400).json({ success: false, error });
     }
-  };
-
-  void regenerateSlide(user.id, deck.id, slideId, instruction)
-    .then(result => {
-      try {
-        if ('error' in result) {
-          if (deck.slides.some(item => item.id === slideId)) refundOnce('单页重新生成失败，退回点数');
-          else refundCredits(user.id, editCost, '单页重新生成目标不存在，退回点数');
-          return res.status(400).json({ success: false, error: result.error });
-        }
-        const slide = result.slides.find(item => item.id === slideId);
-        if (slide?.status === 'failed') {
-          refundOnce('单页重新生成失败，退回点数');
-          return res.status(502).json({ success: false, error: slide.error || '单页重新生成失败' });
-        }
-        res.json({ success: true, deck: deckView(result) });
-      } catch (err) {
-        // 响应构造阶段异常（如 deckView 失败）同样不能吞掉已扣的点数。
-        refundOnce('单页重新生成响应异常，退回点数');
-        throw err;
-      }
-    })
-    .catch(err => {
-      // 这里原先完全缺失：regenerateSlide 一旦抛出，用户已被扣的 2 点既不退、
-      // 也不响应，请求挂到超时，同时产生 unhandledRejection 污染进程。
-      refundOnce('单页重新生成异常，退回点数');
-      console.error('[ppt] 单页重新生成异常，已退回点数:', deck.id, slideId, String(err?.message || err).slice(0, 180));
-      if (!res.headersSent) res.status(500).json({ success: false, error: '单页重新生成失败，已退回点数' });
-    });
+    const slide = result.slides.find(item => item.id === slideId);
+    if (!slide || slide.status !== 'done') return res.status(502).json({ success: false, error: slide?.error || '单页重新生成未完成' });
+    res.json({ success: true, deck: deckView(result) });
+  } catch (err) {
+    // 引擎负责结算；响应失败不得再退已成功交付的费用。
+    console.error('[ppt] 单页重新生成异常:', deck.id, slideId, String((err as Error)?.message || err).slice(0, 180));
+    if (!res.headersSent) res.status(500).json({ success: false, error: '单页重新生成失败，请刷新查看任务状态' });
+  }
 });
 
 pptRouter.post('/decks/:id/slides', async (req, res) => {
@@ -195,20 +174,20 @@ pptRouter.post('/decks/:id/slides', async (req, res) => {
     pageType: 'process' as const,
     imagePrompt: String(body.imagePrompt || '').trim().slice(0, 1200) || undefined,
   };
-  const cost = resolutionCost(deck.resolution);
-  const charged = chargeCredits(user.id, cost, '新增页面：' + deck.title.slice(0, 40));
-  if (!charged.ok) return res.status(402).json({ success: false, error: charged.error, credits: charged.credits });
   try {
     const result = await appendSlide(user.id, deck.id, plan);
-    if ('error' in result) {
-      refundCredits(user.id, cost, '新增页面失败，退回点数');
+    if (!('id' in result)) {
       return res.status(400).json({ success: false, error: result.error });
+    }
+    const slideId = result.appendedSlideId;
+    const createdSlide = slideId ? result.slides.find(item => item.id === slideId) : undefined;
+    if (createdSlide?.status === 'failed') {
+      return res.status(502).json({ success: false, error: createdSlide.error || '新增页面生成失败，已退回点数' });
     }
     res.json({ success: true, deck: deckView(result) });
   } catch (err) {
-    refundCredits(user.id, cost, '新增页面异常，退回点数');
-    console.error('[ppt] 新增页面异常，已退回点数:', deck.id, String((err as Error)?.message || err).slice(0, 180));
-    if (!res.headersSent) res.status(500).json({ success: false, error: '新增页面失败，已退回点数' });
+    console.error('[ppt] 新增页面异常:', deck.id, String((err as Error)?.message || err).slice(0, 180));
+    if (!res.headersSent) res.status(500).json({ success: false, error: '新增页面失败，失败页面点数已按任务账务退回' });
   }
 });
 
@@ -219,7 +198,7 @@ pptRouter.post('/decks/:id/slides/:slideId/replace-image', (req, res) => {
   if (!deck) return;
   const image = typeof (req.body || {}).image === 'string' ? String((req.body as { image: string }).image) : '';
   const result = replaceSlideImage(user.id, deck.id, String(req.params.slideId || ''), image);
-  if ('error' in result) return res.status(400).json({ success: false, error: result.error });
+  if (!('id' in result)) return res.status(400).json({ success: false, error: result.error });
   res.json({ success: true, deck: deckView(result) });
 });
 
@@ -227,7 +206,10 @@ pptRouter.delete('/decks/:id/slides/:slideId', (req, res) => {
   const user = requireUser(req, res); if (!user) return;
   const deck = ownDeck(req, res, user); if (!deck) return;
   const result = deleteSlide(user.id, deck.id, String(req.params.slideId));
-  if ('error' in result) return res.status(409).json({ success: false, error: result.error });
+  // deleteSlide 三态：PptDeck（有 id）/ { deleted: true }（整任务被删）/ { error }。
+  // 不能用 'error' in result（deck 顶层可能残留 error:undefined 键），也不能只判 id
+  // （{deleted:true} 无 id），需同时排除 deleted 才算真正的失败。
+  if (!('id' in result) && !('deleted' in result)) return res.status(409).json({ success: false, error: result.error });
   res.json({ success: true, deck: 'deleted' in result ? null : deckView(result) });
 });
 
@@ -237,6 +219,7 @@ pptRouter.delete('/decks/:id', (req, res) => {
   const deck = ownDeck(req, res, user);
   if (!deck) return;
   const result = deleteDeck(user.id, deck.id);
+  // deleteDeck 返回 { ok } | { error }，不存在 error:undefined 残留，用 'error' in 判别即可。
   if ('error' in result) return res.status(400).json({ success: false, error: result.error });
   res.json({ success: true });
 });

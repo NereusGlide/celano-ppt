@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { db } from './db.js';
-import { chargeCredits, refundCredits } from './billing.js';
+import { chargeCredits, refundCredits, chargeImageCredits, quoteImageCredits, refundImageCredits } from './billing.js';
 
 /**
  * 这组用例守住一个容易被悄悄改回去的约束：
@@ -77,6 +77,37 @@ test('余额不足时不写盘、不改动余额', t => {
   assert.equal(result.ok, false);
   assert.equal(db.getUserById(USER_ID)?.credits, 3, '失败路径不得改动余额');
   assert.equal(storeWrites(writes), 0);
+});
+
+test('事务回调失败与落盘失败都回滚余额', t => {
+  mockPersistence(t); seedUser();
+  assert.throws(() => db.transaction(() => { db.updateUser(USER_ID, { credits: 1 }); throw new Error('abort'); }), /abort/);
+  assert.equal(db.getUserById(USER_ID)?.credits, 100);
+  t.mock.method(fs, 'renameSync', (() => { throw new Error('disk failure'); }) as never);
+  assert.throws(() => chargeCredits(USER_ID, 10, '失败落盘'), /disk failure/);
+  assert.equal(db.getUserById(USER_ID)?.credits, 100);
+});
+
+test('免费额度报价、混合部分成功退款与失败恢复保持一致', t => {
+  mockPersistence(t); seedUser();
+  db.updateUser(USER_ID, { membership: undefined, freeDaily: undefined });
+  const before = quoteImageCredits(db.getUserById(USER_ID), '2K', 5);
+  assert.equal(before.free, 3); assert.equal(before.cost, 20);
+  const payment = chargeImageCredits(USER_ID, '2K', 5, '混合批次');
+  assert.equal(payment.ok, true);
+  if (!payment.ok) return;
+  assert.equal(payment.charged, 20); assert.equal(db.getUserById(USER_ID)?.credits, 80);
+  // 前三张免费，第四张付费；只生成两张时应全退付费并恢复一张免费额度。
+  refundImageCredits(USER_ID, payment, 5, 2);
+  assert.equal(db.getUserById(USER_ID)?.credits, 100);
+  assert.equal(db.getUserById(USER_ID)?.freeDaily?.used, 2);
+  const next = chargeImageCredits(USER_ID, '2K', 1, '失败免费');
+  assert.equal(next.ok, true);
+  if (next.ok) refundImageCredits(USER_ID, next, 1);
+  assert.equal(db.getUserById(USER_ID)?.freeDaily?.used, 2);
+  assert.equal(quoteImageCredits(db.getUserById(USER_ID), '4K', 1).cost, 20);
+  assert.equal(quoteImageCredits(db.getUserById(USER_ID), '2K', 1, true).free, 0);
+  assert.equal(chargeImageCredits(USER_ID, '2K', Infinity, '非法数量').ok, false);
 });
 
 test('退款金额为 0 时不产生任何写入', t => {

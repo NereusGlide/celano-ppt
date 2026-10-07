@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../api.js';
 import { Alert, Button, Card, Field, Modal, PageHeader, Pagination, Select, Table, Tag, TextInput, Column } from '../ui.js';
-import { InviteCode } from '../../types.js';
+import { type AdminInviteCode } from '../api.js';
 
 const fmt = (ts?: number) => (ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-');
 
 export const InviteCodesPage: React.FC = () => {
-  const [rows, setRows] = useState<InviteCode[]>([]);
+  const [rows, setRows] = useState<AdminInviteCode[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -58,14 +58,14 @@ export const InviteCodesPage: React.FC = () => {
     }
   };
 
-  const toggle = async (row: InviteCode) => {
+  const toggle = async (row: AdminInviteCode) => {
     try {
       await adminApi.updateInviteCode(row.code, { status: row.status === 'active' ? 'disabled' : 'active' });
       load();
     } catch (e: any) { setError(e.message); }
   };
 
-  const remove = async (row: InviteCode) => {
+  const remove = async (row: AdminInviteCode) => {
     if (!window.confirm('确定删除邀请码 ' + row.code + '？')) return;
     try { await adminApi.deleteInviteCode(row.code); load(); } catch (e: any) { setError(e.message); }
   };
@@ -79,10 +79,10 @@ export const InviteCodesPage: React.FC = () => {
     }
   };
 
-  const columns: Column<InviteCode>[] = [
+  const columns: Column<AdminInviteCode>[] = [
     {
       title: '邀请码', width: '190px', render: (r) => (
-        <button onClick={() => copy(r.code)} title="点击复制" className="font-mono text-[#F4F6F7] hover:underline">{r.code}</button>
+        <button onClick={() => copy(r.code)} title="点击复制" className="font-mono text-[color:var(--text-primary)] hover:underline">{r.code}</button>
       )
     },
     {
@@ -93,7 +93,22 @@ export const InviteCodesPage: React.FC = () => {
         <span className="font-mono">{r.usedCount} / {r.maxUses === 0 ? '不限' : r.maxUses}</span>
       )
     },
-    { title: '使用用户', width: '90px', align: 'right', render: (r) => <span className="font-mono">{r.usedBy.length}</span> },
+    {
+      title: '使用用户', width: '200px', render: (r) => {
+        const users = r.usedByUsers || [];
+        if (!users.length) return <span className="text-[color:var(--text-secondary)]">—</span>;
+        const first = users[0];
+        return (
+          <span className="ws-user-cell" title={users.map(u => u.phone ? `${u.username} · ${u.phone}` : u.username).join('；')}>
+            <span className="ws-avatar">{first.username.slice(0, 1).toUpperCase()}</span>
+            <span>
+              <b>{first.username}</b>
+              <small>{users.length > 1 ? `等 ${users.length} 人` : (first.phone || first.id)}</small>
+            </span>
+          </span>
+        );
+      }
+    },
     { title: '备注', render: (r) => r.note || '-' },
     { title: '有效期', width: '160px', render: (r) => (r.expiresAt ? fmt(r.expiresAt) : '永久') },
     { title: '创建时间', width: '160px', render: (r) => fmt(r.createdAt) },

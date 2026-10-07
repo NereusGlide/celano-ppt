@@ -11,6 +11,7 @@ import { extractReferenceFile } from './server/ppt/referenceFiles.js';
 import dotenv from 'dotenv';
 import PptxGenJS from 'pptxgenjs';
 import { db } from './server/db.js';
+import { resolveClientIp } from './server/clientIp.js';
 import { adminRouter } from './server/adminRoutes.js';
 import { pptRouter } from './server/ppt/routes.js';
 import { deleteDeck, logoImagePath, removeDeckImageFiles, slideImagePath } from './server/ppt/engine.js';
@@ -24,12 +25,13 @@ import { touchUser } from './server/presence.js';
 import { requireUser as requireUserSession } from './server/sessionGuard.js';
 import { generateImageEdit } from './server/imageProviders.js';
 import { withImageSlot } from './server/ppt/imageSlots.js';
-import { assertNative16x9, dataUrlBytes } from './server/ppt/imageDimensions.js';
-import { chargeCredits, refundCredits } from './server/billing.js';
+import { assertNative16x9, dataUrlBytes, readImageDimensions } from './server/ppt/imageDimensions.js';
+import { chargeCredits, refundCredits, memberImageCost } from './server/billing.js';
+import { fetchPublicImage, readLimitedBody } from './server/remoteImages.js';
 import type { User } from './src/types.js';
 
 dotenv.config();
-const app = express();
+export const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,8 +46,14 @@ app.disable('x-powered-by');
 
 // 反向代理后需要信任代理才能拿到真实客户端 IP；直接暴露公网时不要开启，
 // 否则 X-Forwarded-For 可被伪造从而绕过限流。
-const trustProxy = Number(process.env.TRUST_PROXY || 0);
+const configuredProxyHops = Number(process.env.TRUST_PROXY || 0);
+const trustProxy = Number.isSafeInteger(configuredProxyHops) && configuredProxyHops > 0 ? configuredProxyHops : 0;
 if (trustProxy > 0) app.set('trust proxy', trustProxy);
+// 生产环境忘了配 TRUST_PROXY 时，使用记录/限流拿到的是代理地址而不是真实客户端 IP，
+// 且现象很不显眼（整列都是 127.0.0.1 或内网地址），因此在启动时明确提示一次。
+else if (process.env.NODE_ENV === 'production') {
+  console.warn('[提示] 未设置 TRUST_PROXY：若本服务部署在反向代理或 Cloudflare 之后，使用记录与限流将记录代理地址而非真实客户端 IP。单跳代理请设置 TRUST_PROXY=1。');
+}
 
 // ---- 1. 安全响应头（CSP 白名单制）----
 // 说明：生图结果是 data URL，第三方通道可能回传 https 图片，因此 img-src 需放开这两项；
@@ -125,6 +133,14 @@ app.use('/api/wallet/redeem', rateLimit({
   skipSuccessfulRequests: true,
   message: { success: false, error: '兑换尝试过于频繁，请稍后再试' },
 }));
+// 会员兑换码一次性开通会员并发放点数（最高 5 万+），价值等同资金入口，同样加严防枚举
+app.use('/api/wallet/redeem-membership', rateLimit({
+  ...limiterBase,
+  windowMs: 5 * 60 * 1000,
+  limit: 5,
+  skipSuccessfulRequests: true,
+  message: { success: false, error: '兑换尝试过于频繁，请稍后再试' },
+}));
 // 管理端登录是后台最高权限入口，此前完全不在任何限流档内，可被直接爆破。
 app.use('/api/admin/auth/login', rateLimit({
   ...limiterBase,
@@ -145,9 +161,9 @@ app.use('/api/ai', rateLimit({
 function publicUser(user: User): Omit<User, 'apiConfigs'> { const { apiConfigs: _keys, ...safe } = user as User & { apiConfigs?: unknown }; return safe; }
 
 /** 流水只是审计信息，写失败不应让登录、兑换等主流程变成 500。 */
-function recordUsage(userId: string, username: string, type: any, detail: string, credits = 0) {
+function recordUsage(userId: string, username: string, type: any, detail: string, credits = 0, ip = '') {
   try {
-    db.addUsageRecord({ id:'use_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), userId, username, type, detail, credits, createdAt:Date.now() });
+    db.addUsageRecord({ id:'use_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), userId, username, type, detail, credits, createdAt:Date.now(), ...(ip ? { ip } : {}) });
   } catch (err) {
     console.error('[usage] 写入使用记录失败:', String((err as Error)?.message || err).slice(0, 180));
   }
@@ -163,20 +179,9 @@ function requireUser(req: express.Request, res: express.Response): User | null {
 
 function jsonError(res: express.Response, status: number, error: string) { return res.status(status).json({success:false,error}); }
 
-/**
- * 客户端 IP。
- *
- * 为什么必须先判断 trust proxy：X-Forwarded-For 是客户端可任意伪造的请求头。
- * 在未声明信任反向代理时直接采信它，等于把登录、兑换的限流开关交给了攻击者——
- * 每次请求换一个 XFF 就是一个新的限流桶。现在与 express 的 req.ip 判定保持一致：
- * 只有显式开启 TRUST_PROXY 才读取代理头。
- */
+/** 客户端 IP：解析逻辑见 server/clientIp.ts（独立模块以便单元测试覆盖代理链分支）。 */
 function clientIp(req: express.Request): string {
-  if (trustProxy > 0) {
-    const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-    if (fwd) return fwd;
-  }
-  return String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+  return resolveClientIp(req, trustProxy);
 }
 
 type MultipartFile = { field: string; filename: string; contentType: string; data: Buffer };
@@ -236,8 +241,37 @@ async function readMultipartFile(req: express.Request, fields: string[], maxByte
 }
 
 const LEGACY_UPLOADS = path.resolve(process.cwd(), 'data', 'legacy-uploads');
+const LEGACY_UPLOAD_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.txt', '.md', '.markdown', '.csv', '.json', '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']);
+const LEGACY_IMAGE_MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+
+function validateLegacyImage(file: MultipartFile, allowSvg: boolean): boolean {
+  const extension = path.extname(file.filename).toLowerCase();
+  const mime = LEGACY_IMAGE_MIME[extension];
+  if (!mime) return false;
+  if (extension === '.svg') {
+    if (!allowSvg) return false;
+    const source = file.data.toString('utf8').replace(/^\uFEFF/, '').replace(/^\s*<\?xml[^>]*\?>/i, '').replace(/<!--[^]*?-->/g, '').trim();
+    if (!/^<svg(?:\s|>)/i.test(source) || /<!DOCTYPE|<!ENTITY/i.test(source)) return false;
+  } else {
+    const bytes = file.data;
+    const validMagic = extension === '.png'
+      ? bytes.length >= 33 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) && bytes.toString('ascii', 12, 16) === 'IHDR'
+      : extension === '.webp'
+        ? bytes.length >= 30 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP'
+        : bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if (!validMagic) return false;
+    try {
+      const dimensions = readImageDimensions(bytes);
+      if (!dimensions.width || !dimensions.height || dimensions.width > 32768 || dimensions.height > 32768 || dimensions.width * dimensions.height > 100_000_000) return false;
+    } catch { return false; }
+  }
+  file.contentType = mime;
+  return true;
+}
+
 function saveLegacyUpload(userId: string, file: MultipartFile) {
-  const extension = path.extname(file.filename).toLowerCase().replace(/[^a-z0-9.]/g, '').slice(0, 10) || '.bin';
+  const extension = path.extname(file.filename).toLowerCase();
+  if (!LEGACY_UPLOAD_EXTENSIONS.has(extension)) throw new Error('文件扩展名不受支持');
   const id = crypto.randomBytes(12).toString('hex');
   const relative = path.join('user-' + userId, id + extension);
   const full = path.join(LEGACY_UPLOADS, relative);
@@ -250,7 +284,7 @@ function saveLegacyUpload(userId: string, file: MultipartFile) {
 // 分析完成后即删除；超过容量上限时淘汰最旧的一半，避免长期残留。
 const referenceMeta = new Map<string, { userId: string; filename: string; contentType: string; full: string; at: number }>();
 const REFERENCE_META_LIMIT = 2000;
-const REFERENCE_IMAGE_EXT = /\.(png|jpe?g|webp|svg)$/i;
+const REFERENCE_IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 const REFERENCE_TEXT_EXT = /\.(txt|md|markdown|csv|json)$/i;
 const REFERENCE_DOC_EXT = /\.(pdf|docx?|pptx?|xlsx?)$/i;
 function rememberReferenceMeta(id: string, entry: { userId: string; filename: string; contentType: string; full: string }) {
@@ -306,13 +340,14 @@ app.get('/api/membership-plans', (_req, res) => {
 app.get('/api/auth/users', (req,res) => { const user=requireUser(req,res); if(!user)return; res.json({success:true,users:[publicUser(user)]}); });
 app.post('/api/auth/login', (req,res) => {
   const {identifier,password}=req.body||{}; if(!identifier||!password)return jsonError(res,400,'请输入账号与密码');
-  const user=db.getUserByUsernameOrEmail(String(identifier)); if(!user)return jsonError(res,404,'账号不存在，请先注册');
-  if(user.status==='disabled')return jsonError(res,403,'该账号已被禁用，请联系管理员');
-  if(!verifyPassword(String(password),db.getCredentials(user.id)))return jsonError(res,401,'密码错误，请重试');
+  const user=db.getUserByUsernameOrEmail(String(identifier));
+  // 账号不存在与密码错误统一返回 401，避免通过不同状态码/文案枚举已注册账号或手机号
+  if(!user || !verifyPassword(String(password), db.getCredentials(user.id))) return jsonError(res,401,'账号或密码错误');
+  if(user.status==='disabled') return jsonError(res,403,'该账号已被禁用，请联系管理员');
   const ip = clientIp(req);
   db.updateUser(user.id,{lastLoginAt:Date.now(), lastLoginIp: ip});
   touchUser(user.id);
-  recordUsage(user.id,user.username,'login','账号登录 · IP ' + ip,0);
+  recordUsage(user.id,user.username,'login','账号登录 · IP ' + ip,0,ip);
   setUserSessionCookie(res,user.id,db.getCredentials(user.id),req.hostname);
   res.json({success:true,user:publicUser(db.getUserById(user.id)||user)});
 });
@@ -328,8 +363,18 @@ app.post('/api/auth/register', (req,res) => {
   if(db.getUserByUsernameOrEmail(mobile))return jsonError(res,409,'该手机号已被注册');
   // id 必须带随机后缀：仅用 Date.now() 时，同一毫秒内的两次注册会拿到完全相同
   // 的 id，后注册者会与先注册者共用凭据与数据（getUserById 永远只返回第一个）。
-  const user:User={id:'user_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex'),username:name,name,phone:mobile,avatar:avatar||'',role:'creator',createdAt:Date.now()}; db.createUser(user,pwd);
-  const saved=db.updateUser(user.id,{credits:100,inviteCode:String(inviteCode).trim().toUpperCase(),lastLoginAt:Date.now(),lastLoginIp:clientIp(req)})||user; db.consumeInviteCode(String(inviteCode),user.id); recordUsage(user.id,user.username,'register','通过邀请码 '+String(inviteCode).trim().toUpperCase()+' 注册，赠送 100 点',100); setUserSessionCookie(res,user.id,db.getCredentials(user.id),req.hostname);
+  const user:User={id:'user_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex'),username:name,name,phone:mobile,avatar:avatar||'',role:'creator',createdAt:Date.now()};
+  const regIp=clientIp(req);
+  // 建号、送 100 点、消费邀请码、记流水放进同一写事务：4 次全量落盘合并为 1 次，
+  // 并消除「账号已建 + 已送点，但邀请码未消费」的崩溃窗口。
+  const saved = db.transaction(() => {
+    db.createUser(user, pwd);
+    const s = db.updateUser(user.id,{credits:100,inviteCode:String(inviteCode).trim().toUpperCase(),lastLoginAt:Date.now(),lastLoginIp:regIp}) || user;
+    db.consumeInviteCode(String(inviteCode), user.id);
+    recordUsage(user.id, user.username, 'register', '通过邀请码 ' + String(inviteCode).trim().toUpperCase() + ' 注册，赠送 100 点', 100, regIp);
+    return s;
+  });
+  setUserSessionCookie(res,user.id,db.getCredentials(user.id),req.hostname);
   res.json({success:true,user:publicUser(saved)});
 });
 app.get('/api/auth/me',(req,res)=>{const user=requireUser(req,res);if(!user)return;res.json({success:true,user:publicUser(user)});});
@@ -451,11 +496,11 @@ async function imageDataForExport(slide: any, deck?: any): Promise<string> {
   const source = String(slide.imageUrl || '').trim();
   if (/^data:image\/(png|jpeg|webp);base64,/.test(source)) return source;
   if (!/^https?:\/\//i.test(source)) throw new Error('页面图片不存在');
-  const response = await fetch(source, { signal: AbortSignal.timeout(120_000) });
-  if (!response.ok) throw new Error('下载作品图片失败 HTTP ' + response.status);
+  const response = await fetchPublicImage(source);
+  if (!response.ok) { await response.body?.cancel(); throw new Error('下载作品图片失败 HTTP ' + response.status); }
   const mime = String(response.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime)) throw new Error('作品图片格式不受支持');
-  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime)) { await response.body?.cancel(); throw new Error('作品图片格式不受支持'); }
+  const bytes = await readLimitedBody(response);
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('作品图片过大');
   return 'data:' + mime + ';base64,' + bytes.toString('base64');
 }
@@ -528,9 +573,8 @@ app.get('/api/presentations/merged-export', (req, res) => {
 });
 
 app.get('/api/presentations', (req, res) => {
-  const session = getUserSession(req);
-  const user = session ? db.getUserById(session.userId) : null;
-  if (!user || user.status === 'disabled') return res.json({ success: true, presentations: [] });
+  const user = requireUser(req, res);
+  if (!user) return;
   const requestedUserId = String(req.query.userId || '');
   if (requestedUserId && requestedUserId !== user.id) return res.status(403).json({ success: false, error: '无权查看其他用户的演示文稿' });
   const oldPresentations = db.getPresentations(user.id).map(legacyPresentationView);
@@ -542,9 +586,8 @@ app.get('/api/presentations', (req, res) => {
 app.get('/api/presentations/:id', (req, res) => {
   const id = String(req.params.id || '');
   if (id === 'merged-export') return res.status(410).json({ success: false, error: '旧版合并导出入口已迁移，请在 PPT 工作台中导出' });
-  const session = getUserSession(req);
-  const user = session ? db.getUserById(session.userId) : null;
-  if (!user || user.status === 'disabled') return res.status(401).json({ success: false, error: '请先登录' });
+  const user = requireUser(req, res);
+  if (!user) return;
   const old = db.getPresentationById(id);
   if (old && old.userId !== user.id) return res.status(403).json({ success: false, error: '无权访问该演示文稿' });
   if (old) return res.json({ success: true, presentation: legacyPresentationView(old) });
@@ -558,7 +601,13 @@ app.put('/api/presentations/:id', (req, res) => {
   if (!user) return;
   const old = db.getPresentationById(String(req.params.id || ''));
   if (!old || old.userId !== user.id) return jsonError(res, 404, '演示文稿不存在');
-  const updated = db.updatePresentation(old.id, req.body || {});
+  const body = req.body || {};
+  if (body.slides !== undefined && !Array.isArray(body.slides)) return jsonError(res, 400, '页面列表格式无效');
+  const updates: any = {};
+  for (const key of ['title', 'description', 'style', 'resolution', 'aspectRatio', 'slides', 'logo', 'referenceFiles', 'modelProvider', 'visualDirection', 'colorScheme', 'originalPrompt']) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) updates[key] = body[key];
+  }
+  const updated = db.updatePresentation(old.id, updates);
   res.json({ success: true, presentation: legacyPresentationView(updated || old) });
 });
 app.delete('/api/presentations/:id', (req, res) => {
@@ -595,15 +644,17 @@ app.post('/api/upload-reference', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   try {
-    const file = await readMultipartFile(req, ['file', 'reference'], 100 * 1024 * 1024);
+    const file = await readMultipartFile(req, ['file', 'reference'], 110 * 1024 * 1024);
     if (!file) return jsonError(res, 400, '未找到参考文件，请使用 multipart/form-data 上传');
     const name = file.filename.toLowerCase();
-    const isImage = file.contentType.startsWith('image/') || REFERENCE_IMAGE_EXT.test(name);
-    const isText = file.contentType.startsWith('text/') || REFERENCE_TEXT_EXT.test(name);
+    if (/\.svg$/i.test(name)) return jsonError(res, 400, '参考图片暂不支持 SVG，请转换为 PNG、JPEG 或 WebP');
+    const isImage = REFERENCE_IMAGE_EXT.test(name);
+    const isText = REFERENCE_TEXT_EXT.test(name);
     const isDoc = REFERENCE_DOC_EXT.test(name);
     if (!isImage && !isText && !isDoc) {
       return jsonError(res, 400, '格式不支持：请上传 PDF、Word、PPT、Excel、文本或图片文件');
     }
+    if (isImage && !validateLegacyImage(file, false)) return jsonError(res, 400, '图片格式或像素尺寸无效，请上传真实的 PNG、JPEG 或 WebP');
     const saved = saveLegacyUpload(user.id, file);
     // 图片作为视觉风格参考，无需正文分析；其余文件登记元数据，待前端触发异步分析。
     const parseStatus: 'image' | 'pending' = isImage ? 'image' : 'pending';
@@ -683,6 +734,7 @@ app.post('/api/upload-logo', async (req, res) => {
   try {
     const file = await readMultipartFile(req, ['logo', 'file'], 8 * 1024 * 1024);
     if (!file) return jsonError(res, 400, '未找到 Logo 文件，请使用 multipart/form-data 上传');
+    if (!validateLegacyImage(file, true)) return jsonError(res, 400, 'Logo 格式或像素尺寸无效，请上传 PNG、JPEG、WebP 或 SVG');
     const saved = saveLegacyUpload(user.id, file);
     res.json({ success: true, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension });
   } catch (err: any) {
@@ -696,7 +748,15 @@ app.get('/api/legacy-uploads/:userId/:filename', (req, res) => {
   const filename = path.basename(String(req.params.filename || ''));
   const full = path.join(LEGACY_UPLOADS, 'user-' + user.id, filename);
   if (!full.startsWith(path.join(LEGACY_UPLOADS, 'user-' + user.id) + path.sep) || !fs.existsSync(full)) return jsonError(res, 404, '文件不存在');
-  res.set('Cache-Control', 'private, max-age=3600');
+  const extension = path.extname(filename).toLowerCase();
+  const mime = LEGACY_IMAGE_MIME[extension];
+  res.set({
+    'Cache-Control': 'private, max-age=3600',
+    'Content-Type': mime || 'application/octet-stream',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "sandbox; default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+  });
+  if (!mime) res.set('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent(filename));
   res.sendFile(full);
 });
 app.post('/api/account/export', (req, res) => {
@@ -741,7 +801,7 @@ app.post('/api/workspace/edit-page', (req, res) => {
   if (!cfg || !cfg.apiKey) {
     return jsonError(res, 503, '当前图片画质档位尚未配置生图模型接口');
   }
-  const editCost = 2;
+  const editCost = memberImageCost(user, pixelResolution(originalSize.width + 'x' + originalSize.height) || '2K');
   const charged = chargeCredits(user.id, editCost, '画板单页修改：' + instruction.slice(0, 40));
   if (!charged.ok) return res.status(402).json({ success: false, error: charged.error, credits: charged.credits });
   void (async () => {
@@ -752,11 +812,11 @@ app.post('/api/workspace/edit-page', (req, res) => {
       // 统一转成受校验的 data URL，避免前端把远程 URL 当成本地图片保存而失败。
       let result = generated;
       if (!/^data:image\/(png|jpeg|webp);base64,/.test(result)) {
-        const remote = await fetch(result, { signal: AbortSignal.timeout(120_000) });
-        if (!remote.ok) throw new Error('下载修改结果失败 HTTP ' + remote.status);
+        const remote = await fetchPublicImage(result);
+        if (!remote.ok) { await remote.body?.cancel(); throw new Error('下载修改结果失败 HTTP ' + remote.status); }
         const mime = String(remote.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
-        if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') throw new Error('修改结果不是支持的图片格式');
-        const bytes = Buffer.from(await remote.arrayBuffer());
+        if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') { await remote.body?.cancel(); throw new Error('修改结果不是支持的图片格式'); }
+        const bytes = await readLimitedBody(remote);
         if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('修改结果文件过大');
         assertNative16x9(bytes, '单页修改结果');
         result = 'data:' + mime + ';base64,' + bytes.toString('base64');
@@ -816,24 +876,28 @@ function installMembershipGrant() {
   const sweep = () => {
     const now = Date.now();
     let granted = 0;
-    for (const user of db.getUsers()) {
-      const m = user.membership;
-      if (!m || m.status !== 'active' || !(Number(m.expiresAt) > now)) continue;
-      const plan = db.getMembershipPlans().find(p => p.id === m.planId);
-      if (!plan || plan.points <= 0) continue;
-      if (now - (Number(m.lastGrantAt) || 0) < GRANT_INTERVAL_MS) continue;
-      db.updateUser(user.id, { credits: (Number(user.credits) || 0) + plan.points, membership: { ...m, lastGrantAt: now } });
-      db.addUsageRecord({
-        id: 'use_' + now + '_' + Math.random().toString(36).slice(2, 7),
-        userId: user.id,
-        username: user.username,
-        type: 'membership_grant',
-        detail: '会员每月到账「' + plan.name + '」' + plan.points + ' 点',
-        credits: plan.points,
-        createdAt: now,
-      });
-      granted++;
-    }
+    // 「改余额 + 记流水」放进同一个写事务：store.json 是全量落盘，逐人各写两次既放大成本，
+    // 又在两次写之间留下「已到账但无流水」的崩溃窗口；事务内所有 save 只落盘一次。
+    db.transaction(() => {
+      for (const user of db.getUsers()) {
+        const m = user.membership;
+        if (!m || m.status !== 'active' || !(Number(m.expiresAt) > now)) continue;
+        const plan = db.getMembershipPlans().find(p => p.id === m.planId);
+        if (!plan || plan.points <= 0) continue;
+        if (now - (Number(m.lastGrantAt) || 0) < GRANT_INTERVAL_MS) continue;
+        db.updateUser(user.id, { credits: (Number(user.credits) || 0) + plan.points, membership: { ...m, lastGrantAt: now } });
+        db.addUsageRecord({
+          id: 'use_' + now + '_' + Math.random().toString(36).slice(2, 7),
+          userId: user.id,
+          username: user.username,
+          type: 'membership_grant',
+          detail: '会员每月到账「' + plan.name + '」' + plan.points + ' 点',
+          credits: plan.points,
+          createdAt: now,
+        });
+        granted++;
+      }
+    });
     if (granted > 0) console.log('[CELANO PPT] 会员每月到账已发放 ' + granted + ' 人');
   };
   const timer = setInterval(sweep, 3600 * 1000);
@@ -857,7 +921,9 @@ function installWorksCleanup() {
     }
     for (const asset of db.getAllCanvasAssets()) {
       const assetCreatedAt = typeof asset.createdAt === 'number' ? asset.createdAt : new Date(asset.createdAt).getTime();
-      if (now - assetCreatedAt <= RETENTION_MS) continue;
+      // 历史数据缺 createdAt 或为非法字符串会得到 NaN；NaN 会使比较恒假、素材被立即误删，
+      // 因此对无法确定时间的素材一律跳过清理，宁可多留也不误删。
+      if (!Number.isFinite(assetCreatedAt) || now - assetCreatedAt <= RETENTION_MS) continue;
       db.deleteCanvasAsset(asset.userId, asset.id);
       removed++;
     }
@@ -880,9 +946,9 @@ function assertNotDefaultAdminPassword(isProd: boolean){
   const stillDefault = !!credential && verifyPassword(DEFAULT_ADMIN_PASSWORD, credential);
   if (!stillDefault) return;
   if (isProd) {
-    console.warn('[安全告警] 管理员仍在初始口令 ' + DEFAULT_ADMIN_PASSWORD + ' 上，请立即登录 /admin 修改，或设置 ADMIN_INITIAL_PASSWORD 后重建 data/。');
+    console.warn('[安全告警] 管理员仍在初始口令上，请立即登录 /admin 修改，或设置 ADMIN_INITIAL_PASSWORD 后重建 data/。');
   } else {
-    console.warn('[安全提示] 当前使用初始管理员口令 ' + DEFAULT_ADMIN_PASSWORD + '，仅供本地开发；生产部署请设置 ADMIN_INITIAL_PASSWORD。');
+    console.warn('[安全提示] 当前使用初始管理员口令，仅供本地开发；生产部署请设置 ADMIN_INITIAL_PASSWORD。');
   }
 }
 
@@ -906,4 +972,6 @@ function installGracefulShutdown(httpServer: import('node:http').Server) {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-startServer();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  void startServer();
+}

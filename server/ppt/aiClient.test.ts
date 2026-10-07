@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateImage, editImage, chatText } from './aiClient.js';
+import { generateImage, editImage, chatText, chatVision } from './aiClient.js';
+import { MAX_IMAGE_BYTES } from '../../src/shared/imageSpecs.js';
 import { resolutionImageSize } from '../billing.js';
 import type { ThirdPartyApiConfig } from '../../src/types.js';
 import { generateImageEdit } from '../imageProviders.js';
+import https from 'node:https';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
 function pngHeader(size: string) {
   const [width, height] = size.split('x').map(Number);
@@ -13,6 +17,94 @@ function pngHeader(size: string) {
   return bytes.toString('base64');
 }
 const config = { apiKey: 'mock-key', baseUrl: 'https://mock.invalid', modelName: 'mock-image' } as ThirdPartyApiConfig;
+
+for (const operation of ['generate', 'edit'] as const) {
+  const invoke = () => operation === 'generate'
+    ? generateImage(config, 'test')
+    : editImage(config, ['data:image/png;base64,' + pngHeader('2048x1152')], 'test');
+
+  test(`${operation} 的模糊网络错误不会自动重放付费 POST`, async t => {
+    let posts = 0;
+    t.mock.method(globalThis, 'fetch', async () => { posts++; throw new TypeError('fetch failed'); });
+    await assert.rejects(invoke(), /fetch failed/);
+    assert.equal(posts, 1);
+  });
+
+  test(`${operation} 的 URL 下载断流不会重新提交付费 POST`, async t => {
+    let posts = 0;
+    let downloads = 0;
+    t.mock.method(globalThis, 'fetch', async (_url: unknown, init?: RequestInit) => {
+      if (init?.method === 'POST') { posts++; return Response.json({ data: [{ url: 'https://8.8.8.8/result.png' }] }); }
+      downloads++;
+      return new Response(new ReadableStream({ start(controller) { controller.error(new Error('terminated')); } }), { headers: { 'content-type': 'image/png' } });
+    });
+    t.mock.method(https, 'request', (_url: unknown, _options: unknown, callback: (response: any) => void) => {
+      const request = new EventEmitter() as any;
+      request.destroy = (error?: Error) => { if (error) request.emit('error', error); return request; };
+      request.end = () => {
+        downloads++;
+        const stream = new PassThrough() as any;
+        stream.statusCode = 200;
+        stream.headers = { 'content-type': 'image/png' };
+        callback(stream);
+        setImmediate(() => stream.destroy(new Error('terminated')));
+        return request;
+      };
+      return request;
+    });
+    await assert.rejects(invoke(), /terminated/);
+    assert.equal(posts, 1);
+    assert.equal(downloads, 1);
+  });
+}
+
+test('三个图像调用方下载都保留流限额与MIME校验，失败时销毁流', async t => {
+  const streams: PassThrough[] = [];
+  let mime = 'image/png';
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ data: [{ url: 'https://8.8.8.8/result.png' }] }));
+  t.mock.method(https, 'request', (_url: unknown, _options: unknown, callback: (response: any) => void) => {
+    const request = new EventEmitter() as any;
+    request.destroy = (error?: Error) => { if (error) request.emit('error', error); return request; };
+    request.end = () => {
+      queueMicrotask(() => {
+        const stream = new PassThrough() as any; streams.push(stream);
+        stream.statusCode = 200; stream.headers = { 'content-type': mime };
+        callback(stream);
+        if (mime === 'image/png') {
+          stream.write(Buffer.alloc(1024 * 1024));
+          for (let i = 0; i < MAX_IMAGE_BYTES / (1024 * 1024); i++) stream.write(Buffer.alloc(1024 * 1024));
+        }
+      });
+      return request;
+    };
+    return request;
+  });
+  const reference = 'data:image/png;base64,' + pngHeader('2048x1152');
+  const callers = [
+    () => generateImage(config, 'test'),
+    () => editImage(config, [reference], 'test'),
+    () => generateImageEdit(config, reference, 'test'),
+  ];
+  for (const invoke of callers) {
+    await assert.rejects(invoke(), /过大/);
+    assert.equal(streams.at(-1)?.destroyed, true);
+  }
+  mime = 'text/html';
+  for (const invoke of callers) {
+    await assert.rejects(invoke(), /图片格式/);
+    assert.equal(streams.at(-1)?.destroyed, true);
+  }
+});
+
+test('视觉文本请求保留网络重试', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    if (++calls === 1) throw new TypeError('fetch failed');
+    return Response.json({ choices: [{ message: { content: '识别完成' } }] });
+  });
+  assert.equal(await chatVision({ baseUrl: config.baseUrl, apiKey: config.apiKey, modelName: 'vision' }, [{ role: 'user', content: 'test' }]), '识别完成');
+  assert.equal(calls, 2);
+});
 
 test('planning uses the official DeepSeek API model id rather than the displayed version', async t => {
   let seen: any;

@@ -20,16 +20,15 @@ test('withChineseTextAccuracy 仅对 2K 追加中文规则，4K 保持不变', (
   assert.notEqual(withChineseTextAccuracy(p, '2K'), p);
 });
 
-test('网络抖动（fetch failed）自动重试后成功', async t => {
+test('图片 POST 网络错误不自动重放，避免重复消费', async t => {
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async () => {
     calls += 1;
     if (calls === 1) throw new TypeError('fetch failed');
     return Response.json({ data: [{ b64_json: pngHeader('2048x1152') }] });
   });
-  const result = await generateImage(config, 'test', '2048x1152');
-  assert.ok(result.startsWith('data:image/png;base64,'));
-  assert.equal(calls, 2, '网络错误应重试一次');
+  await assert.rejects(generateImage(config, 'test', '2048x1152'), /fetch failed/);
+  assert.equal(calls, 1, '付费图片请求不得自动重放');
 });
 
 test('chatText 遇到连接超时自动重试', async t => {

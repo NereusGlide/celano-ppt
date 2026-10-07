@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../api.js';
 import { Alert, Button, Card, Field, Modal, PageHeader, Pagination, Select, Table, Tag, TextInput, Column } from '../ui.js';
-import { MembershipCode, MembershipPlanConfig } from '../../types.js';
+import { MembershipPlanConfig } from '../../types.js';
+import { type AdminMembershipCode } from '../api.js';
 
 const fmt = (ts?: number) => (ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-');
 
 export const MembershipCodesPage: React.FC = () => {
-  const [rows, setRows] = useState<MembershipCode[]>([]);
+  const [rows, setRows] = useState<AdminMembershipCode[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -66,7 +67,7 @@ export const MembershipCodesPage: React.FC = () => {
     }
   };
 
-  const remove = async (row: MembershipCode) => {
+  const remove = async (row: AdminMembershipCode) => {
     if (!window.confirm('确定删除会员兑换码 ' + row.code + '？')) return;
     try { await adminApi.deleteMembershipCode(row.code); void load(); } catch (e: any) { setError(e.message); }
   };
@@ -78,10 +79,10 @@ export const MembershipCodesPage: React.FC = () => {
 
   const planName = (planId: string) => plans.find(p => p.id === planId)?.name || planId;
 
-  const columns: Column<MembershipCode>[] = [
+  const columns: Column<AdminMembershipCode>[] = [
     {
       title: '兑换码', width: '200px', render: (r) => (
-        <button onClick={() => copy(r.code)} title="点击复制" className="font-mono text-[#F4F6F7] hover:underline">{r.code}</button>
+        <button onClick={() => copy(r.code)} title="点击复制" className="font-mono text-[color:var(--text-primary)] hover:underline">{r.code}</button>
       )
     },
     { title: '套餐', width: '110px', render: (r) => <span>{planName(r.planId)}</span> },
@@ -93,7 +94,22 @@ export const MembershipCodesPage: React.FC = () => {
             : <Tag type="info">已停用</Tag>
       )
     },
-    { title: '使用者', width: '120px', render: (r) => r.usedByName || '-' },
+    {
+      title: '使用者', width: '180px', render: (r) => {
+        const u = r.usedByUser;
+        const username = u?.username || r.usedByName;
+        if (!username) return <span className="text-[color:var(--text-secondary)]">—</span>;
+        return (
+          <span className="ws-user-cell">
+            <span className="ws-avatar">{username.slice(0, 1).toUpperCase()}</span>
+            <span>
+              <b>{username}</b>
+              <small>{u?.phone || u?.id || '—'}</small>
+            </span>
+          </span>
+        );
+      }
+    },
     { title: '使用时间', width: '160px', render: (r) => fmt(r.usedAt) },
     { title: '备注', render: (r) => r.note || '-' },
     { title: '创建时间', width: '160px', render: (r) => fmt(r.createdAt) },

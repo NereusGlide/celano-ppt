@@ -13,7 +13,7 @@ export const CanvasApp: React.FC = () => {
   return <div className="canvas-app celano-canvas-landing">
     <PrimaryNav active="canvas" />
     <main className="image-main celano-feature-main">
-      <CreationHeading eyebrow="SMART CANVAS" title="让灵感，在画布上自由生长。" description="把文本与图片放进同一张无限画布，连接创意、探索画面，随时继续你的创作。" />
+      <CreationHeading title="让灵感，在画布上自由生长。" description="把文本与图片放进同一张无限画布，连接创意、探索画面，随时继续你的创作。" />
       <section className="celano-canvas-entry">
         <div className="celano-canvas-preview" aria-hidden="true">
           <div className="canvas-preview-node canvas-preview-text"><Type size={18} /><span>一个新的想法</span><i /><i /></div>

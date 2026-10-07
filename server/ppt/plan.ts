@@ -209,7 +209,7 @@ function cleanImagePrompt(text: string) {
 }
 
 /** 原生单页提示词：原始需求与该页视觉分镜合并后直接生图。 */
-export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePlan; index: number; referenceCount?: number; faithfulReference?: boolean; referenceLabels?: string[]; styleHint?: string; styleAnalysis?: string; palette?: PptPalette; editInstruction?: string }) {
+export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePlan; index: number; referenceCount?: number; faithfulReference?: boolean; referenceLabels?: string[]; styleHint?: string; styleAnalysis?: string; palette?: PptPalette; personReference?: boolean; productReference?: boolean; editInstruction?: string }) {
   const { slide } = input;
   const content = [slide.title, slide.subtitle, slide.summary, ...slide.bullets].filter(Boolean).join('；');
   const lines = [
@@ -233,6 +233,8 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
       '第五步，在锁定的主视觉下，把当前主题的标题、正文与配图放入本页专属排版。参考中的无关文案、品牌名、品牌标志、作者署名、水印和展示外框不要照搬；配图换成契合主题的内容，但保留主视觉的图像处理方式与构图气质。',
       '输出前检查：配色、字体气质、装饰语言与图像处理与参考图主视觉一致；版式为本页内容量身设计、布局方向与系列其他页不同、主体焦点突出，运用了前沿视觉手法且层次清晰。',
     ].join('\n') : '排版、字体、配图、色彩、构图、材质、光影、镜头、信息层级和整体视觉风格全部由 Image 原生自主设计，选择最适合当前内容的表达方式，不套用预设模板。',
+    input.personReference ? '本次为人物一致性模式：参考图中的人物是唯一人物原型，所有出现人物的画面都必须基于该人物延展生成，其五官、发型、体态、服饰与气质保持一致，不得更换为其他人物或擅自改动外貌。' : '',
+    input.productReference ? '本次为商品一致性模式：参考图中的商品是唯一商品原型，所有涉及该商品的画面都必须严格复现其外观、材质、配色、细节与品牌标识，不得替换为其他商品，也不得擅自改动商品造型或样式。' : '',
     input.editInstruction?.trim() ? `本页修改要求：${input.editInstruction.trim()}` : '',
   ];
   return lines.filter(Boolean).join('\n');

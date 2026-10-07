@@ -9,9 +9,10 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { db } from '../db.js';
-import { chargeCredits, normalizeResolution, resolutionCost, resolutionImageSize, refundCredits } from '../billing.js';
+import { chargeCredits, editCostFor, normalizeResolution, resolutionImageSize, refundCredits, memberImageCost } from '../billing.js';
 import { chatText, editImage, generateImage } from './aiClient.js';
 import { GLOBAL_IMAGE_SLOTS, withImageSlot } from './imageSlots.js';
+import { fetchPublicImage, readLimitedBody } from '../remoteImages.js';
 import { assertNative16x9, assertPptImageSize, dataUrlBytes, type ImageDimensions } from './imageDimensions.js';
 import { analyzeReferences, analyzeStyleReferences, MAX_REFERENCE_TEXT, planningReferenceContext } from './referenceAnalysis.js';
 import {
@@ -36,6 +37,8 @@ interface DeckRuntime {
   running: boolean;
   busy: Set<string>;
   workersActive: boolean;
+  /** 追加页操作互斥：扣费、插页、渲染必须属于同一个请求。 */
+  appendActive: boolean;
   fatalImageError?: string;
   /** 每次启动/停止都递增，避免旧一轮请求在快速停止后继续恢复写状态。 */
   runToken: number;
@@ -46,7 +49,7 @@ const runtimes = new Map<string, DeckRuntime>();
 function runtimeFor(deckId: string): DeckRuntime {
   let rt = runtimes.get(deckId);
   if (!rt) {
-    rt = { controller: new AbortController(), cancelled: false, running: false, busy: new Set(), workersActive: false, runToken: 0 };
+    rt = { controller: new AbortController(), cancelled: false, running: false, busy: new Set(), workersActive: false, appendActive: false, runToken: 0 };
     runtimes.set(deckId, rt);
   }
   return rt;
@@ -107,9 +110,9 @@ export function slideImagePath(deck: PptDeck, slideId: string): string {
 
 /** 删除 deck 的全部页面图片文件（作品过期清理用，路径守卫防穿越）。 */
 export function removeDeckImageFiles(deck: PptDeck): void {
-  for (const slide of deck.slides) {
-    if (!slide.storageKey) continue;
-    const full = imageFullPath(slide.storageKey);
+  for (const image of [...deck.slides, ...deck.referenceImages]) {
+    if (!image.storageKey) continue;
+    const full = imageFullPath(image.storageKey);
     if (full) { try { fs.unlinkSync(full); } catch { /* 文件可能已不存在 */ } }
   }
 }
@@ -119,9 +122,17 @@ export function logoImagePath(deck: PptDeck): string {
   const url = String(deck.logo?.url || '');
   const match = /^\/api\/legacy-uploads\/([^/]+)\/([^/?#]+)$/i.exec(url);
   if (!match) return '';
-  const userSegment = decodeURIComponent(match[1]);
+  let userSegment: string;
+  let filename: string;
+  try {
+    userSegment = decodeURIComponent(match[1]);
+    filename = path.basename(decodeURIComponent(match[2]));
+  } catch {
+    // deck.logo.url 来自用户输入，非法百分号编码（如 %zz）会让 decodeURIComponent 抛 URIError；
+    // 这里按「无 Logo」处理，避免 /decks/:id/logo 直接 500。
+    return '';
+  }
   if (userSegment !== deck.userId) return '';
-  const filename = path.basename(decodeURIComponent(match[2]));
   const full = path.resolve(process.cwd(), 'data', 'legacy-uploads', 'user-' + deck.userId, filename);
   const root = path.resolve(process.cwd(), 'data', 'legacy-uploads', 'user-' + deck.userId) + path.sep;
   return full.startsWith(root) && fs.existsSync(full) ? full : '';
@@ -138,17 +149,66 @@ function patchSlide(deckId: string, slideId: string, patch: Partial<PptDeckSlide
 }
 
 /**
+ * 首次触碰旧任务时固定逐页账务快照。必须在删除页面前调用，
+ * 因为 pageCount 一旦减少就无法再从旧总额还原原单价。
+ */
+function ensureSlideBillingSnapshots(deck: PptDeck): PptDeck {
+  const hasAmount = (value: number | undefined) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  if (!deck.slides.length || deck.slides.every(slide => hasAmount(slide.chargedCredits) && hasAmount(slide.refundedCredits) && hasAmount(slide.billingCost) && hasAmount(slide.deliveredCredits))) return deck;
+  const refundedIds = new Set(deck.refundedSlideIds || []);
+  const existingIds = new Set(deck.slides.map(slide => slide.id));
+  const missingRefundedCount = [...refundedIds].filter(id => !existingIds.has(id)).length;
+  const originalPageCount = Math.max(1, deck.pageCount + missingRefundedCount);
+  const unit = Number(deck.chargedCredits) > 0
+    ? Math.max(0, Math.floor(Number(deck.chargedCredits) / originalPageCount))
+    : memberImageCost(db.getUserById(deck.userId), deck.resolution);
+  const slides = deck.slides.map(slide => {
+    const chargedCredits = hasAmount(slide.chargedCredits) ? slide.chargedCredits! : unit;
+    const refundedCredits = hasAmount(slide.refundedCredits) ? slide.refundedCredits! : refundedIds.has(slide.id) ? chargedCredits : 0;
+    return {
+      ...slide,
+      billingCost: hasAmount(slide.billingCost) ? slide.billingCost : unit,
+      chargedCredits,
+      // 旧数据仅以 id 登记退款；重试前必须补入已发生的退款，不能从零累计。
+      refundedCredits,
+      deliveredCredits: hasAmount(slide.deliveredCredits) ? slide.deliveredCredits : slide.status === 'done' || slide.storageKey ? Math.max(0, chargedCredits - refundedCredits) : 0,
+    };
+  });
+  return db.updatePptDeck(deck.id, { slides }) || { ...deck, slides };
+}
+
+/** 历史任务没有逐页快照时，按旧任务总额或当时默认原价推导。 */
+function slideCharge(deck: PptDeck, slide: PptDeckSlide): number {
+  const explicit = Number(slide.chargedCredits);
+  if (Number.isFinite(explicit) && explicit >= 0) return Math.floor(explicit);
+  const billingCost = Number(slide.billingCost);
+  if (Number.isFinite(billingCost) && billingCost >= 0) return Math.floor(billingCost);
+  const total = Number(deck.chargedCredits);
+  if (Number.isFinite(total) && total > 0 && deck.pageCount > 0) {
+    return Math.max(0, Math.floor(total / deck.pageCount));
+  }
+  return memberImageCost(db.getUserById(deck.userId), deck.resolution);
+}
+
+function slideRefundRemaining(deck: PptDeck, slide: PptDeckSlide): number {
+  return Math.max(0, slideCharge(deck, slide) - Math.max(0, Math.floor(Number(slide.refundedCredits) || 0)) - Math.max(0, Math.floor(Number(slide.deliveredCredits) || 0)));
+}
+
+/**
  * 失败页按页退回预扣点数，并记录已处理的 slide id，避免轮询/恢复流程重复退款。
  * 只在任务一轮渲染结束后调用；停止中的 generating 页属于可继续任务，不退款。
  */
-function refundFailedSlides(deckId: string): void {
-  const deck = db.getPptDeck(deckId);
-  if (!deck) return;
+function refundFailedSlides(deckId: string, slideIds?: string[]): void {
+  const current = db.getPptDeck(deckId);
+  if (!current) return;
+  const deck = ensureSlideBillingSnapshots(current);
+  const targets = slideIds ? new Set(slideIds) : null;
   const refundedIds = new Set(deck.refundedSlideIds || []);
-  const failed = deck.slides.filter(slide => slide.status === 'failed' && !refundedIds.has(slide.id));
+  const failed = deck.slides.filter(slide => slide.status === 'failed' && !refundedIds.has(slide.id) && (!targets || targets.has(slide.id)));
   if (!failed.length) return;
-  const amount = failed.length * resolutionCost(deck.resolution);
-  const result = db.refundPptFailedSlides(deck.userId, deckId, failed.map(slide => slide.id), amount, 'PPT 失败页面退款：' + failed.length + ' 页');
+  const amounts = new Map(failed.map(slide => [slide.id, slideRefundRemaining(deck, slide)]));
+  const amount = [...amounts.values()].reduce((sum, value) => sum + value, 0);
+  const result = db.refundPptFailedSlides(deck.userId, deckId, failed.map(slide => slide.id), amount, 'PPT 失败页面退款：' + failed.length + ' 页', amounts);
   if (result.refunded > 0) {
     db.updatePptDeck(deckId, { error: deck.error || ('有 ' + failed.length + ' 页生成失败，已退回对应点数；可重试失败页面') });
     console.log('[ppt] 失败页面已退款:', deckId, failed.length, '页，余额:', result.credits);
@@ -157,11 +217,16 @@ function refundFailedSlides(deckId: string): void {
 
 /** 重试已退款的失败页前重新扣除对应点数，防止无限免费重试。 */
 function chargeRetrySlides(deck: PptDeck, slideIds: string[]): { ok: true; deck: PptDeck } | { ok: false; error: string } {
+  deck = ensureSlideBillingSnapshots(deck);
   const refundedIds = new Set(deck.refundedSlideIds || []);
   const retryIds = slideIds.filter(id => refundedIds.has(id));
   if (!retryIds.length) return { ok: true, deck };
-  const amount = retryIds.length * resolutionCost(deck.resolution);
-  const result = db.chargePptRetry(deck.userId, deck.id, retryIds, amount, 'PPT 失败页面重试：' + retryIds.length + ' 页');
+  const amounts = new Map(retryIds.map(id => {
+    const slide = deck.slides.find(item => item.id === id);
+    return [id, slide ? (Number(slide.billingCost) || slideCharge(deck, slide)) : memberImageCost(db.getUserById(deck.userId), deck.resolution)];
+  }));
+  const amount = [...amounts.values()].reduce((sum, value) => sum + value, 0);
+  const result = db.chargePptRetry(deck.userId, deck.id, retryIds, amount, 'PPT 失败页面重试：' + retryIds.length + ' 页', amounts);
   if (!result.ok) return result;
   return result;
 }
@@ -264,7 +329,11 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
       slides: Array.from({ length: deck.pageCount }, (_, index) => ({
         id: deck.slides[index]?.id || 's_' + nanoid(),
         plan: { title: `第 ${index + 1} 页 · 规划未完成`, bullets: [], pageType: 'core-insight' as const },
-        status: 'failed' as const, error: planningWarning,
+        status: 'failed' as const,
+        billingCost: deck.slides[index]?.billingCost ?? deck.slides[index]?.chargedCredits ?? (deck.chargedCredits && deck.pageCount ? Math.floor(deck.chargedCredits / deck.pageCount) : undefined),
+        chargedCredits: deck.slides[index]?.chargedCredits ?? (deck.chargedCredits && deck.pageCount ? Math.floor(deck.chargedCredits / deck.pageCount) : undefined),
+        refundedCredits: deck.slides[index]?.refundedCredits,
+        error: planningWarning,
       })),
     });
     refundFailedSlides(deckId);
@@ -280,7 +349,14 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
     planningSource: usedFallback ? 'fallback' : 'ai',
     planningWarning: planningWarning || undefined,
     error: undefined,
-    slides: planned.map((plan, index) => ({ id: current.slides[index]?.id || 's_' + nanoid(), plan, status: 'idle' as const })),
+    slides: planned.map((plan, index) => ({
+      id: current.slides[index]?.id || 's_' + nanoid(),
+      plan,
+      status: 'idle' as const,
+      billingCost: current.slides[index]?.billingCost ?? current.slides[index]?.chargedCredits ?? (current.chargedCredits && current.pageCount ? Math.floor(current.chargedCredits / current.pageCount) : undefined),
+      chargedCredits: current.slides[index]?.chargedCredits ?? (current.chargedCredits && current.pageCount ? Math.floor(current.chargedCredits / current.pageCount) : undefined),
+      refundedCredits: current.slides[index]?.refundedCredits,
+    })),
     stage: 'rendering',
   });
   console.log('[ppt] 规划完成:', deckId, '页数:', planned.length);
@@ -302,7 +378,10 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     const imageConfig = db.resolveImageConfig(deck.resolution);
     const references: string[] = [];
     const referenceLabels: string[] = [];
-    const faithfulReference = deck.referenceImages.some(ref => ref.name.startsWith('视觉风格参考：'));
+    const styleRefs = deck.referenceImages.filter(ref => ref.name.startsWith('视觉风格参考：'));
+    const personRefs = deck.referenceImages.filter(ref => ref.name.startsWith('人物参考：'));
+    const productRefs = deck.referenceImages.filter(ref => ref.name.startsWith('商品参考：'));
+    const faithfulReference = styleRefs.length > 0;
     const cover = deck.slides[0];
     const addCover = () => {
       if (cover && cover.id !== slide.id && cover.status === 'done' && cover.storageKey) {
@@ -314,15 +393,19 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       const dataUrl = ref.storageKey ? loadImageDataUrl(ref.storageKey) : null;
       if (dataUrl) { references.push(dataUrl); referenceLabels.push(ref.name); }
     };
+    // 人物 / 商品参考是强一致约束：必须始终纳入参考图，优先级高于风格参考与封面，
+    // 确保逐页图生图都能基于这两类素材延展，而非被 offset 轮换遗漏。
+    for (const ref of personRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
+    for (const ref of productRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
     if (faithfulReference) {
-      // 原始模版排在第一位：多图接口失败时，单图重试仍保留模版，不能只剩已生成封面。
-      const styleRefs = deck.referenceImages.filter(ref => ref.name.startsWith('视觉风格参考：'));
+      // 原始模版排在人物/商品之后：多图接口失败时，单图重试仍保留一致素材。
       const offset = index % styleRefs.length;
-      for (let i = 0; i < Math.min(styleRefs.length, MAX_REFERENCE_IMAGES - 1); i++) {
+      for (let i = 0; i < styleRefs.length; i++) {
+        if (references.length >= MAX_REFERENCE_IMAGES) break;
         addReference(styleRefs[(offset + i) % styleRefs.length]);
       }
       addCover();
-      for (const ref of deck.referenceImages.filter(ref => !ref.name.startsWith('视觉风格参考：'))) {
+      for (const ref of deck.referenceImages.filter(ref => !ref.name.startsWith('视觉风格参考：') && !ref.name.startsWith('人物参考：') && !ref.name.startsWith('商品参考：'))) {
         if (references.length >= MAX_REFERENCE_IMAGES) break;
         addReference(ref);
       }
@@ -330,7 +413,10 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       addCover();
       const offset = index * Math.max(1, MAX_REFERENCE_IMAGES - references.length);
       for (let i = 0; i < deck.referenceImages.length; i++) {
-        addReference(deck.referenceImages[(offset + i) % deck.referenceImages.length]);
+        if (references.length >= MAX_REFERENCE_IMAGES) break;
+        const ref = deck.referenceImages[(offset + i) % deck.referenceImages.length];
+        if (ref.name.startsWith('人物参考：') || ref.name.startsWith('商品参考：')) continue; // 已排在最前
+        addReference(ref);
       }
     }
     const refs = references.slice(0, MAX_REFERENCE_IMAGES);
@@ -342,6 +428,8 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       faithfulReference,
       referenceLabels: referenceLabels.slice(0, count),
       styleAnalysis: deck.styleAnalysis,
+      personReference: personRefs.length > 0,
+      productReference: productRefs.length > 0,
       editInstruction: instruction,
     });
     const prompt = buildPrompt(refs.length);
@@ -354,8 +442,12 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       try {
         dataUrl = await withImageSlot(() => editImage(imageConfig, refs, prompt, resolutionImageSize(deck.resolution), signal));
       } catch (err) {
-        // 多参考图被上游拒绝时退化为仅用第一张参考图
-        if (refs.length > 1) {
+        // 仅在明确拒绝多图参数的 4xx 响应时兼容单图；下载/尺寸/网络失败不得再次付费。
+        const message = String((err as Error)?.message || err);
+        const multiImageRejected = /图像编辑接口 HTTP (400|422)[:：]/.test(message)
+          && /(?:multiple|multi|image\[\]|多(?:张|图)|one image|single image|one file|single file)/i.test(message)
+          && /(?:not supported|unsupported|only|at most|不支持|仅|最多)/i.test(message);
+        if (refs.length > 1 && multiImageRejected && !signal.aborted) {
           console.warn('[ppt] 多图参考失败，保留首张参考重试:', deckId, slideId, referenceLabels[0]);
           dataUrl = await withImageSlot(() => editImage(imageConfig, refs.slice(0, 1), buildPrompt(1), resolutionImageSize(deck.resolution), signal));
         }
@@ -374,13 +466,14 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       storageKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '.' + imageExtensionFromDataUrl(dataUrl);
       saveDataUrlImage(storageKey, dataUrl);
     } else {
-      const resp = await fetch(dataUrl, { signal: AbortSignal.timeout(120_000) });
-      if (!resp.ok) throw new Error('下载生成图片失败 HTTP ' + resp.status);
+      const resp = await fetchPublicImage(dataUrl, signal);
+      if (!resp.ok) { await resp.body?.cancel(); throw new Error('下载生成图片失败 HTTP ' + resp.status); }
       const contentType = String(resp.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
       if (contentType !== 'image/png' && contentType !== 'image/jpeg' && contentType !== 'image/webp') {
+        await resp.body?.cancel();
         throw new Error('生图接口返回的不是支持的图片格式');
       }
-      const bytes = Buffer.from(await resp.arrayBuffer());
+      const bytes = await readLimitedBody(resp);
       dimensions = assertPptImageSize(bytes, resolutionImageSize(deck.resolution), deck.resolution);
       storageKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '.' + imageExtensionFromMime(contentType);
       const full = imageFullPath(storageKey);
@@ -391,7 +484,9 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     // 远程 URL 下载本身会跨越异步边界，期间可能发生 stop/resume；
     // 丢弃已经过期的一轮结果，避免旧请求覆盖新一轮页面。
     if (rt.runToken !== token) return;
-    patchSlide(deckId, slideId, { status: 'done', storageKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now() });
+    const completed = db.getPptDeck(deckId)?.slides.find(s => s.id === slideId);
+    if (!completed) return;
+    patchSlide(deckId, slideId, { status: 'done', storageKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), deliveredCredits: Math.max(0, (completed.chargedCredits || 0) - (completed.refundedCredits || 0)) });
     console.log('[ppt] 页面生成完成:', deckId, slideId);
   } catch (err: any) {
     // 停止后立即继续时，旧请求不能覆盖新一轮任务的状态。
@@ -478,7 +573,7 @@ async function runDeck(deckId: string, token: number) {
   rt.running = true;
   const deck = db.getPptDeck(deckId);
   if (!deck) { rt.running = false; return; }
-  if (!deck.slides.length || deck.planningSource === 'fallback') {
+  if (!deck.slides.length || deck.stage === 'planning' || deck.planningSource === 'fallback') {
     db.updatePptDeck(deckId, { stage: 'planning', running: true, finished: false });
     const planned = await planDeck(deckId, token);
     if (!planned) {
@@ -554,10 +649,10 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
   if (!imageConfig || !imageConfig.apiKey) {
     return { error: '未配置生图模型接口，请在管理后台「AI 接口配置」中填写 API 密钥后再生成' };
   }
-  const costPerSlide = resolutionCost(resolution);
+  const costPerSlide = memberImageCost(db.getUserById(userId), resolution);
   const totalCost = pageCount * costPerSlide;
-  const charged = chargeCredits(userId, totalCost, 'PPT 生成：' + pageCount + ' 页 · ' + resolution + '，每页 ' + costPerSlide + ' 点');
-  if (!charged.ok) return { error: charged.error };
+  const balance = Number(db.getUserById(userId)?.credits) || 0;
+  if (balance < totalCost) return { error: '点数不足：本次需要 ' + totalCost + ' 点，当前余额 ' + balance + ' 点' };
   // 产品固定 6 路并发，避免界面显示的并发数与实际吞吐不一致。
   const concurrency = 6;
   const id = 'deck_' + Date.now() + '_' + nanoid();
@@ -599,7 +694,15 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
     subtitle: '',
     visualDirection: DEFAULT_PPT_VISUAL_DIRECTION,
     palette: { ...DEFAULT_PPT_PALETTE },
-    slides: [],
+    slides: Array.from({ length: pageCount }, (_, index) => ({
+      id: 's_' + nanoid(),
+      plan: { title: `第 ${index + 1} 页`, bullets: [], pageType: 'core-insight' as const },
+      status: 'idle' as const,
+      billingCost: costPerSlide,
+      chargedCredits: costPerSlide,
+      refundedCredits: 0,
+      deliveredCredits: 0,
+    })),
     pageCount,
     concurrency,
     stage: 'planning',
@@ -608,10 +711,23 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
     startedAt: Date.now(),
     updatedAt: Date.now(),
   };
+  const discardReferences = () => {
+    const directory = imageFullPath('user-' + userId + '/deck-' + id);
+    if (directory) fs.rmSync(directory, { recursive: true, force: true });
+  };
   try {
-    db.createPptDeck(deck);
+    const payment = db.transaction(() => {
+      const charged = chargeCredits(userId, totalCost, 'PPT 生成：' + pageCount + ' 页 · ' + resolution + '，每页 ' + costPerSlide + ' 点');
+      if (!charged.ok) return charged;
+      db.createPptDeck(deck);
+      return { ok: true as const };
+    });
+    if (!payment.ok) {
+      discardReferences();
+      return { error: payment.error };
+    }
   } catch (err) {
-    refundCredits(userId, totalCost, 'PPT 任务创建失败，退回生成点数');
+    discardReferences();
     throw err;
   }
   const rt = runtimeFor(id);
@@ -642,7 +758,8 @@ export function stopDeck(userId: string, deckId: string): PptDeck | { error: str
 export function resumeDeck(userId: string, deckId: string): PptDeck | { error: string } {
   const deck = db.getPptDeck(deckId);
   if (!deck || deck.userId !== userId) return { error: '任务不存在' };
-  if (deck.running) return { error: '任务正在进行中' };
+  const activeRuntime = runtimeFor(deckId);
+  if (deck.running || activeRuntime.running || activeRuntime.busy.size || activeRuntime.appendActive || activeRuntime.workersActive) return { error: '任务正在生成中' };
   if (deck.finished) return { error: '任务已完成' };
   const failedIds = deck.slides.filter(s => s.status === 'failed').map(s => s.id);
   const retryBilling = chargeRetrySlides(deck, failedIds);
@@ -664,7 +781,8 @@ export function resumeDeck(userId: string, deckId: string): PptDeck | { error: s
 export function retryFailedDeck(userId: string, deckId: string): PptDeck | { error: string } {
   const deck = db.getPptDeck(deckId);
   if (!deck || deck.userId !== userId) return { error: '任务不存在' };
-  if (deck.running) return { error: '任务正在进行中' };
+  const activeRuntime = runtimeFor(deckId);
+  if (deck.running || activeRuntime.running || activeRuntime.busy.size || activeRuntime.appendActive || activeRuntime.workersActive) return { error: '任务正在生成中' };
   const failed = deck.slides.filter(s => s.status === 'failed');
   if (!failed.length) return { error: '没有失败的页面' };
   const retryBilling = chargeRetrySlides(deck, failed.map(s => s.id));
@@ -682,52 +800,117 @@ export function retryFailedDeck(userId: string, deckId: string): PptDeck | { err
   return db.getPptDeck(deckId) || deck;
 }
 
-/** 单页重新生成/修改：只处理当前页。 */
-export async function regenerateSlide(userId: string, deckId: string, slideId: string, instruction?: string): Promise<PptDeck | { error: string }> {
-  const deck = db.getPptDeck(deckId);
-  if (!deck || deck.userId !== userId) return { error: '任务不存在' };
-  const slide = deck.slides.find(s => s.id === slideId);
-  if (!slide) return { error: '页面不存在' };
-  if (slide.status === 'generating') return { error: '该页面正在生成中' };
+/** 单页重新生成/修改：计费、页面状态与退款在引擎内统一结算。 */
+export async function regenerateSlide(userId: string, deckId: string, slideId: string, instruction?: string): Promise<PptDeck | { error: string; cancelled?: boolean }> {
+  const current = db.getPptDeck(deckId);
+  if (!current || current.userId !== userId) return { error: '任务不存在' };
   const rt = runtimeFor(deckId);
-  if (rt.busy.has(slideId)) return { error: '该页面正在生成中' };
+  if (current.running || rt.running || rt.workersActive || rt.appendActive || rt.busy.size) return { error: '任务正在生成中，请先停止任务再修改页面' };
+  const target = current.slides.find(s => s.id === slideId);
+  if (!target) return { error: '页面不存在' };
+  if (target.status === 'generating') return { error: '该页面正在生成中' };
+  const cost = editCostFor(db.getUserById(userId), current.resolution);
+  const payment = db.transaction(() => {
+    const deck = ensureSlideBillingSnapshots(current);
+    const slide = deck.slides.find(s => s.id === slideId)!;
+    const unused = slide.status === 'done' ? 0 : slideRefundRemaining(deck, slide);
+    const balance = Number(db.getUserById(userId)?.credits) || 0;
+    if (balance + unused < cost) return { ok: false as const, error: '点数不足：本次需要 ' + cost + ' 点，当前余额 ' + balance + ' 点' };
+    // 尚未交付的原预扣先结清，新操作只保留自身一次扣费。
+    if (unused > 0) {
+      patchSlide(deckId, slideId, { status: 'failed' });
+      refundFailedSlides(deckId, [slideId]);
+    }
+    const charged = chargeCredits(userId, cost, '单页重新生成：' + deck.title.slice(0, 40));
+    if (!charged.ok) return charged;
+    const fresh = db.getPptDeck(deckId)!;
+    db.updatePptDeck(deckId, {
+      chargedCredits: (fresh.chargedCredits || 0) + cost,
+      refundedSlideIds: (fresh.refundedSlideIds || []).filter(id => id !== slideId),
+      slides: fresh.slides.map(s => s.id === slideId ? { ...s, billingCost: cost, chargedCredits: (s.chargedCredits || 0) + cost, status: 'idle' as const, error: undefined } : s),
+      finished: false, stage: 'paused',
+    });
+    return { ok: true as const };
+  });
+  if (!payment.ok) return { error: payment.error };
+  rt.cancelled = false;
+  rt.fatalImageError = undefined;
+  rt.controller = new AbortController();
+  const token = ++rt.runToken;
   rt.busy.add(slideId);
+  let cancelled = false;
   try {
-    await renderSlide(deckId, slideId, instruction ? String(instruction).trim().slice(0, 2000) || undefined : undefined);
+    await renderSlide(deckId, slideId, instruction ? String(instruction).trim().slice(0, 2000) || undefined : undefined, token);
+    cancelled = rt.runToken !== token || (rt.controller.signal.aborted && !rt.fatalImageError);
   } finally {
-    rt.busy.delete(slideId);
-    const fresh = db.getPptDeck(deckId);
-    if (fresh && !fresh.running && !rt.workersActive) {
-      // failed 也代表作品尚未完成，否则单页失败后会被错误标成 finished，
-      // 作品库会把它当成可导出的完整 PPT。
-      const finished = fresh.slides.length > 0 && fresh.slides.every(s => s.status === 'done');
-      db.updatePptDeck(deckId, { finished, stage: finished ? 'finished' : 'paused' });
+    try {
+      const fresh = db.getPptDeck(deckId);
+      const slide = fresh?.slides.find(s => s.id === slideId);
+      if (slide && slide.status !== 'done') {
+        patchSlide(deckId, slideId, { status: 'failed', error: cancelled ? '单页生成已取消，已退回点数' : slide.error || '单页生成未完成' });
+        refundFailedSlides(deckId, [slideId]);
+      }
+    } finally {
+      rt.busy.delete(slideId);
+      finishSingleOperation(deckId, rt);
     }
   }
-  return db.getPptDeck(deckId) || deck;
+  if (cancelled) return { error: '单页生成已取消，已退回点数', cancelled: true };
+  return db.getPptDeck(deckId) || { error: '任务不存在' };
+}
+
+function finishSingleOperation(deckId: string, rt: DeckRuntime) {
+  const fresh = db.getPptDeck(deckId);
+  if (fresh && !fresh.running && !rt.workersActive) {
+    const finished = fresh.slides.length > 0 && fresh.slides.every(s => s.status === 'done');
+    db.updatePptDeck(deckId, { finished, stage: finished ? 'finished' : 'paused' });
+  }
 }
 
 /** 给已完成/暂停的任务追加一页，并复用整套视觉风格生成该页图片。 */
-export async function appendSlide(userId: string, deckId: string, plan: PptSlidePlan): Promise<PptDeck | { error: string }> {
-  const deck = db.getPptDeck(deckId);
-  if (!deck || deck.userId !== userId) return { error: '任务不存在' };
-  if (deck.running) return { error: '任务正在生成中，无法追加页面' };
-  const slideId = 's_' + crypto.randomBytes(8).toString('hex');
-  const slide: PptDeckSlide = { id: slideId, plan, status: 'idle' };
-  db.updatePptDeck(deckId, { slides: [...deck.slides, slide], pageCount: deck.slides.length + 1, finished: false, stage: 'paused' });
+export async function appendSlide(userId: string, deckId: string, plan: PptSlidePlan): Promise<(PptDeck & { appendedSlideId?: string }) | { error: string; cancelled?: boolean }> {
+  const current = db.getPptDeck(deckId);
+  if (!current || current.userId !== userId) return { error: '任务不存在' };
   const rt = runtimeFor(deckId);
+  if (current.running || rt.running || rt.appendActive || rt.workersActive || rt.busy.size) return { error: '任务正在生成中，无法追加页面' };
+  const cost = memberImageCost(db.getUserById(userId), current.resolution);
+  const slideId = 's_' + crypto.randomBytes(8).toString('hex');
+  const slide: PptDeckSlide = { id: slideId, plan, status: 'idle', billingCost: cost, chargedCredits: cost, refundedCredits: 0, deliveredCredits: 0 };
+  const payment = db.transaction(() => {
+    const deck = ensureSlideBillingSnapshots(current);
+    const charged = chargeCredits(userId, cost, '新增页面：' + deck.title.slice(0, 40));
+    if (!charged.ok) return charged;
+    const inserted = db.updatePptDeck(deckId, { slides: [...deck.slides, slide], pageCount: deck.slides.length + 1, chargedCredits: (deck.chargedCredits || 0) + cost, finished: false, stage: 'paused' });
+    if (!inserted) throw new Error('追加页面写入失败');
+    return { ok: true as const };
+  });
+  if (!payment.ok) return { error: payment.error };
+  rt.appendActive = true;
+  rt.cancelled = false;
+  rt.fatalImageError = undefined;
+  rt.controller = new AbortController();
+  const token = ++rt.runToken;
   rt.busy.add(slideId);
+  let cancelled = false;
   try {
-    await renderSlide(deckId, slideId);
+    await renderSlide(deckId, slideId, undefined, token);
+    cancelled = rt.runToken !== token || (rt.controller.signal.aborted && !rt.fatalImageError);
   } finally {
-    rt.busy.delete(slideId);
-    const fresh = db.getPptDeck(deckId);
-    if (fresh && !fresh.running && !rt.workersActive) {
-      const finished = fresh.slides.length > 0 && fresh.slides.every(s => s.status === 'done');
-      db.updatePptDeck(deckId, { finished, stage: finished ? 'finished' : 'paused' });
+    try {
+      const created = db.getPptDeck(deckId)?.slides.find(s => s.id === slideId);
+      if (created && created.status !== 'done') {
+        patchSlide(deckId, slideId, { status: 'failed', error: cancelled ? '新增页面生成已取消，已退回点数' : created.error || '新增页面未完成' });
+        refundFailedSlides(deckId, [slideId]);
+      }
+    } finally {
+      rt.busy.delete(slideId);
+      rt.appendActive = false;
+      finishSingleOperation(deckId, rt);
     }
   }
-  return db.getPptDeck(deckId) || deck;
+  if (cancelled) return { error: '新增页面生成已取消，已退回点数', cancelled: true };
+  const result = db.getPptDeck(deckId);
+  return result ? { ...result, appendedSlideId: slideId } : { error: '任务不存在' };
 }
 
 /** 保存工作台单页编辑后的最终图片，替换任务中的原页面，确保作品库和再次打开工作台都使用新图。 */
@@ -770,8 +953,9 @@ export function replaceSlideImage(userId: string, deckId: string, slideId: strin
 
 /** 删除任务与磁盘图片。 */
 export function deleteDeck(userId: string, deckId: string): { ok: boolean } | { error: string } {
-  const deck = db.getPptDeck(deckId);
+  let deck = db.getPptDeck(deckId);
   if (!deck || deck.userId !== userId) return { error: '任务不存在' };
+  deck = ensureSlideBillingSnapshots(deck);
   const rt = runtimeFor(deckId);
   rt.cancelled = true;
   rt.controller.abort();
@@ -780,8 +964,14 @@ export function deleteDeck(userId: string, deckId: string): { ok: boolean } | { 
   runtimes.delete(deckId);
   // Cancelled, unfinished pages must not retain their prepaid generation charge.
   if ((deck.chargedCredits || 0) > 0) {
-    db.updatePptDeck(deckId, { running: false, slides: deck.slides.map(slide => slide.status === 'done' ? slide : { ...slide, status: 'failed' as const }) });
-    refundFailedSlides(deckId);
+    if (deck.slides.length) {
+      db.updatePptDeck(deckId, { running: false, slides: deck.slides.map(slide => slide.status === 'done' ? slide : { ...slide, status: 'failed' as const }) });
+      refundFailedSlides(deckId);
+    } else {
+      // 规划阶段尚未产出页面时没有 slide id 可登记，退回任务账面剩余预扣。
+      const outstanding = Math.max(0, Math.floor(Number(deck.chargedCredits) || 0) - Math.floor(Number(deck.refundedCredits) || 0));
+      if (outstanding > 0) refundCredits(userId, outstanding, 'PPT 空任务删除，退回未使用点数');
+    }
   }
   const dir = imageFullPath('user-' + userId + '/deck-' + deckId);
   if (dir) {
@@ -799,10 +989,12 @@ export function deleteSlide(userId: string, deckId: string, slideId: string): Pp
   if (!slide) return { error: '页面不存在' };
   if (deck.slides.length === 1) {
     const result = deleteDeck(userId, deckId);
+    // deleteDeck 返回 { ok } | { error }，用 'error' in 判别失败即可。
     return 'error' in result ? result : { deleted: true };
   }
-  if (slide.status !== 'done' && (deck.chargedCredits || 0) > 0) {
-    db.updatePptDeck(deckId, { slides: deck.slides.map(item => item.id === slideId ? { ...item, status: 'failed' as const } : item) });
+  const billingDeck = ensureSlideBillingSnapshots(deck);
+  if (slide.status !== 'done' && (billingDeck.chargedCredits || 0) > 0) {
+    db.updatePptDeck(deckId, { slides: billingDeck.slides.map(item => item.id === slideId ? { ...item, status: 'failed' as const } : item) });
     refundFailedSlides(deckId);
   }
   const fresh = db.getPptDeck(deckId)!;
