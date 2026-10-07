@@ -626,4 +626,9 @@
     main > div.z-\[60\] button[aria-label] {
         display: none;
     }
+    /* 触控目标：顶栏/侧边栏图标按钮由 28px 放大到 36px */
+    main button.size-7 {
+        width: 36px;
+        height: 36px;
+    }
 }
