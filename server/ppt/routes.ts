@@ -5,11 +5,12 @@
 import express from 'express';
 import fs from 'fs';
 import { db } from '../db.js';
-import { chargeCredits, refundCredits } from '../billing.js';
+import { chargeCredits, refundCredits, resolutionCost } from '../billing.js';
 import { requireUser } from '../sessionGuard.js';
 import { MAX_REFERENCE_TEXT } from './referenceAnalysis.js';
 import { optimizePrompt } from './promptOptimization.js';
 import {
+  appendSlide,
   deckView,
   deleteDeck,
   deleteSlide,
@@ -176,6 +177,39 @@ pptRouter.post('/decks/:id/slides/:slideId/regenerate', (req, res) => {
       console.error('[ppt] 单页重新生成异常，已退回点数:', deck.id, slideId, String(err?.message || err).slice(0, 180));
       if (!res.headersSent) res.status(500).json({ success: false, error: '单页重新生成失败，已退回点数' });
     });
+});
+
+pptRouter.post('/decks/:id/slides', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const deck = ownDeck(req, res, user);
+  if (!deck) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const title = String(body.title || '').trim().slice(0, 100);
+  if (!title) return res.status(400).json({ success: false, error: '缺少页面标题' });
+  const plan = {
+    title,
+    subtitle: String(body.subtitle || '').trim().slice(0, 160) || undefined,
+    bullets: (Array.isArray(body.bullets) ? body.bullets : []).map(v => String(v).trim().slice(0, 180)).filter(Boolean).slice(0, 8),
+    summary: String(body.summary || '').trim().slice(0, 500) || undefined,
+    pageType: 'process' as const,
+    imagePrompt: String(body.imagePrompt || '').trim().slice(0, 1200) || undefined,
+  };
+  const cost = resolutionCost(deck.resolution);
+  const charged = chargeCredits(user.id, cost, '新增页面：' + deck.title.slice(0, 40));
+  if (!charged.ok) return res.status(402).json({ success: false, error: charged.error, credits: charged.credits });
+  try {
+    const result = await appendSlide(user.id, deck.id, plan);
+    if ('error' in result) {
+      refundCredits(user.id, cost, '新增页面失败，退回点数');
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    res.json({ success: true, deck: deckView(result) });
+  } catch (err) {
+    refundCredits(user.id, cost, '新增页面异常，退回点数');
+    console.error('[ppt] 新增页面异常，已退回点数:', deck.id, String((err as Error)?.message || err).slice(0, 180));
+    if (!res.headersSent) res.status(500).json({ success: false, error: '新增页面失败，已退回点数' });
+  }
 });
 
 pptRouter.post('/decks/:id/slides/:slideId/replace-image', (req, res) => {

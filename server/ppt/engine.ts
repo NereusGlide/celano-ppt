@@ -707,6 +707,29 @@ export async function regenerateSlide(userId: string, deckId: string, slideId: s
   return db.getPptDeck(deckId) || deck;
 }
 
+/** 给已完成/暂停的任务追加一页，并复用整套视觉风格生成该页图片。 */
+export async function appendSlide(userId: string, deckId: string, plan: PptSlidePlan): Promise<PptDeck | { error: string }> {
+  const deck = db.getPptDeck(deckId);
+  if (!deck || deck.userId !== userId) return { error: '任务不存在' };
+  if (deck.running) return { error: '任务正在生成中，无法追加页面' };
+  const slideId = 's_' + crypto.randomBytes(8).toString('hex');
+  const slide: PptDeckSlide = { id: slideId, plan, status: 'idle' };
+  db.updatePptDeck(deckId, { slides: [...deck.slides, slide], pageCount: deck.slides.length + 1, finished: false, stage: 'paused' });
+  const rt = runtimeFor(deckId);
+  rt.busy.add(slideId);
+  try {
+    await renderSlide(deckId, slideId);
+  } finally {
+    rt.busy.delete(slideId);
+    const fresh = db.getPptDeck(deckId);
+    if (fresh && !fresh.running && !rt.workersActive) {
+      const finished = fresh.slides.length > 0 && fresh.slides.every(s => s.status === 'done');
+      db.updatePptDeck(deckId, { finished, stage: finished ? 'finished' : 'paused' });
+    }
+  }
+  return db.getPptDeck(deckId) || deck;
+}
+
 /** 保存工作台单页编辑后的最终图片，替换任务中的原页面，确保作品库和再次打开工作台都使用新图。 */
 export function replaceSlideImage(userId: string, deckId: string, slideId: string, dataUrl: string): PptDeck | { error: string } {
   const deck = db.getPptDeck(deckId);
