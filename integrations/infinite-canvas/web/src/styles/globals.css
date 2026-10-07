@@ -607,3 +607,23 @@
     border-radius: 0.6rem;
     font-size: 0.75rem;
 }
+
+/* ===== 移动端适配 =====
+   无限画布原为桌面设计：侧边栏固定 280px 且默认展开，在 ≤768px 屏幕上
+   会把画布挤压到不足 100px。移动端改为「侧边栏悬浮抽屉」，不再占用画布宽度。 */
+@media (max-width: 768px) {
+    /* 侧边栏脱离 flex 流，悬浮在画布左侧 */
+    main > div.z-\[60\] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        height: 100%;
+        z-index: 60;
+        box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+    }
+    /* 侧边栏右缘的拖拽把手在触屏上无法精确操作，隐藏 */
+    main > div.z-\[60\] button[aria-label] {
+        display: none;
+    }
+}

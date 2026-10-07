@@ -10,6 +10,8 @@ const OPEN_KEY = "canvas-side-panel-open";
 
 function initialWidth() {
     if (typeof window === "undefined") return CANVAS_SIDE_PANEL_DEFAULT_WIDTH;
+    // 移动端侧边栏为悬浮抽屉，宽度按屏宽自适应，避免挤压画布
+    if (window.innerWidth <= 768) return Math.min(CANVAS_SIDE_PANEL_DEFAULT_WIDTH, Math.round(window.innerWidth * 0.82));
     const stored = Number(localStorage.getItem(WIDTH_KEY));
     if (!stored) return CANVAS_SIDE_PANEL_DEFAULT_WIDTH;
     return Math.min(CANVAS_SIDE_PANEL_MAX_WIDTH, Math.max(CANVAS_SIDE_PANEL_MIN_WIDTH, stored));
@@ -17,6 +19,8 @@ function initialWidth() {
 
 function initialOpen() {
     if (typeof window === "undefined") return true;
+    // 移动端首次进入默认关闭侧边栏，保证画布占满屏；用户手动打开后按 localStorage 记忆
+    if (window.innerWidth <= 768 && localStorage.getItem(OPEN_KEY) === null) return false;
     return localStorage.getItem(OPEN_KEY) !== "0";
 }
 
