@@ -1,10 +1,10 @@
 import { PPT_PAGE_WIDTH, PPT_PAGE_HEIGHT, MAX_IMAGE_BYTES, MAX_IMAGE_DATA_URL_LENGTH, IMAGE_COST } from '../shared/imageSpecs.js';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, Monitor, Clock, Undo2, Trash2, Image as ImageIcon, Hand, ZoomIn, ZoomOut, Maximize, Paintbrush, SquareDashed, Wand2, X, Square, RefreshCw, LoaderCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Download, Monitor, Clock, Undo2, Trash2, Image as ImageIcon, Hand, ZoomIn, ZoomOut, Maximize, Paintbrush, SquareDashed, Wand2, X, Square, RefreshCw, LoaderCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { DrawCanvas } from './DrawCanvas.js';
 import { PagePreview } from './PagePreview.js';
 import { DrawTool, Annotation, TOOL_META, composeEditInput, buildEditPrompt, DEFAULT_MARK_WIDTH, MARK_WIDTH_MIN, MARK_WIDTH_MAX } from './draw.js';
-import { workspaceEditPage, replacePptSlideImage, createPptDeck, listPptDecks, getPptDeck, stopPptDeck, resumePptDeck, retryFailedPptDeck, regeneratePptSlide, deletePptDeck, deletePptSlide, type PptDeckView } from '../services/api.js';
+import { workspaceEditPage, replacePptSlideImage, createPptDeck, listPptDecks, getPptDeck, stopPptDeck, resumePptDeck, retryFailedPptDeck, regeneratePptSlide, deletePptDeck, deletePptSlide, appendPptSlide, type PptDeckView } from '../services/api.js';
 import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
 import { BrandLogo } from '../components/BrandLogo.js';
 import { publishLibraryChange, subscribeLibraryChanges } from '../shared/libraryEvents.js';
@@ -104,6 +104,10 @@ export const WorkspaceApp: React.FC = () => {
   const [exporting, setExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<'deck' | 'slide' | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [appendOpen, setAppendOpen] = useState(false);
+  const [appendTitle, setAppendTitle] = useState('');
+  const [appendContent, setAppendContent] = useState('');
+  const [appending, setAppending] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
@@ -574,6 +578,22 @@ export const WorkspaceApp: React.FC = () => {
       setPages(prev => prev.map(p => (p.id === slide.id ? { ...p, imageUrl: undefined } : p)));
     } catch (e: any) { setGenError(e?.message || '操作失败'); }
   };
+  const handleAppendSlide = async () => {
+    if (!deck || appending) return;
+    const title = appendTitle.trim();
+    if (!title) { setGenError('请输入新页面标题'); return; }
+    setAppending(true); setGenError('');
+    try {
+      const res = await appendPptSlide(deck.id, { title, imagePrompt: appendContent.trim() || undefined });
+      setDeck(res.deck);
+      setPages(buildDeckPages(res.deck));
+      setActiveIndex(res.deck.slides.length - 1);
+      setAppendOpen(false);
+      setAppendTitle('');
+      setAppendContent('');
+    } catch (e: any) { setGenError(e?.message || '新增页面失败'); }
+    finally { setAppending(false); }
+  };
 
   // PPTX 导出（与源实现一致：16:9 版面，比例不符时居中留白绝不拉伸）
   function urlToDataUrl(url: string): Promise<string> {
@@ -723,7 +743,17 @@ export const WorkspaceApp: React.FC = () => {
             ))}
           </div>
           <div className="ws-sidebar-bottom">
-            {deck && pages.length ? <button className="ws-button ws-ghost" disabled={deck.running || sending || deleting} onClick={() => setDeleteTarget('slide')}><Trash2 size={13} /> 删除本页</button> : null}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {deck && pages.length ? <button className="ws-button ws-ghost" disabled={deck.running || sending || deleting} onClick={() => setDeleteTarget('slide')}><Trash2 size={13} /> 删除本页</button> : null}
+              {deck && !deck.running ? <button className="ws-button ws-ghost" onClick={() => { setAppendOpen(v => !v); setGenError(''); }}><Plus size={13} /> 新增页</button> : null}
+            </div>
+            {appendOpen && deck ? (
+              <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                <input className="ws-input" placeholder="页面标题（必填）" value={appendTitle} onChange={e => setAppendTitle(e.target.value)} disabled={appending} maxLength={100} />
+                <textarea className="ws-input" placeholder="这一页要讲什么？留空则按标题生成" value={appendContent} onChange={e => setAppendContent(e.target.value)} disabled={appending} rows={3} style={{ resize: 'vertical', minHeight: 60 }} />
+                <button className="ws-button ws-primary" onClick={handleAppendSlide} disabled={appending || !appendTitle.trim()}>{appending ? <><LoaderCircle size={13} style={{ animation: 'ws-spin 0.9s linear infinite' }} /> 生成中…</> : <><Plus size={13} /> 生成这一页</>}</button>
+              </div>
+            ) : null}
             <p className="ws-sidebar-note">涂抹/框选自动编号，逐处填指令后发送修改</p>
           </div>
         </aside>

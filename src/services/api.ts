@@ -64,6 +64,11 @@ export async function deletePptSlide(id: string, slideId: string): Promise<{ dec
   publishLibraryChange({ resource: 'ppt', action: result.deck ? 'saved' : 'deleted', id });
   return result;
 }
+export async function appendPptSlide(id: string, plan: { title: string; subtitle?: string; bullets?: string[]; summary?: string; imagePrompt?: string }): Promise<{ deck: PptDeckView }> {
+  const result = await json<{ deck: PptDeckView }>('/ppt/decks/' + encodeURIComponent(id) + '/slides', { method: 'POST', body: JSON.stringify(plan) });
+  publishLibraryChange({ resource: 'ppt', action: 'saved', id });
+  return result;
+}
 export async function optimizePptPrompt(prompt: string): Promise<{ prompt: string }> {
   return json<{ prompt: string }>('/ppt/optimize-prompt', { method: 'POST', body: JSON.stringify({ prompt }) });
 }
