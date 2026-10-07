@@ -7,8 +7,8 @@ test('会员以确认状态和有效期为准，余额或账号角色不能冒�
   assert.equal(membershipView(null, now).active, false);
   assert.equal(membershipView({} as any, now).active, false);
   assert.equal(membershipView({ role: 'member', credits: 999999 } as any, now).active, false);
-  const user = { membership: { planId: 'celano-standard' as const, status: 'active' as const, expiresAt: now + 1000 } };
-  assert.equal(membershipView(user, now).name, '标准会员');
+  const user = { membership: { planId: 'celano-pro' as const, status: 'active' as const, expiresAt: now + 1000 } };
+  assert.equal(membershipView(user, now).name, '专业会员');
   assert.equal(membershipView(user, now).active, true);
   assert.equal(membershipView(user, now + 1000).active, false);
   assert.equal(membershipView({ membership: { ...user.membership, status: 'cancelled' } }, now).active, false);

@@ -2,6 +2,7 @@ import { imageSizeFor, IMAGE_QUALITY, pixelResolution, MAX_IMAGE_BYTES } from '.
 import type { ThirdPartyApiConfig } from '../src/types.js';
 import { assertNative16x9, assertRequestedImageSize, dataUrlBytes } from './ppt/imageDimensions.js';
 import { withChineseTextAccuracy } from './imagePrompt.js';
+import { fetchPublicImage, readLimitedBody } from './remoteImages.js';
 
 export type ProviderModelList = { success: boolean; message: string; models: string[]; latencyMs?: number };
 
@@ -113,13 +114,14 @@ export async function generateImageEdit(
     let parsed: URL;
     try { parsed = new URL(remoteUrl); } catch { throw new Error('图像编辑接口返回了无效图片地址'); }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('图像编辑接口返回了不支持的图片地址');
-    const imageResp = await fetch(remoteUrl, { signal: AbortSignal.timeout(120_000) });
-    if (!imageResp.ok) throw new Error('下载图像编辑结果失败 HTTP ' + imageResp.status);
+    const imageResp = await fetchPublicImage(remoteUrl);
+    if (!imageResp.ok) { await imageResp.body?.cancel(); throw new Error('下载图像编辑结果失败 HTTP ' + imageResp.status); }
     const contentType = String(imageResp.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(contentType)) {
+      await imageResp.body?.cancel();
       throw new Error('图像编辑接口返回的内容不是受支持的图片格式');
     }
-    const bytes = Buffer.from(await imageResp.arrayBuffer());
+    const bytes = await readLimitedBody(imageResp);
     if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('图像编辑结果过大，无法保存');
     assertNative16x9(bytes, '单页修改结果');
     assertRequestedImageSize(bytes, size, '单页修改结果');

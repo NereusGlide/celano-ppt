@@ -1,0 +1,18 @@
+/**
+ * kimi 字体资源（自托管，无外部请求）
+ *
+ * MiSans VF —— kimi 界面/正文/标题字体（可变字重 100–900，取自 kimi.com 线上真实 @font-face）
+ * Geist Mono —— 快捷键 / 代码等宽字体
+ */
+@font-face {
+  font-family: "MiSans VF";
+  src: url("/fonts/MiSansVF.ttf") format("truetype-variations"), url("/fonts/MiSansVF.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMonoVF.woff2") format("woff2-variations"), url("/fonts/GeistMonoVF.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}

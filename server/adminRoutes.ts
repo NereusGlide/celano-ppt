@@ -2,8 +2,13 @@ import express from 'express';
 import { parseMembership } from '../src/shared/membership.js';
 import { db } from './db.js';
 import { verifyPassword, hashPassword, isValidPhone } from './auth.js';
-import { signAdminToken, verifyAdminToken, generateCode } from './adminAuth.js';
+import { signAdminToken, verifyAdminToken, credentialFingerprint, generateCode } from './adminAuth.js';
 import { listThirdPartyModels, testThirdPartyConnection } from './imageProviders.js';
+import { testTextModelConnection, mergeTextTestOverride } from './textProviders.js';
+import { generateImage } from './ppt/aiClient.js';
+import { withImageSlot } from './ppt/imageSlots.js';
+import { dataUrlBytes, readImageDimensions } from './ppt/imageDimensions.js';
+import { imageSizeFor } from '../src/shared/imageSpecs.js';
 import { isUserOnline, onlineUserIds, forgetUser } from './presence.js';
 import {
   AdminAccount,
@@ -12,7 +17,8 @@ import {
   AiProviderConfig,
   ImageResolution,
   MembershipPlanConfig,
-  MembershipCode
+  MembershipCode,
+  PromptOptimizeModelConfig
 } from '../src/types.js';
 
 export const adminRouter = express.Router();
@@ -96,6 +102,16 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   if (!admin || admin.status !== 'active') {
     return res.status(401).json({ success: false, error: '管理员账号不可用' });
   }
+  if (admin.role !== 'super' && admin.role !== 'operator') {
+    return res.status(403).json({ success: false, error: '管理员权限不足' });
+  }
+  if (payload.credentialTag !== credentialFingerprint(db.getCredentials(admin.id))) {
+    return res.status(401).json({ success: false, error: '会话已失效，请重新登录' });
+  }
+  const selfService = req.path === '/auth/password' || req.path === '/auth/logout';
+  if (admin.role !== 'super' && !['GET', 'HEAD'].includes(req.method) && !selfService) {
+    return res.status(403).json({ success: false, error: '此操作需要超级管理员权限' });
+  }
   (req as any).admin = admin;
   next();
 }
@@ -104,23 +120,36 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
    登录 / 资料
    ========================================================= */
 
+const unknownAdminCredential = hashPassword('invalid-admin-login-placeholder');
+
+function maskedConfig<T extends { apiKey?: string }>(config: T) {
+  return { ...config, apiKey: '', hasApiKey: !!config.apiKey };
+}
+
+function maskedAiConfig(config: AiProviderConfig) {
+  const safe = maskedConfig(config);
+  if (config.resolutionConfigs) {
+    safe.resolutionConfigs = Object.fromEntries(Object.entries(config.resolutionConfigs).map(([resolution, tier]) => [resolution, tier ? maskedConfig(tier) : tier]));
+  }
+  return safe;
+}
+
 adminRouter.post('/auth/login', (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ success: false, error: '请输入管理员账号与密码' });
   }
   const admin = db.getAdminByUsername(String(username));
-  if (!admin) {
-    return res.status(404).json({ success: false, error: '管理员账号不存在' });
+  const passwordValid = verifyPassword(String(password), admin ? db.getCredentials(admin.id) : unknownAdminCredential);
+  if (!admin || !passwordValid) {
+    return res.status(401).json({ success: false, error: '账号或密码错误' });
   }
   if (admin.status !== 'active') {
     return res.status(403).json({ success: false, error: '该管理员账号已被禁用' });
   }
-  if (!verifyPassword(String(password), db.getCredentials(admin.id))) {
-    return res.status(401).json({ success: false, error: '密码错误' });
-  }
   const updated = db.updateAdmin(admin.id, { lastLoginAt: now() }) || admin;
-  const token = signAdminToken(admin.id);
+  const credential = db.getCredentials(admin.id);
+  const token = signAdminToken(admin.id, credential);
   res.setHeader('Set-Cookie', serializeAdminCookie(token, ADMIN_COOKIE_MAX_AGE));
   res.json({ success: true, token, admin: updated });
 });
@@ -143,8 +172,11 @@ adminRouter.post('/auth/password', requireAdmin, (req, res) => {
   if (String(newPassword || '').length < 6) {
     return res.status(400).json({ success: false, error: '新密码至少 6 位' });
   }
-  db.setCredentials(admin.id, hashPassword(String(newPassword)));
-  res.json({ success: true });
+  const credential = hashPassword(String(newPassword));
+  db.setCredentials(admin.id, credential);
+  const token = signAdminToken(admin.id, credential);
+  res.setHeader('Set-Cookie', serializeAdminCookie(token, ADMIN_COOKIE_MAX_AGE));
+  res.json({ success: true, token });
 });
 
 /* =========================================================
@@ -331,20 +363,50 @@ adminRouter.delete('/users/:id', requireAdmin, (req, res) => {
    使用记录管理
    ========================================================= */
 
+/**
+ * 使用记录里的用户快照只是写入当时的副本；这里附上用户表的当前资料，
+ * 让后台展示的「使用者」始终是真实的、最新的（改名或换头像后不再失真）。
+ * 账号已被删除时返回 null，由前端明确标注，而不是继续显示一个查不到的快照。
+ */
+function usageUserBrief(userId: string) {
+  const user = db.getUserById(userId);
+  if (!user) return null;
+  return { id: user.id, username: user.username, name: user.name || '', phone: user.phone || '', avatar: user.avatar || '' };
+}
+
+/** 码类列表「使用者」按 userId 关联用户表当前资料；查不到（含账号已删除）返回 null。 */
+function codeUserBrief(userId?: string | null) {
+  if (!userId) return null;
+  const user = db.getUserById(userId);
+  if (!user) return null;
+  return { id: user.id, username: user.username, name: user.name || '', phone: user.phone || '' };
+}
+
 adminRouter.get('/usage-records', requireAdmin, (req, res) => {
   const { keyword = '', type = '' } = req.query as any;
   const kw = String(keyword).trim().toLowerCase();
 
   let list = db.getUsageRecords().slice();
   if (kw) {
-    list = list.filter(r => r.username.toLowerCase().includes(kw) || r.detail.toLowerCase().includes(kw));
+    // 支持按用户名、详情与客户端 IP 检索
+    list = list.filter(r =>
+      String(r.username || '').toLowerCase().includes(kw) ||
+      String(r.detail || '').toLowerCase().includes(kw) ||
+      String(r.ip || '').toLowerCase().includes(kw)
+    );
   }
   if (type) {
     list = list.filter(r => r.type === type);
   }
 
   const page = paginate(list, req.query);
-  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, records: page.list });
+  res.json({
+    success: true,
+    total: page.total,
+    page: page.page,
+    pageSize: page.pageSize,
+    records: page.list.map(record => ({ ...record, user: usageUserBrief(record.userId) }))
+  });
 });
 
 adminRouter.delete('/usage-records/:id', requireAdmin, (req, res) => {
@@ -368,7 +430,7 @@ adminRouter.get('/invite-codes', requireAdmin, (req, res) => {
   if (status) list = list.filter(i => i.status === status);
 
   const page = paginate(list, req.query);
-  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, inviteCodes: page.list });
+  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, inviteCodes: page.list.map(c => ({ ...c, usedByUsers: (c.usedBy || []).map(codeUserBrief).filter(Boolean) })) });
 });
 
 adminRouter.post('/invite-codes', requireAdmin, (req, res) => {
@@ -431,7 +493,7 @@ adminRouter.get('/recharge-codes', requireAdmin, (req, res) => {
   if (status) list = list.filter(c => c.status === status);
 
   const page = paginate(list, req.query);
-  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, rechargeCodes: page.list });
+  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, rechargeCodes: page.list.map(c => ({ ...c, usedByUser: codeUserBrief(c.usedBy) })) });
 });
 
 adminRouter.post('/recharge-codes', requireAdmin, (req, res) => {
@@ -489,7 +551,7 @@ adminRouter.get('/membership-codes', requireAdmin, (req, res) => {
   if (status) list = list.filter(c => c.status === status);
 
   const page = paginate(list, req.query);
-  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, membershipCodes: page.list });
+  res.json({ success: true, total: page.total, page: page.page, pageSize: page.pageSize, membershipCodes: page.list.map(c => ({ ...c, usedByUser: codeUserBrief(c.usedBy) })) });
 });
 
 adminRouter.post('/membership-codes', requireAdmin, (req, res) => {
@@ -523,7 +585,7 @@ adminRouter.delete('/membership-codes/:code', requireAdmin, (req, res) => {
    ========================================================= */
 
 adminRouter.get('/planning-config', requireAdmin, (_req, res) => {
-  res.json({ success: true, planningConfig: db.getPlanningConfig() });
+  res.json({ success: true, planningConfig: maskedConfig(db.getPlanningConfig()) });
 });
 
 adminRouter.put('/planning-config', requireAdmin, (req, res) => {
@@ -540,7 +602,91 @@ adminRouter.put('/planning-config', requireAdmin, (req, res) => {
     return res.status(400).json({ success: false, error: '没有可更新的配置项' });
   }
   const saved = db.updatePlanningConfig(updates);
-  res.json({ success: true, planningConfig: saved });
+  res.json({ success: true, planningConfig: maskedConfig(saved) });
+});
+
+/** 内容规划模型的真实连通性测试：真的发一次最小对话请求，而不是只读模型列表。 */
+adminRouter.post('/planning-config/test', requireAdmin, async (req, res) => {
+  const saved = db.getPlanningConfig();
+  const config = mergeTextTestOverride({
+    baseUrl: saved.baseUrl,
+    apiKey: saved.apiKey,
+    modelName: saved.modelName,
+    reasoningEffort: saved.reasoningEffort
+  }, req.body);
+  const result = await testTextModelConnection(config, '内容规划模型');
+  res.json(testPayload(result, { channel: 'planning' }));
+});
+
+/* =========================================================
+   提示词优化模型配置（独立通道；未启用时回退内容规划模型）
+   ---------------------------------------------------------
+   提示词优化是比整篇规划轻得多的文本调用，常需更快/更便宜的通道，
+   因此单独配置。前端三处优化入口（PPT 页、旧版首页、画布）统一读这份配置。
+   ========================================================= */
+
+adminRouter.get('/prompt-optimize-config', requireAdmin, (_req, res) => {
+  res.json({ success: true, promptOptimizeConfig: maskedConfig(db.getPromptOptimizeConfig()) });
+});
+
+adminRouter.put('/prompt-optimize-config', requireAdmin, (req, res) => {
+  const { enabled, baseUrl, apiKey, modelName, reasoningEffort, temperature, maxOutputTokens, systemPrompt } = req.body || {};
+  const updates: Partial<PromptOptimizeModelConfig> = {};
+  if (typeof enabled === 'boolean') updates.enabled = enabled;
+  // 接口地址与模型允许清空：清空即视为未配置，自动回退内容规划模型
+  if (typeof baseUrl === 'string') updates.baseUrl = baseUrl.trim().slice(0, 500);
+  // 密钥留空表示保持原密钥（避免管理端展示后误清空）
+  if (typeof apiKey === 'string' && apiKey.trim()) updates.apiKey = apiKey.trim().slice(0, 500);
+  if (typeof modelName === 'string') updates.modelName = modelName.trim().slice(0, 200);
+  if (typeof reasoningEffort === 'string') updates.reasoningEffort = reasoningEffort.trim().slice(0, 20);
+  if (typeof temperature === 'string') {
+    const text = temperature.trim();
+    if (text && (!Number.isFinite(Number(text)) || Number(text) < 0 || Number(text) > 2)) {
+      return res.status(400).json({ success: false, error: '采样温度需为 0–2 之间的数字，留空表示使用上游默认' });
+    }
+    updates.temperature = text;
+  }
+  if (typeof maxOutputTokens === 'string') {
+    const text = maxOutputTokens.trim();
+    if (text && (!Number.isSafeInteger(Number(text)) || Number(text) <= 0)) {
+      return res.status(400).json({ success: false, error: '最大输出 token 需为正整数，留空表示使用上游默认' });
+    }
+    updates.maxOutputTokens = text;
+  }
+  if (typeof systemPrompt === 'string') updates.systemPrompt = systemPrompt.slice(0, 2000);
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ success: false, error: '没有可更新的配置项' });
+  }
+  // 启用独立通道时三项连接信息必须齐备，否则解析阶段会静默回退，管理员会误以为已生效
+  if (updates.enabled === true) {
+    const merged = { ...db.getPromptOptimizeConfig(), ...updates };
+    if (!String(merged.baseUrl || '').trim() || !String(merged.apiKey || '').trim() || !String(merged.modelName || '').trim()) {
+      return res.status(400).json({ success: false, error: '启用独立通道前，请先填写接口地址、API Key 与真实模型 ID' });
+    }
+  }
+  const saved = db.updatePromptOptimizeConfig(updates);
+  res.json({ success: true, promptOptimizeConfig: maskedConfig(saved) });
+});
+
+/**
+ * 提示词优化模型的真实连通性测试。
+ *
+ * 走 resolvePromptOptimizeConfig()，因此测的就是正式调用实际会用的通道：
+ * enabled 且填齐时是独立配置，否则是回退后的内容规划模型 —— 返回值里的
+ * channel 会把这一点告诉管理员，避免「以为在测独立通道，其实测的是回退」。
+ */
+adminRouter.post('/prompt-optimize-config/test', requireAdmin, async (req, res) => {
+  const resolved = db.resolvePromptOptimizeConfig();
+  const config = mergeTextTestOverride({
+    baseUrl: resolved.baseUrl,
+    apiKey: resolved.apiKey,
+    modelName: resolved.modelName,
+    reasoningEffort: resolved.reasoningEffort,
+    temperature: resolved.temperature,
+    maxOutputTokens: resolved.maxOutputTokens
+  }, req.body);
+  const result = await testTextModelConnection(config, '提示词优化模型');
+  res.json(testPayload(result, { channel: resolved.source }));
 });
 
 /* =========================================================
@@ -565,6 +711,9 @@ function normalizeMembershipPlans(value: unknown): MembershipPlanConfig[] {
     const renewalPrice = Number(plan.renewalPrice);
     if (!Number.isFinite(renewalPrice) || renewalPrice < 0) throw new Error(`第 ${index + 1} 项套餐续费价需为非负数`);
     const benefits = Array.isArray(plan.benefits) ? plan.benefits.filter((b): b is string => typeof b === 'string' && !!b.trim()).map(b => b.trim().slice(0, 80)).slice(0, 12) : [];
+    // 画质折扣：落在 1..零售价 区间（2K=10、4K=20），非法值回退到默认值。
+    const discount2k = Math.max(1, Math.min(10, Math.floor(Number(plan.discount2k) || 10)));
+    const discount4k = Math.max(1, Math.min(20, Math.floor(Number(plan.discount4k) || 20)));
     return {
       id,
       name,
@@ -576,6 +725,8 @@ function normalizeMembershipPlans(value: unknown): MembershipPlanConfig[] {
       recommended: plan.recommended === true,
       benefits,
       enabled: plan.enabled !== false,
+      discount2k,
+      discount4k,
     };
   });
 }
@@ -599,7 +750,7 @@ adminRouter.put('/membership-plans', requireAdmin, (req, res) => {
 
 adminRouter.get('/ai-configs', requireAdmin, (_req, res) => {
   const list = db.getAiConfigs().slice().sort((a, b) => b.updatedAt - a.updatedAt);
-  res.json({ success: true, aiConfigs: list });
+  res.json({ success: true, aiConfigs: list.map(maskedAiConfig) });
 });
 
 const IMAGE_RESOLUTIONS: ImageResolution[] = ['2K', '4K'];
@@ -653,13 +804,74 @@ adminRouter.put('/image-configs/:resolution', requireAdmin, (req, res) => {
   res.json({ success: true, slot: publicImageConfig(saved || undefined, resolution) });
 });
 
+/**
+ * 真实出图测试用的极小提示词：只验证「接口能按该档位出图且尺寸合规」，
+ * 不追求画面质量，尽量压低单次测试成本。
+ */
+const TEST_IMAGE_PROMPT = '连通性测试用图：纯色背景，画面中央一个圆点，不要文字。';
+
+/**
+ * 测试类接口统一在 HTTP 200 上返回 success 标记（请求本身执行成功了，
+ * 只是对上游的结论可能是否定的）。但前端的 request() 会把 success:false
+ * 抛成 AdminApiError 并且只取 error 字段，若不同时写入 error，管理员
+ * 看到的会是无意义的「请求失败」而不是真实原因。
+ */
+function testPayload(result: { success: boolean; message: string }, extra: Record<string, unknown> = {}) {
+  return { ...result, ...extra, error: result.success ? undefined : result.message };
+}
+
 adminRouter.post('/image-configs/:resolution/test', requireAdmin, async (req, res) => {
   const resolution = validImageResolution(req.params.resolution);
   if (!resolution) return res.status(400).json({ success: false, error: '画质档位只能是 2K 或 4K' });
+  const mode = req.body?.mode === 'image' ? 'image' : 'connection';
   const config = db.getAiConfigs().find(item => item.resolution === resolution);
   if (!config) return res.status(404).json({ success: false, error: resolution + ' 尚未配置' });
+
+  // 真实出图测试：真的生成一张图并校验尺寸。
+  // 「模型列表可连通」不等于「渠道真的能出图」——渠道停用、额度耗尽、
+  // 上游尺寸策略变化都只有走到出图这一步才暴露。
+  if (mode === 'image') {
+    const provider = db.resolveImageConfig(resolution);
+    const size = imageSizeFor(resolution);
+    if (!provider.baseUrl || !provider.apiKey || !provider.modelName) {
+      return res.status(400).json({ success: false, error: resolution + ' 未配置可用的接口地址、密钥与模型' });
+    }
+    const started = Date.now();
+    try {
+      const dataUrl = await withImageSlot(() => generateImage(provider, TEST_IMAGE_PROMPT, size, undefined, 300_000));
+      const buffer = dataUrlBytes(dataUrl);
+      // 报告上游实际返回的像素，而不是假定值 —— 这正是「真实出图」相对
+      // 只读模型列表的价值所在（尺寸策略变化会在这里暴露）。
+      const actual = readImageDimensions(buffer);
+      const [wantW, wantH] = size.split('x').map(Number);
+      const exact = actual.width === wantW && actual.height === wantH;
+      // 2K 档的产品定义是「保留上游原生像素」：只校验 16:9 与像素下限，不要求
+      // 精确等于 2048×1152；4K 档才要求精确像素。文案必须写清实测值，
+      // 否则管理员会把「上游返回 1672×941」误读成校验没生效。
+      const verdict = resolution === '4K'
+        ? '4K 精确像素校验通过'
+        : '2K 保留上游原生像素，16:9 与像素下限校验通过';
+      return res.json(testPayload(
+        { success: true, message: `真实出图成功：上游返回 ${actual.width}×${actual.height}，请求 ${size} · ${verdict}` },
+        {
+          resolution,
+          requestedSize: size,
+          actualSize: `${actual.width}x${actual.height}`,
+          exact,
+          bytes: buffer.length,
+          latencyMs: Date.now() - started
+        }
+      ));
+    } catch (err: any) {
+      return res.json(testPayload(
+        { success: false, message: String(err?.message || '出图失败').slice(0, 240) },
+        { resolution, requestedSize: size, latencyMs: Date.now() - started }
+      ));
+    }
+  }
+
   const result = await testThirdPartyConnection({ id: config.id, provider: config.provider, name: config.name, displayName: config.displayName, baseUrl: config.baseUrl, apiKey: config.apiKey, modelName: config.modelName, isActive: config.enabled, resolutionSupport: [resolution] });
-  res.json({ ...result, resolution, requestedSize: resolution === '2K' ? '2048x1152' : '3840x2160' });
+  res.json(testPayload(result, { resolution, requestedSize: resolution === '2K' ? '2048x1152' : '3840x2160' }));
 });
 
 adminRouter.post('/image-configs/models', requireAdmin, async (req, res) => {
@@ -693,7 +905,7 @@ adminRouter.post('/ai-configs', requireAdmin, (req, res) => {
     updatedAt: now()
   };
   db.createAiConfig(item);
-  res.json({ success: true, aiConfig: item });
+  res.json({ success: true, aiConfig: maskedAiConfig(item) });
 });
 
 adminRouter.patch('/ai-configs/:id', requireAdmin, (req, res) => {
@@ -702,9 +914,24 @@ adminRouter.patch('/ai-configs/:id', requireAdmin, (req, res) => {
   for (const key of allowed) {
     if (req.body && req.body[key] !== undefined) updates[key] = req.body[key];
   }
+  const existing = db.getAiConfigs().find(config => config.id === req.params.id);
+  if (!existing) return res.status(404).json({ success: false, error: 'AI 配置不存在' });
+  if (typeof updates.apiKey === 'string' && !updates.apiKey.trim()) delete updates.apiKey;
+  if (updates.resolutionConfigs && typeof updates.resolutionConfigs === 'object') {
+    const tiers: AiProviderConfig['resolutionConfigs'] = {};
+    for (const resolution of IMAGE_RESOLUTIONS) {
+      const incoming = updates.resolutionConfigs[resolution];
+      const saved = existing.resolutionConfigs?.[resolution];
+      if (incoming && typeof incoming === 'object') {
+        const { hasApiKey: _hasApiKey, ...fields } = incoming;
+        tiers[resolution] = { ...saved, ...fields, apiKey: typeof fields.apiKey === 'string' && fields.apiKey.trim() ? fields.apiKey.trim() : saved?.apiKey || '' };
+      } else if (saved) tiers[resolution] = saved;
+    }
+    updates.resolutionConfigs = tiers;
+  }
   const updated = db.updateAiConfig(req.params.id, updates);
   if (!updated) return res.status(404).json({ success: false, error: 'AI 配置不存在' });
-  res.json({ success: true, aiConfig: updated });
+  res.json({ success: true, aiConfig: maskedAiConfig(updated) });
 });
 
 adminRouter.delete('/ai-configs/:id', requireAdmin, (req, res) => {

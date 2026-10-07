@@ -142,40 +142,43 @@
    浅色文档场在 [data-theme="light"] 下覆盖同名变量，组件结构零改动。
    ========================================================================= */
 :root {
-  --bg-canvas: #0c1220;
-  --bg-surface: #131c2c;
-  --bg-subtle: #1a2436;
-  --bg-raised: #232f47;
+  /* 与 kimi 外壳统一的中性黑 / 白 / 蓝体系：
+     外壳内的覆盖（.kimi-shell）与各内嵌页面的局部覆盖均以此为准，
+     避免「壳内是黑、壳外是深靛蓝」造成刷新瞬间露出蓝色底。 */
+  --bg-canvas: #181817;
+  --bg-surface: #1f1f1f;
+  --bg-subtle: #121212;
+  --bg-raised: #262626;
 
-  --border-subtle: rgba(150, 180, 220, 0.10);
-  --border-default: rgba(150, 180, 220, 0.20);
-  --border-control: rgba(150, 180, 220, 0.32);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.13);
+  --border-control: rgba(255, 255, 255, 0.20);
 
-  --text-primary: #e8eef7;
-  --text-secondary: #8b99ad;
-  --text-tertiary: #6b7889;
-  --text-inverse: #0c1220;
+  --text-primary: rgba(255, 255, 255, 0.84);
+  --text-secondary: rgba(255, 255, 255, 0.42);
+  --text-tertiary: rgba(255, 255, 255, 0.28);
+  --text-inverse: #181817;
 
   /* E4 反转填充：暗色主题为白底黑字 */
-  --fill-primary: #e8eef7;
+  --fill-primary: rgba(255, 255, 255, 0.84);
   --fill-primary-hover: #FFFFFF;
-  --on-fill-primary: #0c1220;
+  --on-fill-primary: #181817;
   /* E3 实心填充 */
-  --fill-emphasis: #1a2436;
+  --fill-emphasis: #1f1f1f;
 
   /* 唯一品牌点缀色：只用于交互状态 */
-  --accent: #7aa2f7;
-  --accent-soft: rgba(122, 162, 247, 0.14);
-  --on-accent: #0a1428;
+  --accent: #1a88ff;
+  --accent-soft: rgba(26, 136, 255, 0.14);
+  --on-accent: #ffffff;
 
-  --danger-text: #E8836F;
-  --danger-soft: rgba(232, 131, 111, 0.12);
-  --danger-line: rgba(232, 131, 111, 0.32);
+  --danger-text: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --danger-line: rgba(248, 113, 113, 0.32);
 
-  --data-up: #E8836F;
-  --data-down: #7aa2f7;
+  --data-up: #f87171;
+  --data-down: #1a88ff;
 
-  --focus-ring: #7aa2f7;
+  --focus-ring: #1a88ff;
 
   /* ---------- 动效 ---------- */
   --m-instant: 100ms;

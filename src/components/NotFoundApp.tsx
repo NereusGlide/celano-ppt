@@ -26,7 +26,6 @@ export const NotFoundApp: React.FC = () => {
         <p>地址可能输错了，或者这个链接已经失效。</p>
         <div className="celano-notfound-actions">
           <button type="button" className="celano-notfound-primary" onClick={goHome}>返回首页</button>
-          <a className="celano-notfound-ghost" href="/#/templates">浏览模版库</a>
         </div>
       </div>
     </div>

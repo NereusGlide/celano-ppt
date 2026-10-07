@@ -45,10 +45,13 @@ async function runGeneration(id: string) {
   const job = jobs.find(item => item.id === id)!;
   try {
     const response = await fetch('/api/canvas/config');
-    const config = await response.json();
-    const channel = config.channels?.find((item: any) => item.id === 'celano-image');
+    // 服务未启动/被网关拦截时会返回 HTML（502 页），先判 ok 再 json，
+    // 避免 json() 抛出原始 SyntaxError 误导用户。
+    if (!response.ok) throw new Error('服务未就绪，请稍后重试');
+    const config = await response.json().catch(() => null);
+    const channel = (config as any)?.channels?.find((item: any) => item.id === 'celano-image');
     const model = channel?.models?.[0]?.name;
-    if (!response.ok || !model) throw new Error('请在管理后台配置生图模型接口');
+    if (!model) throw new Error('请在管理后台配置生图模型接口');
     // 代理令牌由服务端下发，不写死在前端代码里。
     const proxyToken = String(config.proxyToken || channel?.apiKey || '');
     if (!proxyToken) throw new Error('画布代理令牌缺失，请重新加载页面');

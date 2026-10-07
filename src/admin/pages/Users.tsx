@@ -157,14 +157,14 @@ export const UsersPage: React.FC = () => {
         (r.status || 'active') === 'active' ? <Tag type="success">正常</Tag> : <Tag type="danger">已封禁</Tag>
       )
     },
-    { title: '会员', width: '145px', render: (r) => <span>{membershipView(r).name}<small style={{ display: 'block', color: '#8A9299' }}>{r.membership ? fmt(r.membership.expiresAt) : '—'}</small></span> },
+    { title: '会员', width: '145px', render: (r) => <span>{membershipView(r).name}<small style={{ display: 'block', color: 'var(--text-secondary)' }}>{r.membership ? fmt(r.membership.expiresAt) : '—'}</small></span> },
     { title: '点数', width: '70px', align: 'right', render: (r) => <span className="ws-mono">{r.credits ?? 0}</span> },
     { title: '文稿', width: '60px', align: 'right', render: (r) => <span className="ws-mono">{r.presentationCount}</span> },
     { title: '邀请码', width: '110px', render: (r) => <span className="ws-mono">{r.inviteCode || '—'}</span> },
     {
       title: '最近登录', width: '190px', render: (r) => (
         <span>
-          <span className="ws-mono" style={{ display: 'block', color: '#8A9299' }}>{fmt(r.lastLoginAt)}</span>
+          <span className="ws-mono" style={{ display: 'block', color: 'var(--text-secondary)' }}>{fmt(r.lastLoginAt)}</span>
           {r.lastLoginIp ? <span className="ws-ip">IP {r.lastLoginIp}</span> : <span className="ws-ip">IP —</span>}
         </span>
       )
@@ -214,8 +214,8 @@ export const UsersPage: React.FC = () => {
         footer={<><Button onClick={() => setEditing(null)}>取消</Button><Button variant="primary" loading={saving} onClick={save}>保存</Button></>}>
         {editing && (
           <>
-            <div style={{ fontSize: 12, color: '#8A9299', marginBottom: 16 }}>
-              账号：<b style={{ color: '#E2E5E8' }}>@{editing.username}</b>{editing.id ? <span className="ws-mono" style={{ marginLeft: 8 }}>{editing.id}</span> : null}
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              账号：<b style={{ color: 'var(--text-primary)' }}>@{editing.username}</b>{editing.id ? <span className="ws-mono" style={{ marginLeft: 8 }}>{editing.id}</span> : null}
             </div>
             <Field label="昵称"><TextInput value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} className="w-full" /></Field>
             <Field label="手机号" hint="留空表示清除手机号；不能与其他账号重复"><TextInput value={editing.phone || ''} onChange={(v) => setEditing({ ...editing, phone: v })} className="w-full" /></Field>
@@ -229,7 +229,7 @@ export const UsersPage: React.FC = () => {
             </Field>
             <Field label="剩余点数"><TextInput value={String(editing.credits)} onChange={(v) => setEditing({ ...editing, credits: v })} type="number" className="w-full" /></Field>
             <Field label="会员套餐" hint="确认办理后设置；会员资格与点数余额、账号角色独立">
-              <Select value={editing.membershipPlan || ''} onChange={v => setEditing({ ...editing, membershipPlan: v })} options={[{ label: '未开通会员', value: '' }, ...membershipPlans.map(plan => ({ value: plan.id, label: plan.name }))]} className="w-full" />
+              <Select value={editing.membershipPlan || ''} onChange={v => setEditing({ ...editing, membershipPlan: v })} options={[{ label: '免费版（未开通会员）', value: '' }, ...membershipPlans.map(plan => ({ value: plan.id, label: plan.name }))]} className="w-full" />
             </Field>
             {editing.membershipPlan ? <>
               <Field label="会员状态"><Select value={editing.membershipStatus || 'active'} onChange={v => setEditing({ ...editing, membershipStatus: v })} options={[{ label: '有效', value: 'active' }, { label: '已取消', value: 'cancelled' }]} className="w-full" /></Field>

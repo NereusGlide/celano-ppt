@@ -24,6 +24,7 @@ const previewUrls = new Map<string, string>();
 const previewListeners = new Set<() => void>();
 let previewRevision = 0;
 let previewQueue: Promise<unknown> = Promise.resolve();
+const queuedPreviews = new Set<string>();
 const IMAGE_PREVIEW_VERSION = 1;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_REMOTE_LOAD_TIMEOUT_MS = 10 * 60_000;
@@ -147,6 +148,8 @@ export async function resolveImageUrl(storageKey?: string, fallback = "") {
     if (cached) return cached;
     const blob = await store.getItem<Blob>(storageKey);
     if (!blob) return fallback;
+    const resolved = objectUrls.get(storageKey);
+    if (resolved) return resolved;
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     return url;
@@ -185,12 +188,15 @@ export async function ensureImagePreview(storageKey?: string) {
 
 // 缩略图生成排成一队，避免一次打开大量图片时同时解码。
 function queueImagePreview(storageKey: string) {
+    if (queuedPreviews.has(storageKey)) return;
+    queuedPreviews.add(storageKey);
     previewQueue = previewQueue
         .then(async () => {
             const original = await getImageBlob(storageKey);
             if (original) await storeImagePreview(storageKey, original);
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => queuedPreviews.delete(storageKey));
 }
 
 async function storeImagePreview(storageKey: string, original: Blob) {
@@ -200,6 +206,8 @@ async function storeImagePreview(storageKey: string, original: Blob) {
 }
 
 function cacheImagePreview(storageKey: string, preview: Blob) {
+    const cached = previewUrls.get(storageKey);
+    if (cached) return cached;
     const url = URL.createObjectURL(preview);
     previewUrls.set(storageKey, url);
     previewRevision += 1;
@@ -218,6 +226,8 @@ export async function setImageBlob(storageKey: string, blob: Blob) {
     await store.setItem(storageKey, blob);
     await deleteImagePreview(storageKey);
     await storeImagePreview(storageKey, blob);
+    const previous = objectUrls.get(storageKey);
+    if (previous) URL.revokeObjectURL(previous);
     const url = URL.createObjectURL(blob);
     objectUrls.set(storageKey, url);
     return url;

@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../api.js';
 import { Alert, Button, Card, Field, Modal, PageHeader, Pagination, Select, Table, Tag, TextInput, Column } from '../ui.js';
-import { RechargeCode } from '../../types.js';
+import { type AdminRechargeCode } from '../api.js';
 
 const fmt = (ts?: number) => (ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-');
 
 export const RechargeCodesPage: React.FC = () => {
-  const [rows, setRows] = useState<RechargeCode[]>([]);
+  const [rows, setRows] = useState<AdminRechargeCode[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -58,11 +58,11 @@ export const RechargeCodesPage: React.FC = () => {
     }
   };
 
-  const disable = async (row: RechargeCode) => {
+  const disable = async (row: AdminRechargeCode) => {
     try { await adminApi.updateRechargeCode(row.code, { status: 'disabled' }); load(); } catch (e: any) { setError(e.message); }
   };
 
-  const remove = async (row: RechargeCode) => {
+  const remove = async (row: AdminRechargeCode) => {
     if (!window.confirm('确定删除充值码 ' + row.code + '？')) return;
     try { await adminApi.deleteRechargeCode(row.code); load(); } catch (e: any) { setError(e.message); }
   };
@@ -72,10 +72,10 @@ export const RechargeCodesPage: React.FC = () => {
     catch { setNotice('复制失败，请手动选择：' + code); }
   };
 
-  const columns: Column<RechargeCode>[] = [
+  const columns: Column<AdminRechargeCode>[] = [
     {
       title: '充值码', width: '210px', render: (r) => (
-        <button onClick={() => copy(r.code)} title="点击复制" className="font-mono text-[#F4F6F7] hover:underline">{r.code}</button>
+        <button onClick={() => copy(r.code)} title="点击复制" className="font-mono text-[color:var(--text-primary)] hover:underline">{r.code}</button>
       )
     },
     { title: '面额', width: '90px', align: 'right', render: (r) => <span className="font-mono font-medium">{r.credits}</span> },
@@ -86,7 +86,22 @@ export const RechargeCodesPage: React.FC = () => {
             : <Tag type="info">已停用</Tag>
       )
     },
-    { title: '使用者', width: '120px', render: (r) => r.usedByName || '-' },
+    {
+      title: '使用者', width: '180px', render: (r) => {
+        const u = r.usedByUser;
+        const username = u?.username || r.usedByName;
+        if (!username) return <span className="text-[color:var(--text-secondary)]">—</span>;
+        return (
+          <span className="ws-user-cell">
+            <span className="ws-avatar">{username.slice(0, 1).toUpperCase()}</span>
+            <span>
+              <b>{username}</b>
+              <small>{u?.phone || u?.id || '—'}</small>
+            </span>
+          </span>
+        );
+      }
+    },
     { title: '使用时间', width: '160px', render: (r) => fmt(r.usedAt) },
     { title: '备注', render: (r) => r.note || '-' },
     { title: '创建时间', width: '160px', render: (r) => fmt(r.createdAt) },

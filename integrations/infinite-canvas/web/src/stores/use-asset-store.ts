@@ -43,12 +43,34 @@ export function assetCoverUrl(asset: Asset) {
 }
 
 const ASSET_STORE_KEY = "infinite-canvas:asset_store";
+let assetStorageReadFailed = false;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAsset(value: unknown): value is Asset {
+    if (!isRecord(value) || typeof value.id !== "string" || typeof value.kind !== "string" || typeof value.title !== "string" || typeof value.coverUrl !== "string" || !Array.isArray(value.tags) || !value.tags.every((tag) => typeof tag === "string") || typeof value.createdAt !== "string" || typeof value.updatedAt !== "string" || !isRecord(value.data)) return false;
+    if (value.kind === "text") return typeof value.data.content === "string";
+    if (value.kind === "image") return typeof value.data.dataUrl === "string" && typeof value.data.width === "number" && typeof value.data.height === "number" && typeof value.data.bytes === "number" && typeof value.data.mimeType === "string" && (value.data.storageKey === undefined || typeof value.data.storageKey === "string");
+    if (value.kind === "video") return typeof value.data.url === "string" && typeof value.data.width === "number" && typeof value.data.height === "number" && typeof value.data.bytes === "number" && typeof value.data.mimeType === "string" && (value.data.storageKey === undefined || typeof value.data.storageKey === "string");
+    return false;
+}
 
 const assetStorage: PersistStorage<AssetStore> = {
     getItem: async (name) => {
         const value = await localForageStorage.getItem(name);
         if (!value) return null;
-        const parsed = JSON.parse(value) as StorageValue<AssetStore>;
+        let parsed: StorageValue<AssetStore>;
+        try {
+            parsed = JSON.parse(value) as StorageValue<AssetStore>;
+            if (!parsed?.state || typeof parsed.state !== "object" || !Array.isArray(parsed.state.assets) || !parsed.state.assets.every(isAsset)) throw new Error("素材缓存结构无效");
+            assetStorageReadFailed = false;
+        } catch {
+            assetStorageReadFailed = true;
+            console.warn("素材缓存读取失败，原始数据已保留");
+            return null;
+        }
         parsed.state.assets = await Promise.all(
             parsed.state.assets.map(async (asset) => {
                 if (asset.kind === "video" && asset.data.storageKey) return { ...asset, data: { ...asset.data, url: await resolveMediaUrl(asset.data.storageKey, asset.data.url) } };
@@ -68,7 +90,12 @@ const assetStorage: PersistStorage<AssetStore> = {
         );
         return parsed;
     },
-    setItem: (name, value) => localForageStorage.setItem(name, JSON.stringify(value)),
+    setItem: (name, value) => {
+        // hydration 只更新 hydrated 标记，不能把损坏原文覆盖成空集合。
+        if (assetStorageReadFailed && !value.state.assets.length) return;
+        assetStorageReadFailed = false;
+        return localForageStorage.setItem(name, JSON.stringify(value));
+    },
     removeItem: (name) => localForageStorage.removeItem(name),
 };
 

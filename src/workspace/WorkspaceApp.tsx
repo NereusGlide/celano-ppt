@@ -1,13 +1,13 @@
-import { PPT_PAGE_WIDTH, PPT_PAGE_HEIGHT, MAX_IMAGE_BYTES, MAX_IMAGE_DATA_URL_LENGTH, IMAGE_COST } from '../shared/imageSpecs.js';
+import { PPT_PAGE_WIDTH, PPT_PAGE_HEIGHT, MAX_IMAGE_BYTES, MAX_IMAGE_DATA_URL_LENGTH } from '../shared/imageSpecs.js';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, Monitor, Clock, Undo2, Trash2, Image as ImageIcon, Hand, ZoomIn, ZoomOut, Maximize, Paintbrush, SquareDashed, Wand2, X, Square, RefreshCw, LoaderCircle, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ArrowLeft, Download, Clock, Undo2, Trash2, Image as ImageIcon, Hand, ZoomIn, ZoomOut, Maximize, Paintbrush, SquareDashed, Wand2, X, Square, RefreshCw, LoaderCircle, ChevronRight, Plus } from 'lucide-react';
 import { DrawCanvas } from './DrawCanvas.js';
 import { PagePreview } from './PagePreview.js';
 import { DrawTool, Annotation, TOOL_META, composeEditInput, buildEditPrompt, DEFAULT_MARK_WIDTH, MARK_WIDTH_MIN, MARK_WIDTH_MAX } from './draw.js';
 import { workspaceEditPage, replacePptSlideImage, createPptDeck, listPptDecks, getPptDeck, stopPptDeck, resumePptDeck, retryFailedPptDeck, regeneratePptSlide, deletePptDeck, deletePptSlide, appendPptSlide, type PptDeckView } from '../services/api.js';
 import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
-import { BrandLogo } from '../components/BrandLogo.js';
 import { publishLibraryChange, subscribeLibraryChanges } from '../shared/libraryEvents.js';
+import { memberImageCost } from '../shared/membership.js';
 import { useAuth } from '../context/AuthContext.js';
 import { UserAuthModal } from '../components/UserAuthModal.js';
 import '../styles/workspace.css';
@@ -111,7 +111,7 @@ export const WorkspaceApp: React.FC = () => {
   const [authOpen, setAuthOpen] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
-  const [presentationMode, setPresentationMode] = useState(false);
+  const [taskPanelOpen, setTaskPanelOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     // 窄屏下检查器是底部抽屉，首屏展开会遮住画布；桌面端保持展开。
     if (typeof window === 'undefined') return true;
@@ -123,7 +123,6 @@ export const WorkspaceApp: React.FC = () => {
 
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const viewportRef = useRef<HTMLDivElement>(null);
-  const presentationRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const panRef = useRef<{ x: number; y: number } | null>(null);
   const autoCreateStarted = useRef(false);
@@ -158,7 +157,6 @@ export const WorkspaceApp: React.FC = () => {
       if (e.key === 'Home') { e.preventDefault(); selectPage(0); }
       if (e.key === 'End') { e.preventDefault(); selectPage(pages.length - 1); }
       if (e.key === 'Escape') {
-        if (presentationMode) { e.preventDefault(); setPresentationMode(false); return; }
         if (inspectorOpen && window.matchMedia('(max-width:1023px)').matches) { e.preventDefault(); setInspectorOpen(false); return; }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') { e.preventDefault(); setInspectorOpen(v => !v); }
@@ -167,29 +165,6 @@ export const WorkspaceApp: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      if (!document.fullscreenElement && presentationMode) setPresentationMode(false);
-    };
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
-  }, [presentationMode]);
-
-  useEffect(() => {
-    if (!presentationMode) {
-      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      const element = presentationRef.current;
-      // 点击时已优先请求 documentElement；只有原生全屏尚未成功时才尝试使用演示层，
-      // 避免重复请求造成部分浏览器拒绝，页面内演示层仍然始终可用。
-      if (element?.requestFullscreen && !document.fullscreenElement) {
-        void element.requestFullscreen().catch(() => undefined);
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [presentationMode]);
 
   useEffect(() => {
     if (!clearArmed) return;
@@ -245,19 +220,6 @@ export const WorkspaceApp: React.FC = () => {
       }
       thumbnail?.focus({ preventScroll: true });
     });
-  };
-
-  const openPresentation = () => {
-    if (!pages.some(page => page.imageUrl)) { setGenError('页面生成完成后才能开始全屏演示'); return; }
-    if (!active.imageUrl) {
-      const firstReady = pages.findIndex(page => !!page.imageUrl);
-      if (firstReady >= 0) setActiveIndex(firstReady);
-    }
-    setPresentationMode(true);
-    // 在点击事件的用户手势窗口内请求原生全屏；部分浏览器不允许在异步 effect 中请求。
-    if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
-      void document.documentElement.requestFullscreen().catch(() => undefined);
-    }
   };
 
   const updatePage = (patch: Partial<PageData>) => {
@@ -357,7 +319,7 @@ export const WorkspaceApp: React.FC = () => {
   const totalSlides = deck ? deck.slides.length : 0;
   // 账务透明：失败页面不计费，后端已退回的点数必须在界面上说出来，
   // 否则用户看到「生成失败」的第一反应是「我的点被吞了」。
-  const perSlideCost = deck ? (IMAGE_COST[deck.resolution] || 0) : 0;
+  const perSlideCost = deck ? (memberImageCost(currentUser, deck.resolution as '2K' | '4K') || 0) : 0;
   const refundedCredits = deck?.refundedCredits || 0;
   const spentCredits = Math.max(0, (deck?.chargedCredits || 0) - refundedCredits);
   const concurrency = deck?.concurrency || 0;
@@ -689,25 +651,87 @@ export const WorkspaceApp: React.FC = () => {
   return (
     <div className="ws-root ws-editor celano-page-surface">
       <header className="ws-topbar">
-        <div className="ws-header-tools" style={{ minWidth: 0 }}>
-          <button className="ws-button ws-ghost" onClick={goHome} title="返回首页"><ArrowLeft size={14} /> 返回首页</button>
-          <span className="ws-brand-mark"><BrandLogo height={26} /></span>
-          <div style={{ minWidth: 0 }}>
-            <strong style={{ fontSize: 14, letterSpacing: '.08em', color: '#F4F6F7' }}>PPT 工作台</strong>
-            <small style={{ display: 'block', color: '#8A9299', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>
-              {deck?.title ? '主题：' + deck.title : '任务预览与画板编辑'}
-            </small>
+        <div className="ws-topbar-left">
+          <button className="ws-brand" onClick={goHome} title="返回首页">
+            <img src="/brand/celano-wordmark-white.png" alt="CELANO" className="ws-brand-wordmark" />
+          </button>
+          <span className="ws-topbar-divider" aria-hidden="true" />
+          <div className="ws-topbar-title">
+            <strong>PPT 工作台</strong>
+            <small title={deck?.title || ''}>{deck?.title ? `主题：${deck.title}` : '任务预览与画板编辑'}</small>
           </div>
         </div>
         <div className="ws-header-tools">
           <span className="ws-account-chip"><Clock size={14} /> 标记 {pages.reduce((n, p) => n + p.annotations.length, 0)} 处</span>
-          <span className="ws-account-chip" title="这里只显示当前正在生成的任务，不支持切换历史任务">
-            <Clock size={14} /> {deck?.running ? `生成进度 ${doneCount}/${totalSlides || '…'}` : deck?.finished ? '当前作品' : '任务后台'}
-          </span>
+          <button
+            type="button"
+            className="ws-task-chip"
+            data-state={deck?.finished ? 'done' : deck?.running ? 'running' : deck ? 'paused' : 'idle'}
+            aria-expanded={taskPanelOpen}
+            aria-controls="ws-task-panel"
+            onClick={() => setTaskPanelOpen(v => !v)}
+            title="任务后台：查看当前生成任务的状态与进度"
+          >
+            <span className="ws-task-dot" aria-hidden="true" />
+            <span>{deck?.running ? `生成中 ${doneCount}/${totalSlides || '…'}` : deck?.finished ? '已完成' : deck ? '已暂停' : '任务后台'}</span>
+          </button>
           <button className="ws-button ws-ghost" disabled={exporting || !pages.some(p => p.imageUrl)} title={pages.some(p => p.imageUrl) ? '将已生成页面导出为 PPTX' : '生成页面后可导出 PPTX'} onClick={() => void exportPptx()}><Download size={14} /> {exporting ? '导出中…' : '下载 PPTX'}</button>
-          <button className="ws-button ws-ghost" disabled={!pages.some(page => page.imageUrl)} onClick={openPresentation} title={pages.some(page => page.imageUrl) ? '进入全屏演示，使用上下/左右方向键翻页' : '生成页面后可演示'}><Monitor size={14} /> 全屏演示</button>
         </div>
       </header>
+
+      {taskPanelOpen ? (
+        <>
+          <div className="ws-task-scrim" onClick={() => setTaskPanelOpen(false)} />
+          <section id="ws-task-panel" className="ws-task-panel" role="dialog" aria-label="任务后台">
+            <header className="ws-task-panel-head">
+              <strong>任务后台</strong>
+              <span className="ws-task-panel-deck" title={deck?.title || ''}>{deck?.title || '当前无任务'}</span>
+              <button type="button" className="ws-icon-btn" onClick={() => setTaskPanelOpen(false)} aria-label="关闭任务后台"><X size={15} /></button>
+            </header>
+            <div className="ws-task-panel-body">
+              {deck ? (
+                <>
+                  <div className="ws-task-stage-row">
+                    <span className="ws-task-stage">{deck.stage === 'planning' ? (deck.planningProgress && deck.planningProgress.totalBatches > 1 ? `大纲规划中… 第 ${deck.planningProgress.batch}/${deck.planningProgress.totalBatches} 批（已 ${Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000))} 秒）` : `大纲规划中…（已 ${Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000))} 秒）`) : deck.finished ? '已全部完成' + retentionLabel(deck.finishedAt, nowMs) : deck.running ? '逐页生成 ' + doneCount + '/' + totalSlides : '已暂停'}</span>
+                    {failedCount > 0 ? <span className="ws-task-fail">失败 {failedCount} 页{refundedCredits > 0 ? ` · 已退回 ${refundedCredits} 点` : ''}</span> : null}
+                  </div>
+                  <div className="ws-task-progress"><div style={{ width: (totalSlides ? Math.round((doneCount / totalSlides) * 100) : 0) + '%' }} /></div>
+                  <div className="ws-task-actions">
+                    {deck.running ? (
+                      <button className="ws-button ws-ghost" onClick={() => void handleStop()}><Square size={12} /> 停止生成</button>
+                    ) : null}
+                    {!deck.running && !deck.finished ? (
+                      <button className="ws-button ws-ghost" onClick={() => void handleResume()}><RefreshCw size={12} /> 继续生成</button>
+                    ) : null}
+                    {!deck.running && failedCount > 0 ? (
+                      <button className="ws-button ws-ghost" onClick={() => void handleRetryFailed()}>重试失败页</button>
+                    ) : null}
+                    {deck.finished ? (
+                      <button className="ws-button ws-ghost ws-task-danger" onClick={() => void handleClear()}><Trash2 size={12} /> 删除作品</button>
+                    ) : !deck.running ? (
+                      <button className="ws-button ws-ghost ws-task-danger" onClick={() => void handleClear()}>删除任务</button>
+                    ) : null}
+                  </div>
+                  {failedCount > 0 ? <p className="ws-task-note">失败页面不计费，已自动退回{refundedCredits > 0 ? ` ${refundedCredits} 点` : '对应点数'}。重试按 {perSlideCost} 点/页 重新计费。</p> : null}
+                  {genError ? <p className="ws-task-error">{genError}</p> : null}
+                  {deck.planningSource ? <p className={deck.planningSource === 'ai' ? 'ws-task-note' : 'ws-task-error'}>{deck.planningSource === 'ai' ? 'AI 内容规划已完成 · 逐页提示词已生成' : deck.planningWarning || 'AI 规划未成功，任务已暂停'}</p> : null}
+                  {deck.referenceAnalysisStatus ? <p className={deck.referenceAnalysisStatus === 'failed' ? 'ws-task-error' : 'ws-task-note'}>{deck.referenceAnalysisStatus === 'analyzing' ? `参考文件分析中${deck.referenceAnalysisProgress ? ` · ${deck.referenceAnalysisProgress.done}/${deck.referenceAnalysisProgress.total} 段` : ''}` : deck.referenceAnalysisStatus === 'done' ? `参考文件分析已完成${deck.planningSource === 'ai' ? ' · 已用于逐页内容规划' : ''}` : '参考文件 AI 分析失败'}</p> : null}
+                  {deck.error && deck.error !== genError ? <p className="ws-task-error" role="alert">{deck.error}</p> : null}
+                </>
+              ) : (
+                <div className="ws-task-empty">
+                  <ImageIcon size={20} />
+                  <div>
+                    <strong>{taskCreating ? '正在创建 PPT 任务…' : '暂无进行中的任务'}</strong>
+                    <span>{taskCreating ? '首页提交的内容正在进入后台，完成后会自动展示缩略图。' : '从首页填写主题创建 PPT，生成进度会显示在这里。'}</span>
+                  </div>
+                  {genError ? <small>{genError}</small> : null}
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      ) : null}
 
       <div className="ws-layout" data-inspector={inspectorOpen ? 'on' : 'off'}>
         <aside ref={sidebarRef} className="ws-sidebar">
@@ -721,7 +745,7 @@ export const WorkspaceApp: React.FC = () => {
                 title={deck?.slides.find(s => s.id === p.id)?.error || p.title}
                 aria-current={i === activeIndex ? 'page' : undefined}
                 style={{
-                  border: i === activeIndex ? '2px solid #F4F6F7' : '1px solid #ffffff1f',
+                  border: i === activeIndex ? '2px solid var(--text-primary)' : '1px solid var(--border-default)',
                   borderRadius: 12, overflow: 'hidden', padding: 0, background: '#ffffff04',
                   aspectRatio: '16 / 9', position: 'relative', display: 'block', width: '100%'
                 }}
@@ -732,11 +756,11 @@ export const WorkspaceApp: React.FC = () => {
                     {deck?.logo?.enabled && deck.logo.url ? <img src={deck.logo.url} alt="Logo" style={{ position: 'absolute', zIndex: 2, ...logoPositionStyle(deck.logo), ...logoSizeStyle(deck.logo), opacity: deck.logo.opacity ?? .9, objectFit: 'contain', pointerEvents: 'none' }} /> : null}
                   </>
                   : deck && deck.slides.find(s => s.id === p.id)?.status === 'failed'
-                    ? <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', gap: 3, color: '#E8836F', fontSize: 11, textAlign: 'center', padding: 6, border: '1px dashed rgba(232,131,111,.32)', borderRadius: 8 }}>生成失败<span style={{ fontSize: 10, color: '#8A9299' }}>已退回点数</span></span>
+                    ? <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', gap: 3, color: 'var(--danger-text)', fontSize: 11, textAlign: 'center', padding: 6, border: '1px dashed rgba(232,131,111,.32)', borderRadius: 8 }}>生成失败<span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>已退回点数</span></span>
                     : deck && deck.slides.find(s => s.id === p.id)?.status === 'generating'
-                      ? <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}><LoaderCircle size={16} style={{ color: '#8A9299', animation: 'ws-spin 0.9s linear infinite' }} /></span>
+                      ? <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}><LoaderCircle size={16} style={{ color: 'var(--text-secondary)', animation: 'ws-spin 0.9s linear infinite' }} /></span>
                       : <PagePreview annotations={p.annotations} />}
-                <span style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 10, color: i === activeIndex ? '#0B0E10' : '#8A9299', background: i === activeIndex ? '#F4F6F7' : '#ffffff14', borderRadius: 6, padding: '2px 7px' }}>
+                <span style={{ position: 'absolute', left: 8, bottom: 8, fontSize: 10, color: i === activeIndex ? '#0B0E10' : 'var(--text-secondary)', background: i === activeIndex ? 'var(--text-primary)' : '#ffffff14', borderRadius: 6, padding: '2px 7px' }}>
                   {p.title}{p.annotations.length > 0 ? ' · ' + p.annotations.length + ' 处' : ''}
                 </span>
               </button>
@@ -764,8 +788,8 @@ export const WorkspaceApp: React.FC = () => {
               {toolBtn('mark', Paintbrush)}
               {toolBtn('box', SquareDashed)}
               {tool === 'mark' && (
-                <span className="ws-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#8A9299' }}>
-                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#E8836F', display: 'inline-block' }} />
+                <span className="ws-mono" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--danger-text)', display: 'inline-block' }} />
                   笔刷
                   <input
                     type="range"
@@ -773,7 +797,7 @@ export const WorkspaceApp: React.FC = () => {
                     max={MARK_WIDTH_MAX}
                     value={markWidth}
                     onChange={e => setMarkWidth(Number(e.target.value))}
-                    style={{ width: 110, accentColor: '#E8836F' }}
+                    style={{ width: 110, accentColor: 'var(--danger-text)' }}
                   />
                   {markWidth}px
                 </span>
@@ -786,10 +810,10 @@ export const WorkspaceApp: React.FC = () => {
               <span style={{ width: 1, height: 22, background: '#ffffff1a' }} />
               {toolBtn('pan', Hand)}
               <button className="ws-button ws-ghost" onClick={() => zoomBy(1 / 1.25)} title="缩小"><ZoomOut size={14} /></button>
-              <span className="ws-mono" style={{ fontSize: 11, color: '#8A9299', minWidth: 42, textAlign: 'center' }}>{Math.round(view.scale * 100)}%</span>
+              <span className="ws-mono" style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 42, textAlign: 'center' }}>{Math.round(view.scale * 100)}%</span>
               <button className="ws-button ws-ghost" onClick={() => zoomBy(1.25)} title="放大"><ZoomIn size={14} /></button>
               <button className="ws-button ws-ghost" onClick={fit} title="适应窗口"><Maximize size={14} /></button>
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#8A9299' }}>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-secondary)' }}>
                 涂抹圈选 · 框选范围 · 自动编号 1 2 3…
               </span>
           </div>
@@ -816,10 +840,10 @@ export const WorkspaceApp: React.FC = () => {
                       {deck?.logo?.enabled && deck.logo.url ? <img src={deck.logo.url} alt="Logo" style={{ position: 'absolute', zIndex: 2, ...logoPositionStyle(deck.logo), ...logoSizeStyle(deck.logo), opacity: deck.logo.opacity ?? .9, objectFit: 'contain', pointerEvents: 'none' }} /> : null}
                     </>
                   ) : (
-                    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', textAlign: 'center', color: '#8A9299', padding: 24 }}>
+                    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', textAlign: 'center', color: 'var(--text-secondary)', padding: 24 }}>
                       <div>
                         <ImageIcon size={36} style={{ margin: '0 auto 12px', opacity: .5 }} />
-                        <p style={{ fontSize: 13, color: '#C9CED3', margin: 0 }}>
+                        <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0 }}>
                           {activeIndex === 0 ? '封面页 · 生成后页面图片显示在这里' : active.title + ' · 等待生成'}
                         </p>
                         <p style={{ fontSize: 11, margin: '6px 0 0', maxWidth: 340, lineHeight: 1.8 }}>
@@ -833,7 +857,7 @@ export const WorkspaceApp: React.FC = () => {
 
                 {sending && (
                   <div style={{ position: 'absolute', inset: 0, zIndex: 30, display: 'grid', placeItems: 'center', background: '#000a', backdropFilter: 'blur(3px)' }}>
-                    <div style={{ textAlign: 'center', color: '#C9CED3', fontSize: 13 }}>
+                    <div style={{ textAlign: 'center', color: 'var(--text-primary)', fontSize: 13 }}>
                       <span style={{ width: 26, height: 26, border: '2px solid #ffffff33', borderTopColor: '#fff', borderRadius: '50%', display: 'inline-block', marginBottom: 12, animation: 'ws-spin 0.9s linear infinite' }} />
                       <br />正在按指令生成修改…
                     </div>
@@ -851,58 +875,17 @@ export const WorkspaceApp: React.FC = () => {
             <button type="button" className="ws-icon-btn" onClick={() => setInspectorOpen(v => !v)} aria-expanded={inspectorOpen} title="折叠 / 展开检查器（⌘B）"><ChevronRight size={16} /></button>
           </div>
           <div className="ws-inspector-body">
-            {deck ? (
-              <div className="ws-panel ws-generation-status">
-                <>
-                  <div style={{ fontSize: 12, color: '#8A9299', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <span>{deck.stage === 'planning' ? (deck.planningProgress && deck.planningProgress.totalBatches > 1 ? `大纲规划中… 第 ${deck.planningProgress.batch}/${deck.planningProgress.totalBatches} 批（已 ${Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000))} 秒）` : `大纲规划中…（已 ${Math.max(0, Math.floor((nowMs - deck.startedAt) / 1000))} 秒）`) : deck.finished ? '已全部完成' + retentionLabel(deck.finishedAt, nowMs) : deck.running ? '逐页生成 ' + doneCount + '/' + totalSlides : '已暂停'}</span>
-                    {failedCount > 0 ? <span style={{ color: '#E8836F' }}>失败 {failedCount} 页{refundedCredits > 0 ? ` · 已退回 ${refundedCredits} 点` : ''}</span> : null}
-                    {deck.running ? (
-                      <button className="ws-button ws-ghost" style={{ marginLeft: 'auto', padding: '2px 8px' }} onClick={() => void handleStop()}><Square size={12} /> 停止</button>
-                    ) : null}
-                    {!deck.running && !deck.finished ? (
-                      <button className="ws-button ws-ghost" style={{ padding: '2px 8px' }} onClick={() => void handleResume()}><RefreshCw size={12} /> 继续</button>
-                    ) : null}
-                    {!deck.running && failedCount > 0 ? (
-                      <button className="ws-button ws-ghost" style={{ padding: '2px 8px' }} onClick={() => void handleRetryFailed()}>重试失败页</button>
-                    ) : null}
-                    {deck.finished ? (
-                      <button className="ws-button ws-ghost" style={{ marginLeft: 'auto', padding: '2px 8px' }} onClick={() => void handleClear()}><Trash2 size={12} /> 删除作品</button>
-                    ) : !deck.running ? (
-                      <button className="ws-button ws-ghost" style={{ marginLeft: 'auto', padding: '2px 8px' }} onClick={() => void handleClear()}>删除任务</button>
-                    ) : null}
-                  </div>
-                  <div style={{ height: 4, background: '#ffffff0d', borderRadius: 99, marginTop: 10, overflow: 'hidden' }}>
-                    <div style={{ width: (totalSlides ? Math.round((doneCount / totalSlides) * 100) : 0) + '%', height: '100%', background: '#63D6BC', borderRadius: 99, transition: 'width .32s cubic-bezier(.2,0,0,1)' }} />
-                  </div>
-                  {failedCount > 0 ? <div style={{ fontSize: 11, color: '#8A9299', marginTop: 8, lineHeight: 1.6 }}>失败页面不计费，已自动退回{refundedCredits > 0 ? ` ${refundedCredits} 点` : '对应点数'}。可点击「重试失败页」单独重做，重试按 {perSlideCost} 点/页 重新计费。</div> : null}
-                  {genError && <div style={{ fontSize: 11, color: '#E8836F', marginTop: 8 }}>{genError}</div>}
-                  {deck.planningSource && <div style={{ fontSize: 11, color: deck.planningSource === 'ai' ? '#8A9299' : '#E8836F', marginTop: 8 }}>{deck.planningSource === 'ai' ? 'AI 内容规划已完成 · 逐页提示词已生成' : deck.planningWarning || 'AI 规划未成功，任务已暂停'}</div>}
-                  {deck.referenceAnalysisStatus && <div style={{ fontSize: 11, color: deck.referenceAnalysisStatus === 'failed' ? '#E8836F' : '#8A9299', marginTop: 8 }}>{deck.referenceAnalysisStatus === 'analyzing' ? `参考文件分析中${deck.referenceAnalysisProgress ? ` · ${deck.referenceAnalysisProgress.done}/${deck.referenceAnalysisProgress.total} 段` : ''}` : deck.referenceAnalysisStatus === 'done' ? `参考文件分析已完成${deck.planningSource === 'ai' ? ' · 已用于逐页内容规划' : ''}` : '参考文件 AI 分析失败'}</div>}
-                  {deck.error && deck.error !== genError && <div role="alert" style={{ fontSize: 11, color: '#E8836F', marginTop: 8 }}>{deck.error}</div>}
-                </>
-              </div>
-            ) : (
-              <div className="ws-panel ws-empty-task">
-                <ImageIcon size={23} />
-                <div>
-                  <strong>{taskCreating ? '正在创建 PPT 任务…' : '工作台已就绪'}</strong>
-                  <span>{taskCreating ? '首页提交的内容正在进入后台，完成后会自动展示缩略图。' : '请从首页创建 PPT；任务后台只展示当前生成进度。'}</span>
-                </div>
-                {genError && <small>{genError}</small>}
-              </div>
-            )}
               {/* 逐处修改指令列表 */}
               {active.annotations.length > 0 && (
                 <div className="ws-panel" style={{ padding: 14, marginTop: 14 }}>
-                  <div style={{ fontSize: 12, color: '#8A9299', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Wand2 size={13} /> 逐处修改指令（编号与图中标记一一对应）
                   </div>
                   <div style={{ display: 'grid', gap: 8 }}>
                     {active.annotations.map((a, i) => (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className="ws-badge-mark">{a.number}</span>
-                        <span style={{ fontSize: 11, color: '#8A9299', width: 44, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 44, flexShrink: 0 }}>
                           {a.kind === 'scribble' ? (a.width + 'px 涂抹') : '框选'}
                         </span>
                         <input
@@ -944,11 +927,11 @@ export const WorkspaceApp: React.FC = () => {
                 >
                   <Wand2 size={14} /> {sending ? '生成中…' : '发送修改'}
                 </button>
-                <span style={{ fontSize: 11, color: '#8A9299', width: '100%' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: '100%' }}>
                   {active.annotations.length ? '已启用局部编辑：仅修改透明遮罩对应的选区，其他内容保持原图。' : '请先涂抹或框选选区，再填写修改要求。'}
                 </span>
-                {editError && <span style={{ fontSize: 11, color: '#E8836F', width: '100%' }}>{editError}</span>}
-                {editNotice && <span style={{ fontSize: 11, color: '#8A9299', width: '100%' }}>{editNotice}</span>}
+                {editError && <span style={{ fontSize: 11, color: 'var(--danger-text)', width: '100%' }}>{editError}</span>}
+                {editNotice && <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: '100%' }}>{editNotice}</span>}
           </div>
             </div>
         </aside>
@@ -962,22 +945,6 @@ export const WorkspaceApp: React.FC = () => {
           <button type="button" className="ws-button ws-ghost ws-status-toggle" onClick={() => setInspectorOpen(v => !v)} aria-expanded={inspectorOpen}>{inspectorOpen ? '收起检查器' : '展开检查器'}</button>
         </footer>
       </div>
-      {presentationMode && (
-        <div ref={presentationRef} className="ws-presentation" role="dialog" aria-label="全屏演示" onClick={e => { if (e.target === e.currentTarget) setPresentationMode(false); }}>
-          <div className="ws-presentation-stage">
-            {active.imageUrl ? <><img src={active.imageUrl} alt={active.title} />{deck?.logo?.enabled && deck.logo.url ? <img src={deck.logo.url} alt="Logo" className="ws-presentation-logo" style={{ ...logoPositionStyle(deck.logo), ...logoSizeStyle(deck.logo), opacity: deck.logo.opacity ?? .9 }} /> : null}</> : <div className="ws-presentation-empty">当前页面尚未生成</div>}
-          </div>
-          <div className="ws-presentation-topbar">
-            <span>{deck?.title || 'PPT 演示'} · {activeIndex + 1}/{pages.length}</span>
-            <button className="ws-presentation-close" onClick={() => setPresentationMode(false)} aria-label="退出全屏演示"><X size={18} /></button>
-          </div>
-          <div className="ws-presentation-controls">
-            <button className="ws-presentation-nav" disabled={activeIndex <= 0} onClick={() => selectPage(activeIndex - 1)} aria-label="上一页"><ChevronLeft size={24} /></button>
-            <span>使用 ↑ ↓ 或 ← → 翻页</span>
-            <button className="ws-presentation-nav" disabled={activeIndex >= pages.length - 1} onClick={() => selectPage(activeIndex + 1)} aria-label="下一页"><ChevronRight size={24} /></button>
-          </div>
-        </div>
-      )}
       {authOpen && (
         <UserAuthModal
           onClose={() => setAuthOpen(false)}

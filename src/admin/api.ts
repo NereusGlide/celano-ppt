@@ -6,6 +6,7 @@ import {
   UsageRecord,
   AiProviderConfig,
   PlanningModelConfig,
+  PromptOptimizeModelConfig,
   MembershipPlanConfig,
   MembershipCode
 } from '../types.js';
@@ -45,7 +46,57 @@ export interface ImageConfigTestResult {
   latencyMs?: number;
   requestedSize?: string;
   actualSize?: string;
+  /** 上游返回尺寸是否与请求尺寸精确一致（2K 档按产品定义允许保留原生像素） */
+  exact?: boolean;
+  /** 真实出图测试返回的图片字节数 */
+  bytes?: number;
   models?: string[];
+}
+
+/** 使用记录 + 关联到用户表的当前资料（账号已删除时为 null）。 */
+export interface AdminUsageRecord extends UsageRecord {
+  user: { id: string; username: string; name: string; phone: string; avatar: string } | null;
+}
+
+/** 码类列表「使用者」关联到的用户表当前资料。 */
+export interface CodeUserBrief {
+  id: string;
+  username: string;
+  name: string;
+  phone: string;
+}
+
+export interface AdminInviteCode extends InviteCode {
+  usedByUsers: CodeUserBrief[];
+}
+
+export interface AdminRechargeCode extends RechargeCode {
+  usedByUser: CodeUserBrief | null;
+}
+
+export interface AdminMembershipCode extends MembershipCode {
+  usedByUser: CodeUserBrief | null;
+}
+
+/** 文本模型（内容规划 / 提示词优化）真实连通性测试的可覆盖字段。 */
+export type TextConfigTestOverride = {
+  baseUrl?: string;
+  apiKey?: string;
+  modelName?: string;
+  reasoningEffort?: string;
+};
+
+export interface TextConfigTestResult {
+  success: boolean;
+  message: string;
+  latencyMs?: number;
+  model?: string;
+  /** 上游实际返回的内容片段 */
+  reply?: string;
+  /** 上游可用模型数量（失败诊断用） */
+  availableModels?: number;
+  /** 提示词优化实际生效的通道：独立配置 / 回退内容规划模型 */
+  channel?: 'dedicated' | 'planning';
 }
 
 const BASE = '/api/admin';
@@ -132,12 +183,12 @@ export const adminApi = {
     request<{ success: boolean; user: User }>('POST', '/users/' + id + '/unban', {}),
 
   usageRecords: (query: Record<string, any>) =>
-    request<Paged<UsageRecord[]> & { records: UsageRecord[] }>('GET', '/usage-records?' + new URLSearchParams(query as any).toString()),
+    request<Paged<AdminUsageRecord[]> & { records: AdminUsageRecord[] }>('GET', '/usage-records?' + new URLSearchParams(query as any).toString()),
 
   deleteUsageRecord: (id: string) => request<{ success: boolean }>('DELETE', '/usage-records/' + id),
 
   inviteCodes: (query: Record<string, any>) =>
-    request<Paged<InviteCode[]> & { inviteCodes: InviteCode[] }>('GET', '/invite-codes?' + new URLSearchParams(query as any).toString()),
+    request<Paged<AdminInviteCode[]> & { inviteCodes: AdminInviteCode[] }>('GET', '/invite-codes?' + new URLSearchParams(query as any).toString()),
 
   createInviteCodes: (payload: { count: number; prefix: string; maxUses: number; note?: string }) =>
     request<{ success: boolean; created: InviteCode[] }>('POST', '/invite-codes', payload),
@@ -149,7 +200,7 @@ export const adminApi = {
     request<{ success: boolean }>('DELETE', '/invite-codes/' + encodeURIComponent(code)),
 
   rechargeCodes: (query: Record<string, any>) =>
-    request<Paged<RechargeCode[]> & { rechargeCodes: RechargeCode[] }>('GET', '/recharge-codes?' + new URLSearchParams(query as any).toString()),
+    request<Paged<AdminRechargeCode[]> & { rechargeCodes: AdminRechargeCode[] }>('GET', '/recharge-codes?' + new URLSearchParams(query as any).toString()),
 
   createRechargeCodes: (payload: { count: number; credits: number; prefix: string; note?: string }) =>
     request<{ success: boolean; created: RechargeCode[] }>('POST', '/recharge-codes', payload),
@@ -161,7 +212,7 @@ export const adminApi = {
     request<{ success: boolean }>('DELETE', '/recharge-codes/' + encodeURIComponent(code)),
 
   membershipCodes: (query: Record<string, any>) =>
-    request<Paged<MembershipCode[]> & { membershipCodes: MembershipCode[] }>('GET', '/membership-codes?' + new URLSearchParams(query as any).toString()),
+    request<Paged<AdminMembershipCode[]> & { membershipCodes: AdminMembershipCode[] }>('GET', '/membership-codes?' + new URLSearchParams(query as any).toString()),
 
   createMembershipCodes: (payload: { count: number; planId: string; months: number; prefix: string; note?: string }) =>
     request<{ success: boolean; created: MembershipCode[] }>('POST', '/membership-codes', payload),
@@ -173,6 +224,21 @@ export const adminApi = {
 
   updatePlanningConfig: (payload: Partial<PlanningModelConfig>) =>
     request<{ success: boolean; planningConfig: PlanningModelConfig }>('PUT', '/planning-config', payload),
+
+  /** 内容规划模型真实连通性测试（真的发一次最小对话请求）。 */
+  testPlanningConfig: (payload?: TextConfigTestOverride) =>
+    request<TextConfigTestResult>('POST', '/planning-config/test', payload || {}),
+
+  /** 提示词优化独立通道配置（未启用时前端回退内容规划模型）。 */
+  promptOptimizeConfig: () =>
+    request<{ success: boolean; promptOptimizeConfig: PromptOptimizeModelConfig }>('GET', '/prompt-optimize-config'),
+
+  updatePromptOptimizeConfig: (payload: Partial<PromptOptimizeModelConfig>) =>
+    request<{ success: boolean; promptOptimizeConfig: PromptOptimizeModelConfig }>('PUT', '/prompt-optimize-config', payload),
+
+  /** 提示词优化模型真实连通性测试；结果里的 channel 指明实测的是哪条通道。 */
+  testPromptOptimizeConfig: (payload?: TextConfigTestOverride) =>
+    request<TextConfigTestResult>('POST', '/prompt-optimize-config/test', payload || {}),
 
   membershipPlans: () => request<{ success: boolean; membershipPlans: MembershipPlanConfig[] }>('GET', '/membership-plans'),
 

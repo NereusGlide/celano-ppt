@@ -4,10 +4,11 @@ import { imageSizeFor, IMAGE_QUALITY, pixelResolution, MAX_IMAGE_BYTES } from '.
  * 文本规划走管理端「内容规划模型配置」，生图/图生图走管理端「AI 接口配置」。
  * 本模块不涉及计费与使用记录；支持外部 AbortSignal 取消。
  */
-import type { PlanningModelConfig, ThirdPartyApiConfig } from '../../src/types.js';
+import type { PlanningModelConfig, TextModelCallConfig, ThirdPartyApiConfig } from '../../src/types.js';
 import { normalizePlanningModelName } from '../planningModel.js';
 import { assertPptImageSize, dataUrlBytes } from './imageDimensions.js';
 import { withChineseTextAccuracy } from '../imagePrompt.js';
+import { fetchPublicImage, readLimitedBody } from '../remoteImages.js';
 
 export type TextMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 export type VisionContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
@@ -78,19 +79,25 @@ async function materializeImage(item: any, signal: AbortSignal | undefined, cont
   let remote: URL;
   try { remote = new URL(value); } catch { throw new Error('图像接口返回了无效图片地址'); }
   if (remote.protocol !== 'http:' && remote.protocol !== 'https:') throw new Error('图像接口返回了不支持的图片地址');
-  const response = await fetch(remote, { signal: timeoutSignal(signal, 120_000) });
-  if (!response.ok) throw new Error('下载图像结果失败 HTTP ' + response.status);
+  const response = await fetchPublicImage(remote.href, signal);
+  if (!response.ok) { await response.body?.cancel(); throw new Error('下载图像结果失败 HTTP ' + response.status); }
   const mime = String(response.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
-  if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') throw new Error('图像接口返回的不是支持的图片格式');
-  const bytes = Buffer.from(await response.arrayBuffer());
+  if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') { await response.body?.cancel(); throw new Error('图像接口返回的不是支持的图片格式'); }
+  const bytes = await readLimitedBody(response);
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('图像结果过大，无法保存');
   assertPptImageSize(bytes, requestedSize, pixelResolution(requestedSize) || '2K', context);
   return 'data:' + mime + ';base64,' + bytes.toString('base64');
 }
 
 /** 文本规划：OpenAI 兼容 chat/completions，reasoning_effort 可选透传 */
+/**
+ * 文本类调用（内容规划 / 提示词优化）：OpenAI 兼容 /chat/completions。
+ *
+ * temperature 与 maxOutputTokens 只在管理端显式配置时才写入请求体 ——
+ * 部分推理模型不接受这些字段，无条件下发会让整条链路 400。
+ */
 export async function chatText(
-  cfg: Pick<PlanningModelConfig, 'baseUrl' | 'apiKey' | 'modelName' | 'reasoningEffort'>,
+  cfg: TextModelCallConfig,
   messages: TextMessage[],
   signal?: AbortSignal,
   // 高推理档（xhigh）+ 整套页面大纲的长输出会远超 240s；此处均为后台异步任务，等得起，改用 600s
@@ -100,6 +107,8 @@ export async function chatText(
   if (!cfg.apiKey || !cfg.apiKey.trim()) throw new Error('规划模型 API Key 未配置，请在管理后台设置');
   const body: Record<string, unknown> = { model: normalizePlanningModelName(cfg.baseUrl, cfg.modelName || 'gpt-6.1-sol'), messages };
   if (cfg.reasoningEffort && cfg.reasoningEffort !== 'auto') body.reasoning_effort = cfg.reasoningEffort;
+  if (typeof cfg.temperature === 'number' && Number.isFinite(cfg.temperature)) body.temperature = cfg.temperature;
+  if (typeof cfg.maxOutputTokens === 'number' && Number.isSafeInteger(cfg.maxOutputTokens) && cfg.maxOutputTokens > 0) body.max_tokens = cfg.maxOutputTokens;
   return withNetworkRetry(async () => {
     const resp = await fetch(joinV1(cfg.baseUrl, '/chat/completions'), {
       method: 'POST',
@@ -164,7 +173,7 @@ export async function generateImage(
     if (!item) throw new Error('生图接口未返回图像');
     return materializeImage(item, signal, '生图结果', size);
   };
-  return withNetworkRetry(() => attempt(prompt), signal);
+  return attempt(prompt);
 }
 
 function dataUrlToFormImage(dataUrl: string): { blob: Blob; ext: string } {
@@ -211,7 +220,7 @@ export async function editImage(
     if (!item) throw new Error('图像编辑接口未返回图像');
     return materializeImage(item, signal, '图像编辑结果', size);
   };
-  return withNetworkRetry(() => attempt(prompt), signal);
+  return attempt(prompt);
 }
 
 export function isImageDataUrl(value: string): boolean {

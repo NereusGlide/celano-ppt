@@ -14,6 +14,8 @@ import {
   ImageTierConfig,
   ImageResolution,
   PlanningModelConfig,
+  PromptOptimizeModelConfig,
+  PromptOptimizeCallConfig,
   PptDeck,
   MembershipPlanConfig,
   MembershipCode
@@ -45,12 +47,18 @@ interface DatabaseSchema {
   aiConfigs: AiProviderConfig[];
   /** 内容规划模型配置（仅管理端可见） */
   planningConfig: PlanningModelConfig;
+  /** 提示词优化模型配置（仅管理端可见；未启用时回退内容规划模型） */
+  promptOptimizeConfig: PromptOptimizeModelConfig;
   /** 会员套餐目录（管理端可编辑） */
   membershipPlans: MembershipPlanConfig[];
   /** PPT 生成任务（移植自超级画布Agent，无计费） */
   pptDecks: PptDeck[];
   /** 已执行的数据兼容迁移版本，避免历史计费修正重复执行 */
   billingMigrationVersion?: number;
+  /** 使用记录 IP 回填迁移版本（把 detail 文本里的 IP 搬到独立字段） */
+  usageIpBackfillVersion?: number;
+  /** 码类「使用者」用户名回填迁移版本（补齐历史漏写的 usedByName） */
+  codeUserNameBackfillVersion?: number;
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -66,11 +74,28 @@ const initialPresentations: Presentation[] = [];
 
 /** 默认会员套餐目录：管理后台可整体增删改；首月价仅作展示，真实成交以后端支付配置为准。 */
 const DEFAULT_MEMBERSHIP_PLANS: MembershipPlanConfig[] = [
-  { id: 'celano-basic', name: '基础会员', price: '¥33', renewalPrice: 69, points: 725, note: '适合轻量创作与个人演示', accent: 'slate', benefits: ['PPT 2K 生成', '标准生成队列', '作品库账号归属'], enabled: true },
-  { id: 'celano-standard', name: '标准会员', price: '¥96', renewalPrice: 199, points: 2210, note: '适合稳定制作演示文稿', accent: 'blue', recommended: true, benefits: ['PPT 2K / 4K 生成', '优先生成队列', '风格参考与 Logo 素材库'], enabled: true },
-  { id: 'celano-advanced', name: '高级会员', price: '¥519', renewalPrice: 998, points: 12320, note: '适合高频视觉创作', accent: 'violet', benefits: ['PPT 六路并发生成', '高级画布节点与素材管理', '单页局部修改优先处理'], enabled: true },
-  { id: 'celano-super', name: '超级会员', price: '¥2,235', renewalPrice: 4299, points: 54600, note: '适合团队和商业化生产', accent: 'gold', benefits: ['PPT 六路并发与高峰优先', '团队级创作额度预留', '支持 API / 商用配置扩展'], enabled: true },
+  { id: 'celano-basic', name: '基础会员', price: '¥29', renewalPrice: 29, points: 300, note: '适合轻度创作与日常出图', accent: 'blue', benefits: ['每月 300 点', '2K / 4K 九折', '无水印 · PNG 无损', '失败免费重试'], discount2k: 9, discount4k: 18, enabled: true },
+  { id: 'celano-pro', name: '专业会员', price: '¥79', renewalPrice: 79, points: 850, note: '适合稳定高频的视觉创作', accent: 'teal', recommended: true, benefits: ['每月 850 点', '2K 九折 · 4K 八折', '优先生成队列', '批量生成（一次 4 张）'], discount2k: 9, discount4k: 16, enabled: true },
+  { id: 'celano-premium', name: '尊享会员', price: '¥199', renewalPrice: 199, points: 2400, note: '适合重度个人创作者', accent: 'violet', benefits: ['每月 2400 点', '2K 八折 · 4K 七折', '极速生成通道', '批量生成（一次 20 张）'], discount2k: 8, discount4k: 14, enabled: true },
+  { id: 'celano-flagship', name: '旗舰会员', price: '¥399', renewalPrice: 399, points: 5000, note: '适合专业商用与团队生产', accent: 'gold', benefits: ['每月 5000 点', '2K 七折 · 4K 六折', '极速 + 最高并发', '批量生成（一次 100 张）'], discount2k: 7, discount4k: 12, enabled: true },
 ];
+
+/**
+ * 提示词优化模型配置的默认值：默认关闭独立通道。
+ *
+ * 关闭时所有提示词优化接口回退到「内容规划模型」，与新增本配置之前的行为完全一致，
+ * 因此升级不会改变现有部署的实际调用链路；管理员显式启用并填齐后才切换通道。
+ */
+export const DEFAULT_PROMPT_OPTIMIZE_CONFIG: PromptOptimizeModelConfig = {
+  enabled: false,
+  baseUrl: '',
+  apiKey: '',
+  modelName: '',
+  reasoningEffort: 'medium',
+  temperature: '',
+  maxOutputTokens: '',
+  systemPrompt: ''
+};
 
 // 默认 endpoint 仅用于本地演示，生产部署请用 PIAO_BASE_URL / 管理后台覆盖为自有地址。
 // 密钥只能从环境变量或管理后台注入，源代码和示例数据不携带可用凭据。
@@ -108,6 +133,24 @@ const IMAGE_RESOLUTIONS: ImageResolution[] = ['2K', '4K'];
 /** A configuration is usable only when it can actually reach an upstream model. */
 function usableImageConfig(config: AiProviderConfig | undefined): config is AiProviderConfig {
   return !!config && config.enabled !== false && !!String(config.baseUrl || '').trim() && !!String(config.apiKey || '').trim() && !!String(config.modelName || '').trim();
+}
+
+/** 把表单里的可选数值转成有限数字；留空或非法时返回 undefined（表示使用上游默认）。 */
+function parseOptionalNumber(raw: unknown, min: number, max: number): number | undefined {
+  const text = String(raw ?? '').trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < min || value > max) return undefined;
+  return value;
+}
+
+/** 同上的整型版本，用于 token 上限这类必须为正整数的参数。 */
+function parseOptionalInteger(raw: unknown): number | undefined {
+  const text = String(raw ?? '').trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value <= 0) return undefined;
+  return value;
 }
 
 function displayNameFor(config: AiProviderConfig, resolution?: ImageResolution): string {
@@ -157,6 +200,8 @@ class Database {
   /** 事务嵌套深度与待落盘标记，配合 transaction() 合并写盘。 */
   private saveDepth = 0;
   private savePending = false;
+  /** 初始化失败时禁止后续写入，保留原文件等待恢复。 */
+  private initializationFailed = false;
 
   constructor() {
     this.data = {
@@ -172,6 +217,7 @@ class Database {
       usageRecords: [],
       aiConfigs: [],
       planningConfig: { baseUrl: '', apiKey: '', modelName: '', reasoningEffort: '', visionModelName: '' },
+      promptOptimizeConfig: { ...DEFAULT_PROMPT_OPTIMIZE_CONFIG },
       membershipPlans: [...DEFAULT_MEMBERSHIP_PLANS],
       pptDecks: [],
       billingMigrationVersion: 0
@@ -187,15 +233,29 @@ class Database {
       if (fs.existsSync(DATA_FILE)) {
         const raw = fs.readFileSync(DATA_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (parsed.users && parsed.presentations) {
-          // 先用构造函数默认值兜底（如 credentials），再被落盘数据覆盖
-          this.data = { ...this.data, ...parsed };
+        if (!parsed || !Array.isArray(parsed.users) || !Array.isArray(parsed.presentations)) {
+          throw new Error('数据文件结构无效，拒绝覆盖已有数据');
         }
+        // 先用构造函数默认值兜底（如 credentials），再被落盘数据覆盖
+        this.data = { ...this.data, ...parsed };
       }
       this.migrate();
       this.save();
     } catch (err) {
-      console.error('[DB] 初始化数据文件失败，使用内存数据:', err);
+      this.initializationFailed = true;
+      if (process.env.NODE_ENV === 'production') throw err;
+      // 数据文件损坏/不可读时，先把原文件备份一份，再退回内存数据继续启动。
+      // 否则任何后续写操作都会用空数据把原 store.json 覆盖掉，造成二次且不可逆的丢失。
+      try {
+        if (fs.existsSync(DATA_FILE)) {
+          const backup = DATA_FILE + '.corrupt-' + Date.now() + '.bak';
+          fs.copyFileSync(DATA_FILE, backup);
+          console.error('[DB] 已备份损坏的数据文件到:', backup);
+        }
+      } catch (backupErr) {
+        console.error('[DB] 备份损坏的数据文件失败:', backupErr);
+      }
+      console.error('[DB] 初始化数据文件失败，已回退内存数据。请立即排查并恢复备份，勿在恢复前进行写操作:', err);
     }
   }
 
@@ -250,6 +310,24 @@ class Database {
       this.data.billingMigrationVersion = 1;
     }
 
+    // 点数价值体系升级（1 元 = 10 点，2K=10、4K=20，原 2K=3、4K=5）：
+    // 把存量余额按 10/3 比例向上取整迁移，保证用户既有购买力不缩水。
+    if ((this.data.billingMigrationVersion || 0) < 2) {
+      for (const user of this.data.users) {
+        const balance = Math.max(0, Math.floor(Number(user.credits) || 0));
+        if (balance > 0) user.credits = Math.ceil(balance * 10 / 3);
+      }
+      this.data.billingMigrationVersion = 2;
+    }
+
+    // 旧会员计划（无画质折扣字段）整表替换为新的四档付费套餐。
+    // 用「字段缺失」而非版本号做幂等判断：billingMigrationVersion 可能已先被
+    // 前面的余额迁移推进，但计划可能仍是旧结构；仅当整套计划都缺折扣字段时替换，
+    // 避免覆盖管理员在新体系下自定义过的折扣套餐。
+    const plansWithoutDiscount = Array.isArray(this.data.membershipPlans) && this.data.membershipPlans.length > 0
+      && this.data.membershipPlans.every(plan => !('discount2k' in plan) || !('discount4k' in plan));
+    if (plansWithoutDiscount) this.data.membershipPlans = [...DEFAULT_MEMBERSHIP_PLANS];
+
     // 预置超级管理员
     if (this.data.admins.length === 0) {
       const adminId = 'admin_root';
@@ -285,6 +363,51 @@ class Database {
       if (!this.data.planningConfig.visionModelName) this.data.planningConfig.visionModelName = 'gpt-6';
     }
 
+    // 预置提示词优化模型配置：默认不启用独立通道，继续回退内容规划模型，
+    // 保证升级到本版本后既有部署的调用链路与行为不变。
+    if (!this.data.promptOptimizeConfig) {
+      this.data.promptOptimizeConfig = { ...DEFAULT_PROMPT_OPTIMIZE_CONFIG };
+    } else {
+      const own = this.data.promptOptimizeConfig;
+      if (typeof own.enabled !== 'boolean') own.enabled = false;
+      if (typeof own.baseUrl !== 'string') own.baseUrl = '';
+      if (typeof own.apiKey !== 'string') own.apiKey = '';
+      if (typeof own.modelName !== 'string') own.modelName = '';
+      if (!own.reasoningEffort) own.reasoningEffort = DEFAULT_PROMPT_OPTIMIZE_CONFIG.reasoningEffort;
+      if (typeof own.temperature !== 'string') own.temperature = '';
+      if (typeof own.maxOutputTokens !== 'string') own.maxOutputTokens = '';
+      if (typeof own.systemPrompt !== 'string') own.systemPrompt = '';
+    }
+
+    // 使用记录 IP 回填：早期版本把客户端 IP 只拼在 detail 文本尾部
+    //（如「账号登录 · IP 127.0.0.1」）。后台新增了独立的 IP 列，若不回填，
+    // 历史记录在这一列上会是一片空白，看不出真实来源。
+    if (this.data.usageIpBackfillVersion !== 1) {
+      let filled = 0;
+      for (const record of this.data.usageRecords || []) {
+        if (record.ip) continue;
+        const matched = /·\s*IP\s+([0-9a-fA-F:.]+)\s*$/.exec(record.detail || '');
+        if (matched) { record.ip = matched[1]; filled += 1; }
+      }
+      this.data.usageIpBackfillVersion = 1;
+      if (filled) console.log('[usage] 已从历史详情回填 ' + filled + ' 条记录的真实 IP');
+    }
+
+    // 码类「使用者」回填：历史数据可能只写了 usedBy(userId) 而漏写 usedByName。
+    // 用用户表当前用户名补上，让数据层的「使用者」也不再是空的。
+    // 展示层仍以运行时按 userId 关联为准（改名后自动更新），这里只是兜底。
+    if (this.data.codeUserNameBackfillVersion !== 1) {
+      let filled = 0;
+      for (const item of [...(this.data.rechargeCodes || []), ...(this.data.membershipCodes || [])]) {
+        if (item.usedBy && !item.usedByName) {
+          const user = this.getUserById(item.usedBy);
+          if (user) { item.usedByName = user.username; filled += 1; }
+        }
+      }
+      this.data.codeUserNameBackfillVersion = 1;
+      if (filled) console.log('[admin] 已回填 ' + filled + ' 条码记录的「使用者」真实用户名');
+    }
+
     // 生图接口由管理员分别配置 2K、4K，发行版不保存已有接口。
 
   }
@@ -298,19 +421,33 @@ class Database {
    * 事务内所有 save() 只登记一次，提交时才真正写盘。
    */
   transaction<T>(fn: () => T): T {
-    this.saveDepth += 1;
+    const snapshot = structuredClone(this.data);
+    const previousPending = this.savePending;
+    const depth = this.saveDepth;
+    this.saveDepth = depth + 1;
     try {
-      return fn();
-    } finally {
-      this.saveDepth -= 1;
-      if (this.saveDepth === 0 && this.savePending) {
-        this.savePending = false;
-        this.save();
+      const result = fn();
+      // 该仓储使用同步落盘；异步回调会在事务提交后继续修改数据。
+      if (result && typeof (result as { then?: unknown }).then === 'function') {
+        throw new Error('数据库事务回调必须同步执行');
       }
+      this.saveDepth = depth;
+      if (depth === 0 && this.savePending) {
+        this.save();
+        this.savePending = false;
+      }
+      return result;
+    } catch (error) {
+      // 回调或原子落盘失败均恢复内存，避免下一次保存写入半笔账务。
+      this.data = snapshot;
+      this.saveDepth = depth;
+      this.savePending = previousPending;
+      throw error;
     }
   }
 
   private save() {
+    if (this.initializationFailed) throw new Error('数据库初始化失败，写入已禁用，请恢复数据后重启服务');
     if (this.saveDepth > 0) { this.savePending = true; return; }
     // 原子替换避免断电/崩溃留下半份 JSON；生图大文件保存在 data/images，不写进 store.json
     const temp = DATA_FILE + '.' + process.pid + '.tmp';
@@ -542,17 +679,30 @@ class Database {
    * 将失败页退款、标记退款页和写入流水放在一次 store 保存中，
    * 避免进程在“已加余额但尚未记账”之间崩溃后重复退款。
    */
-  refundPptFailedSlides(userId: string, deckId: string, slideIds: string[], amount: number, detail: string): { refunded: number; credits: number } {
+  refundPptFailedSlides(userId: string, deckId: string, slideIds: string[], amount: number, detail: string, amounts?: Map<string, number>): { refunded: number; credits: number } {
+    return this.transaction(() => this.refundPptFailedSlidesInternal(userId, deckId, slideIds, amount, detail, amounts));
+  }
+
+  private refundPptFailedSlidesInternal(userId: string, deckId: string, slideIds: string[], amount: number, detail: string, amounts?: Map<string, number>): { refunded: number; credits: number } {
     const deck = this.data.pptDecks.find(item => item.id === deckId && item.userId === userId);
     const user = this.data.users.find(item => item.id === userId);
     if (!deck || !user) return { refunded: 0, credits: Math.max(0, Math.floor(Number(user?.credits) || 0)) };
     const ids = new Set(deck.refundedSlideIds || []);
-    const eligible = deck.slides.filter(slide => slideIds.includes(slide.id) && slide.status === 'failed' && !ids.has(slide.id)).map(slide => slide.id);
+    const eligible = deck.slides.filter(slide => slideIds.includes(slide.id) && slide.status === 'failed' && !ids.has(slide.id));
     if (!eligible.length) return { refunded: 0, credits: Math.max(0, Math.floor(Number(user.credits) || 0)) };
-    const refund = Math.max(0, Math.floor(Number(amount) || 0));
+    const requested = Math.max(0, Math.floor(Number(amount) || 0));
+    const fallbackPerSlide = amounts ? 0 : (eligible.length ? Math.floor(requested / eligible.length) : 0);
+    const perSlideAmount = (slide: PptDeck['slides'][number]) => Math.max(0, Math.floor(Number(amounts?.get(slide.id) ?? fallbackPerSlide) || 0));
+    const refund = Math.min(requested, eligible.reduce((sum, slide) => sum + perSlideAmount(slide), 0));
     if (!refund) return { refunded: 0, credits: Math.max(0, Math.floor(Number(user.credits) || 0)) };
     user.credits = Math.max(0, Math.floor(Number(user.credits) || 0)) + refund;
-    deck.refundedSlideIds = [...ids, ...eligible];
+    const refundedIds = eligible.filter(slide => perSlideAmount(slide) > 0).map(slide => slide.id);
+    deck.refundedSlideIds = [...ids, ...refundedIds];
+    for (const slide of eligible) {
+      const perSlide = perSlideAmount(slide);
+      if (!perSlide) continue;
+      slide.refundedCredits = Math.max(0, Math.floor(Number(slide.refundedCredits) || 0)) + perSlide;
+    }
     deck.refundedCredits = Math.max(0, Math.floor(Number(deck.refundedCredits) || 0)) + refund;
     deck.updatedAt = Date.now();
     this.pushUsageRecord(this.newUsageRecord({ userId, username: user.username, type: 'slide_image', detail, credits: refund }));
@@ -578,8 +728,31 @@ class Database {
     return true;
   }
 
+  /**
+   * 仅登记某页已退款（不改余额、不记流水），供单页重生成失败退款使用。
+   *
+   * 单页重生成是独立的扣费-退款闭环（每次重生成单独扣 2 点、失败单独退 2 点），
+   * 退款金额走 refundCredits 记流水；这里只把该页加入 refundedSlideIds 幂等集合，
+   * 避免后续批量退款流程（refundFailedSlides）对这个 failed 页重复退。
+   * 与 refundPptSlide 的区别是它不因「已登记」而吞掉本次退款。
+   */
+  markPptSlideRefunded(userId: string, deckId: string, slideId: string): boolean {
+    const deck = this.data.pptDecks.find(item => item.id === deckId && item.userId === userId);
+    if (!deck || !deck.slides.some(slide => slide.id === slideId)) return false;
+    const ids = new Set(deck.refundedSlideIds || []);
+    if (ids.has(slideId)) return true;
+    deck.refundedSlideIds = [...ids, slideId];
+    deck.updatedAt = Date.now();
+    this.save();
+    return true;
+  }
+
   /** 失败页重试扣点与“已退款页”标记一次完成，避免进程崩溃造成重复扣点。 */
-  chargePptRetry(userId: string, deckId: string, slideIds: string[], amount: number, detail: string): { ok: true; deck: PptDeck } | { ok: false; error: string } {
+  chargePptRetry(userId: string, deckId: string, slideIds: string[], amount: number, detail: string, amounts?: Map<string, number>): { ok: true; deck: PptDeck } | { ok: false; error: string } {
+    return this.transaction(() => this.chargePptRetryInternal(userId, deckId, slideIds, amount, detail, amounts));
+  }
+
+  private chargePptRetryInternal(userId: string, deckId: string, slideIds: string[], amount: number, detail: string, amounts?: Map<string, number>): { ok: true; deck: PptDeck } | { ok: false; error: string } {
     const deck = this.data.pptDecks.find(item => item.id === deckId && item.userId === userId);
     const user = this.data.users.find(item => item.id === userId);
     if (!deck || !user) return { ok: false, error: '任务不存在' };
@@ -591,8 +764,15 @@ class Database {
     if (balance < cost) return { ok: false, error: '点数不足：本次需要 ' + cost + ' 点，当前余额 ' + balance + ' 点' };
     user.credits = balance - cost;
     deck.refundedSlideIds = [...refunded].filter(id => !retryIds.includes(id));
+    for (const slide of deck.slides) {
+      if (!retryIds.includes(slide.id)) continue;
+      const perSlide = Math.max(0, Math.floor(Number(amounts?.get(slide.id) ?? (retryIds.length ? cost / retryIds.length : 0)) || 0));
+      if (!Number.isFinite(Number(slide.billingCost)) || Number(slide.billingCost) < 0) slide.billingCost = perSlide;
+      slide.chargedCredits = Math.max(0, Math.floor(Number(slide.chargedCredits) || 0)) + perSlide;
+      // 历史退款是累计账务事实，重试扣费不能把它减掉。
+      slide.refundedCredits = Math.max(0, Math.floor(Number(slide.refundedCredits) || 0));
+    }
     deck.chargedCredits = Math.max(0, Math.floor(Number(deck.chargedCredits) || 0)) + cost;
-    deck.refundedCredits = Math.max(0, Math.floor(Number(deck.refundedCredits) || 0)) - cost;
     deck.error = undefined;
     deck.updatedAt = Date.now();
     this.pushUsageRecord(this.newUsageRecord({ userId, username: user.username, type: 'slide_image', detail, credits: -cost }));
@@ -890,6 +1070,50 @@ class Database {
     this.data.planningConfig.modelName = normalizePlanningModelName(this.data.planningConfig.baseUrl, this.data.planningConfig.modelName);
     this.save();
     return this.data.planningConfig;
+  }
+
+  // ---------- 提示词优化模型配置（仅管理端） ----------
+  getPromptOptimizeConfig(): PromptOptimizeModelConfig {
+    return this.data.promptOptimizeConfig;
+  }
+
+  updatePromptOptimizeConfig(updates: Partial<PromptOptimizeModelConfig>): PromptOptimizeModelConfig {
+    this.data.promptOptimizeConfig = { ...this.data.promptOptimizeConfig, ...updates };
+    const own = this.data.promptOptimizeConfig;
+    if (own.modelName) own.modelName = normalizePlanningModelName(own.baseUrl, own.modelName);
+    this.save();
+    return own;
+  }
+
+  /**
+   * 解析提示词优化实际生效的调用配置。
+   *
+   * 独立配置只有在「已启用 + 接口地址 / 密钥 / 模型三项填齐」时才算可用；
+   * 任一条件不满足都回退到内容规划模型，避免管理员只打开开关却漏填字段时
+   * 让前台的提示词优化整体不可用。
+   */
+  resolvePromptOptimizeConfig(): PromptOptimizeCallConfig & { source: 'dedicated' | 'planning' } {
+    const own = this.data.promptOptimizeConfig;
+    if (own?.enabled && String(own.baseUrl || '').trim() && String(own.apiKey || '').trim() && String(own.modelName || '').trim()) {
+      return {
+        baseUrl: String(own.baseUrl).trim(),
+        apiKey: String(own.apiKey).trim(),
+        modelName: String(own.modelName).trim(),
+        reasoningEffort: String(own.reasoningEffort || '').trim() || 'medium',
+        temperature: parseOptionalNumber(own.temperature, 0, 2),
+        maxOutputTokens: parseOptionalInteger(own.maxOutputTokens),
+        systemPrompt: String(own.systemPrompt || '').trim() || undefined,
+        source: 'dedicated'
+      };
+    }
+    const plan = this.data.planningConfig;
+    return {
+      baseUrl: plan?.baseUrl || '',
+      apiKey: plan?.apiKey || '',
+      modelName: plan?.modelName || '',
+      reasoningEffort: plan?.optimizeReasoningEffort || plan?.reasoningEffort || '',
+      source: 'planning'
+    };
   }
 
   // ---------- 会员套餐目录（管理端可编辑） ----------

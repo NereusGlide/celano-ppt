@@ -15,9 +15,14 @@ export type CanvasAsset = {
 
 async function request(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message || result.error || '素材操作失败');
-  return result;
+  if (!response.ok) {
+    // 服务异常时可能返回非 JSON（如 502 HTML 页），json() 会抛 SyntaxError，先兜底
+    const result = await response.json().catch(() => null) as { error?: { message?: string } | string } | null;
+    const error = result?.error;
+    const message = typeof error === 'string' ? error : (error && error.message) || '素材操作失败';
+    throw new Error(message);
+  }
+  return response.json();
 }
 export const fetchCanvasAssets = async (): Promise<CanvasAsset[]> => (await request('/api/canvas/assets')).assets;
 export const deleteCanvasAsset = async (id: string) => {

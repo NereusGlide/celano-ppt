@@ -93,6 +93,22 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
         }
     };
 
+    // 优化按钮：文本与图片模式共用 —— 生成图片前同样可以先优化提示词。
+    // 走同一个 /api/canvas/optimize-prompt，服务端按「提示词优化模型」配置解析通道。
+    const optimizeButton = (
+        <Tooltip title={t("canvas.promptPanel.optimize")}>
+            <Button
+                type="text"
+                className="!h-10 !w-10 !min-w-10 shrink-0 !rounded-full !bg-transparent !p-0"
+                style={{ color: theme.node.text }}
+                icon={optimizing ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                onClick={() => void optimizePromptText()}
+                disabled={!prompt.trim() || isRunning}
+                aria-label={t("canvas.promptPanel.optimize")}
+            />
+        </Tooltip>
+    );
+
     return (
         <div
             data-canvas-no-zoom
@@ -121,6 +137,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                     <CanvasPromptLibrary onSelect={updatePrompt} />
                     {mode === "image" ? (
                         <>
+                            {optimizeButton}
                             <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="image" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                             <CanvasImageSettingsPopover
                                 config={config}
@@ -133,17 +150,7 @@ export function CanvasNodePromptPanel({ node, nodes, isRunning, onPromptChange, 
                         </>
                     ) : (
                         <>
-                            <Tooltip title={t("canvas.promptPanel.optimize")}>
-                                <Button
-                                    type="text"
-                                    className="!h-10 !w-10 !min-w-10 shrink-0 !rounded-full !bg-transparent !p-0"
-                                    style={{ color: theme.node.text }}
-                                    icon={optimizing ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                                    onClick={() => void optimizePromptText()}
-                                    disabled={!prompt.trim() || isRunning}
-                                    aria-label={t("canvas.promptPanel.optimize")}
-                                />
-                            </Tooltip>
+                            {optimizeButton}
                             <ModelPicker config={config} value={config.model} onChange={(model) => onConfigChange(node.id, { model })} capability="text" onMissingConfig={() => openConfigDialog(true)} className="max-w-[190px]" />
                             <CanvasTextSettingsPopover config={config} count={node.metadata?.textCount || 1} onConfigChange={(_, value) => onConfigChange(node.id, { reasoningEffort: value })} onCountChange={(textCount) => onConfigChange(node.id, { textCount })} />
                         </>

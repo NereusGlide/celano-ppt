@@ -8,7 +8,10 @@ import { imageSizePresets } from '../integrations/infinite-canvas/web/src/lib/me
 import type { User } from '../src/types.js';
 
 test('canvas proxy keeps credentials server-side, quotes preset prices and refunds failed images', async t => {
-  let credits = 20;
+  let credits = 100;
+  // 加一个活跃会员身份，隔离「免费用户每日 3 张 2K」的免费额度逻辑，
+  // 让本测试聚焦代理转发 / 报价 / 退款的正确性（折扣回落零售价 2K=10、4K=20）。
+  const activeMember = { planId: 'test-vip', status: 'active', expiresAt: Date.now() + 86400_000 };
   let fail = false;
   let empty = false;
   let wrongSize = false;
@@ -31,15 +34,16 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
   const usage: any[] = [];
   t.mock.method(db, 'resolveImageConfig', () => config);
   t.mock.method(db, 'getPlanningConfig', () => config);
-  t.mock.method(db, 'getUserById', () => ({ id: 'test', username: 'test', credits }));
-  t.mock.method(db, 'updateUser', (_id: string, updates: any) => { credits = updates.credits; return { id: 'test', username: 'test', credits }; });
+  t.mock.method(db, 'getUserById', () => ({ id: 'test', username: 'test', credits, membership: activeMember }));
+  t.mock.method(db, 'updateUser', (_id: string, updates: any) => { credits = updates.credits; return { id: 'test', username: 'test', credits, membership: activeMember }; });
   t.mock.method(db, 'addUsageRecord', (record: any) => usage.push(record));
+  t.mock.method(db, 'getMembershipPlans', () => []);
   const host = express();
   host.use(express.raw({ type: 'multipart/form-data' }));
   host.use(express.json());
   host.use('/api/canvas', createCanvasRouter((req, res) => {
     if (req.headers.cookie !== 'test-session') { res.status(401).json({ error: 'login required' }); return null; }
-    return { id: 'test', username: 'test', credits } as User;
+    return { id: 'test', username: 'test', credits, membership: activeMember } as User;
   }));
   const server = host.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -52,8 +56,8 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
     assert.equal((await fetch(base + '/image/v1/images/generations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
     assert.equal((await fetch(base + '/image/v1/unsupported', { method: 'POST', headers, body: '{}' })).status, 404);
     assert.equal((await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: JSON.stringify({ expectedOwnerId: 'another-account' }) })).status, 409);
-    assert.equal(credits, 20);
-    for (const [scale, cost] of [['2k', 3], ['4k', 5]] as const) {
+    assert.equal(credits, 100);
+    for (const [scale, cost] of [['2k', 10], ['4k', 20]] as const) {
       for (const size of Object.values(imageSizePresets[scale])) {
         const quote = await (await fetch(base + '/quote', { method: 'POST', headers, body: JSON.stringify({ size, resolution: scale.toUpperCase(), n: 2 }) })).json();
         assert.equal(quote.cost, cost * 2);
@@ -63,7 +67,7 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
     }
     const generated = await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: JSON.stringify({ expectedOwnerId: 'test', model: 'attacker-model', response_format: 'b64_json', n: 2, size: imageSizePresets['2k']['16:9'] }) });
     assert.equal(generated.status, 200);
-    assert.equal(credits, 14);
+    assert.equal(credits, 80);
     assert.equal(seen.model, 'gpt-image-test');
     assert.equal(seen.response_format, undefined);
     assert.equal(seen.expectedOwnerId, undefined);
@@ -76,11 +80,11 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
       return body;
     };
     assert.equal((await fetch(base + '/image/v1/images/edits', { method: 'POST', headers: { Cookie: 'test-session', Authorization: `Bearer ${CANVAS_PROXY_TOKEN}` }, body: maskedRequest(1600) })).status, 502);
-    assert.equal(credits, 14, 'invalid masks must not charge credits');
+    assert.equal(credits, 80, 'invalid masks must not charge credits');
     nativeSize = '1672x941';
     const masked = await fetch(base + '/image/v1/images/edits', { method: 'POST', headers: { Cookie: 'test-session', Authorization: `Bearer ${CANVAS_PROXY_TOKEN}` }, body: maskedRequest() });
     assert.equal(masked.status, 200);
-    assert.equal(credits, 12);
+    assert.equal(credits, 70);
     assert.ok(seen.mask instanceof Blob);
     assert.equal(seen.local_edit, undefined);
     assert.equal(seen.original_size, undefined);
@@ -88,44 +92,44 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
     nativeSize = '2048x1152';
     const changedOriginal = await fetch(base + '/image/v1/images/edits', { method: 'POST', headers: { Cookie: 'test-session', Authorization: `Bearer ${CANVAS_PROXY_TOKEN}` }, body: maskedRequest() });
     assert.equal(changedOriginal.status, 502);
-    assert.equal(credits, 12, 'a resized local edit must be refunded');
+    assert.equal(credits, 70, 'a resized local edit must be refunded');
     nativeSize = undefined;
     // Restore the baseline for the existing general generation/refund scenarios.
-    credits = 14;
+    credits = 80;
     const form = new FormData();
     form.set('prompt', 'change only the mask'); form.set('image', new Blob(['original']), 'original.png'); form.set('mask', new Blob(['mask']), 'mask.png');
     const edited = await fetch(base + '/image/v1/images/edits', { method: 'POST', headers: { Cookie: 'test-session', Authorization: `Bearer ${CANVAS_PROXY_TOKEN}` }, body: form });
     assert.equal(edited.status, 200);
-    assert.equal(credits, 12);
+    assert.equal(credits, 70);
     assert.equal(await seen.mask.text(), 'mask');
     assert.match(seen.prompt, /^change only the mask/);
     assert.match(seen.prompt, /中文文字准确性要求/);
     fail = true;
     const failed = await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: '{}' });
     assert.equal(failed.status, 502);
-    assert.equal(credits, 12);
-    assert.deepEqual(usage.slice(-2).map(x => x.credits), [-3, 3]);
+    assert.equal(credits, 70);
+    assert.deepEqual(usage.slice(-2).map(x => x.credits), [-10, 10]);
     fail = false; wrongSize = true;
     const mismatched = await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: JSON.stringify({ size: imageSizePresets['4k']['16:9'] }) });
     assert.equal(mismatched.status, 502);
     assert.doesNotMatch(seen.prompt, /中文文字准确性要求/);
-    assert.equal(credits, 12);
-    assert.deepEqual(usage.slice(-2).map(x => x.credits), [-5, 5]);
+    assert.equal(credits, 70);
+    assert.deepEqual(usage.slice(-2).map(x => x.credits), [-20, 20]);
     wrongSize = false; empty = true;
     assert.equal((await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: '{}' })).status, 502);
-    assert.equal(credits, 12);
+    assert.equal(credits, 70);
     const streamed = await fetch(base + '/text/v1/responses', { method: 'POST', headers, body: '{}' });
     assert.match(await streamed.text(), /response.completed/);
-    assert.equal(credits, 12);
+    assert.equal(credits, 70);
     empty = false; nativeSize = '1536x1024';
     const native = await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: JSON.stringify({ size: '2048x1152', resolution: '2K' }) });
     assert.equal(native.status, 502);
     assert.match((await native.json()).error.message, /请求 2048×1152，接口返回 1536×1024/);
-    assert.equal(credits, 12);
+    assert.equal(credits, 70);
     assert.equal(seen.size, '2048x1152');
     assert.equal(seen.quality, 'medium');
     assert.match(seen.prompt, /2048:1152 宽高比原生构建/);
-    assert.deepEqual(usage.slice(-2).map(x => x.credits), [-3, 3]);
+    assert.deepEqual(usage.slice(-2).map(x => x.credits), [-10, 10]);
     nativeSize = '1672x941';
     const compatible = await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: JSON.stringify({ size: '2048x1152', resolution: '2K', n: 1, output_format: 'png' }) });
     assert.equal(compatible.status, 200);
@@ -136,11 +140,11 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
     assert.equal(output.requested_size, '2048x1152');
     assert.equal(seen.n, undefined);
     assert.equal(seen.output_format, undefined);
-    assert.equal(credits, 9);
+    assert.equal(credits, 60);
     nativeSize = '512x512';
     const tooSmall = await fetch(base + '/image/v1/images/generations', { method: 'POST', headers, body: JSON.stringify({ size: '2048x1152', resolution: '2K' }) });
     assert.equal(tooSmall.status, 502);
-    assert.equal(credits, 9);
+    assert.equal(credits, 60);
   } finally {
     server.closeAllConnections(); upstreamServer.closeAllConnections();
     await Promise.all([new Promise<void>(resolve => server.close(() => resolve())), new Promise<void>(resolve => upstreamServer.close(() => resolve()))]);

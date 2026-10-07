@@ -7,6 +7,7 @@ import { NotFoundApp } from './components/NotFoundApp.js';
 import { installGlobalErrorHandlers } from './services/telemetry.js';
 import './index.css';
 // Shared navigation and creation controls must load before any lazy route is opened.
+import './styles/kimi-fonts.css';
 import './styles/home.css';
 import './styles/motion.css';
 
@@ -18,20 +19,14 @@ import './styles/motion.css';
  * 其余页面在真正进入对应路由时才拉取。
  */
 const load = <T extends Record<string, unknown>>(loader: () => Promise<T>, name: keyof T) =>
-  lazy(() => loader().then(module => ({ default: module[name] as unknown as React.ComponentType })));
+  lazy(() => loader().then(module => ({ default: module[name] as unknown as React.ComponentType<any> })));
 
 const HomeApp = load(() => import('./home/HomeApp.tsx'), 'HomeApp');
-const PptGenerateApp = load(() => import('./home/HomeApp.tsx'), 'PptGenerateApp');
 const AdminApp = load(() => import('./admin/AdminApp.tsx'), 'AdminApp');
 const WorkspaceApp = load(() => import('./workspace/WorkspaceApp.tsx'), 'WorkspaceApp');
-const MembershipApp = load(() => import('./membership/MembershipApp.tsx'), 'MembershipApp');
-const CanvasApp = load(() => import('./canvas/CanvasApp.tsx'), 'CanvasApp');
 const CanvasEditorApp = load(() => import('./canvas/CanvasApp.tsx'), 'CanvasEditorApp');
-const TemplateLibraryApp = load(() => import('./templates/TemplateLibraryApp.js'), 'TemplateLibraryApp');
-const ImageApp = load(() => import('./image/ImageApp.tsx'), 'ImageApp');
 const ImageResultsApp = load(() => import('./image/ImageResultsApp.tsx'), 'ImageResultsApp');
-const SupportApp = load(() => import('./support/SupportApp.tsx'), 'SupportApp');
-const AccountCenterApp = load(() => import('./account/AccountCenterApp.tsx'), 'AccountCenterApp');
+const KimiShellApp = load(() => import('./kimi/KimiShellApp.tsx'), 'KimiShellApp');
 
 /** 分包加载期间的首屏占位，避免白屏。 */
 const RouteLoading: React.FC = () => (
@@ -234,12 +229,6 @@ workspaceRootEl.className = 'celano-route-root';
 workspaceRootEl.style.minHeight = '100vh';
 workspaceRootEl.style.display = 'none';
 document.body.appendChild(workspaceRootEl);
-const membershipRootEl = document.createElement('div');
-membershipRootEl.id = 'membership-root';
-membershipRootEl.className = 'celano-route-root';
-membershipRootEl.style.minHeight = '100vh';
-membershipRootEl.style.display = 'none';
-document.body.appendChild(membershipRootEl);
 const homeRootEl = document.createElement('div');
 homeRootEl.id = 'home-root';
 homeRootEl.className = 'celano-route-root';
@@ -250,22 +239,22 @@ let appRoot: ReturnType<typeof createRoot> | null = null;
 let mountedRoute = '';
 
 function currentRoute() {
-  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
-  const hashPath = (window.location.hash.replace(/^#/, '').replace(/\/+$/, '') || '/');
-  if (pathname === '/workspace' || hashPath === '/workspace') return 'workspace';
-  if (pathname === '/templates' || hashPath === '/templates') return 'templates';
-  if (pathname === '/ppt' || hashPath === '/ppt') return 'ppt';
-  if (pathname === '/account' || hashPath === '/account') return 'account';
-  if (pathname === '/membership' || hashPath === '/membership') return 'membership';
-  if (pathname === '/canvas/editor' || hashPath === '/canvas/editor') return 'canvas-editor';
-  if (pathname === '/canvas' || hashPath === '/canvas') return 'canvas';
-  if (pathname === '/image/results' || hashPath === '/image/results') return 'image-results';
-  if (pathname === '/image' || hashPath === '/image') return 'image';
-  if (pathname === '/support' || hashPath === '/support') return 'support';
-  // 只有根路径才是首页；其余未知地址一律走 404，
+  // 显式 hash 路由覆盖深链接的 pathname，包括从 /image 返回 #/ 首页。
+  const path = (window.location.hash.startsWith('#/') ? window.location.hash.slice(1) : window.location.pathname).replace(/\/+$/, '') || '/';
+  if (path === '/workspace') return 'workspace';
+  if (path === '/ppt') return 'ppt';
+  if (path === '/account') return 'account';
+  if (path === '/membership') return 'membership';
+  if (path === '/canvas/editor') return 'canvas-editor';
+  if (path === '/canvas') return 'canvas';
+  if (path === '/image/results') return 'image-results';
+  if (path === '/image') return 'image';
+  if (path === '/prompts') return 'prompts';
+  if (path === '/support') return 'support';
+  // 根路径即 kimi 外壳（作为本地主页）；其余未知地址一律走 404，
   // 避免搜索引擎把不存在的地址判定为 soft-404，也让用户知道地址确实错了。
-  const atRoot = pathname === '/' && (hashPath === '/' || hashPath === '');
-  return atRoot ? 'home' : 'not-found';
+  const atRoot = path === '/';
+  return atRoot ? 'app-shell' : 'not-found';
 }
 
 function mountRoute() {
@@ -287,76 +276,87 @@ function mountRoute() {
   appRoot?.unmount();
   appRoot = null;
   mountedRoute = route;
-  const activeRoot = route === 'home' || route === 'ppt' || route === 'account' || route === 'templates' ? homeRootEl : route === 'membership' ? membershipRootEl : workspaceRootEl;
+  // 主站页面（含会员与个人中心）统一挂到外壳容器，由 KimiShellApp 以 initialPage 定位；
+  // 只有工作台、画布编辑器、文生图作品页等「全屏子页面」使用独立容器。
+  const activeRoot = route === 'app-shell' || route === 'ppt' || route === 'account' || route === 'membership'
+    || route === 'image' || route === 'canvas' || route === 'support' ? homeRootEl : workspaceRootEl;
   activeRoot.classList.remove('celano-route-enter');
   void activeRoot.offsetWidth;
   activeRoot.classList.add('celano-route-enter');
   if (route === 'workspace') {
     rootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
     homeRootEl.style.display = 'none';
     workspaceRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(workspaceRootEl);
     appRoot.render(<StrictMode>{wrap(<WorkspaceApp />, 'workspace')}</StrictMode>);
-  } else if (route === 'templates') {
-    rootEl.style.display = 'none';
-    workspaceRootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
-    homeRootEl.style.display = '';
-    appRoot = createRoot(homeRootEl);
-    appRoot.render(<StrictMode>{wrap(<TemplateLibraryApp />, 'templates')}</StrictMode>);
   } else if (route === 'ppt') {
     rootEl.style.display = 'none';
     workspaceRootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
     homeRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(homeRootEl);
-    appRoot.render(<StrictMode>{wrap(<PptGenerateApp />, 'ppt')}</StrictMode>);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="ppt" />, 'ppt')}</StrictMode>);
   } else if (route === 'account') {
     rootEl.style.display = 'none';
     workspaceRootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
     homeRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(homeRootEl);
-    appRoot.render(<StrictMode>{wrap(<AccountCenterApp />, 'account')}</StrictMode>);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="account" />, 'account')}</StrictMode>);
   } else if (route === 'membership') {
     rootEl.style.display = 'none';
     workspaceRootEl.style.display = 'none';
-    homeRootEl.style.display = 'none';
-    membershipRootEl.style.display = '';
-    if (!appRoot) appRoot = createRoot(membershipRootEl);
-    appRoot.render(<StrictMode>{wrap(<MembershipApp />, 'membership')}</StrictMode>);
-  } else if (route === 'canvas' || route === 'canvas-editor') {
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="membership" />, 'membership')}</StrictMode>);
+  } else if (route === 'canvas') {
     rootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="canvas" />, 'canvas')}</StrictMode>);
+  } else if (route === 'canvas-editor') {
+    rootEl.style.display = 'none';
     homeRootEl.style.display = 'none';
     workspaceRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(workspaceRootEl);
-    appRoot.render(<StrictMode>{wrap(route === 'canvas-editor' ? <CanvasEditorApp /> : <CanvasApp />, route)}</StrictMode>);
-  } else if (route === 'image' || route === 'image-results') {
+    appRoot.render(<StrictMode>{wrap(<CanvasEditorApp />, 'canvas-editor')}</StrictMode>);
+  } else if (route === 'app-shell') {
     rootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp />, 'app-shell')}</StrictMode>);
+  } else if (route === 'image') {
+    rootEl.style.display = 'none';
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="image" />, 'image')}</StrictMode>);
+  } else if (route === 'prompts') {
+    rootEl.style.display = 'none';
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="prompts" />, 'prompts')}</StrictMode>);
+  } else if (route === 'image-results') {
+    rootEl.style.display = 'none';
     homeRootEl.style.display = 'none';
     workspaceRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(workspaceRootEl);
-    appRoot.render(<StrictMode>{wrap(route === 'image-results' ? <ImageResultsApp /> : <ImageApp />, route)}</StrictMode>);
+    appRoot.render(<StrictMode>{wrap(<ImageResultsApp />, 'image-results')}</StrictMode>);
   } else if (route === 'support') {
     rootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
-    homeRootEl.style.display = 'none';
-    workspaceRootEl.style.display = '';
-    if (!appRoot) appRoot = createRoot(workspaceRootEl);
-    appRoot.render(<StrictMode>{wrap(<SupportApp />, 'support')}</StrictMode>);
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="support" />, 'support')}</StrictMode>);
   } else if (route === 'not-found') {
     workspaceRootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
     rootEl.style.display = 'none';
     homeRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(homeRootEl);
     appRoot.render(<StrictMode>{wrap(<NotFoundApp />, 'not-found', false)}</StrictMode>);
   } else {
     workspaceRootEl.style.display = 'none';
-    membershipRootEl.style.display = 'none';
     rootEl.style.display = 'none';
     homeRootEl.style.display = '';
     if (!appRoot) appRoot = createRoot(homeRootEl);
@@ -364,7 +364,15 @@ function mountRoute() {
   }
 }
 
+// 壳内已自行切换内容，只同步缓存；后退再根据真实地址挂载页面。
+window.addEventListener('celano-shell-route', () => {
+  mountedRoute = currentRoute();
+  document.body.dataset.celanoRoute = mountedRoute;
+});
 window.addEventListener('hashchange', mountRoute);
+// 壳内切页使用 pushState 写入历史；后退时部分浏览器只派发 popstate，一并接管，
+// 保证「返回上一页」永远落回 SPA 内部而不是跳出应用。
+window.addEventListener('popstate', mountRoute);
 // Wait for asset uploads to finish before disposing the embedded canvas.
 let canvasSaving = false;
 window.addEventListener('message', event => {
@@ -373,7 +381,4 @@ window.addEventListener('message', event => {
   canvasSaving = event.data.saving === true;
   if (!canvasSaving) mountRoute();
 });
-// 直接访问 /workspace 时，浏览器后退触发的是 popstate 而非 hashchange；
-// 同时监听两类事件，避免地址已经回到首页但仍显示工作台。
-window.addEventListener('popstate', mountRoute);
 mountRoute();
