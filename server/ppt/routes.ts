@@ -5,6 +5,7 @@
 import express from 'express';
 import fs from 'fs';
 import { db } from '../db.js';
+import { chargePromptOptimize, refundCredits } from '../billing.js';
 import { requireUser } from '../sessionGuard.js';
 import { MAX_REFERENCE_TEXT } from './referenceAnalysis.js';
 import { optimizePrompt } from './promptOptimization.js';
@@ -34,15 +35,19 @@ pptRouter.post('/optimize-prompt', async (req, res) => {
   if (!prompt) return res.status(400).json({ success: false, error: '请输入需要优化的主题或需求' });
   const referencesText = typeof req.body.referencesText === 'string' ? req.body.referencesText : '';
   if (referencesText.length > MAX_REFERENCE_TEXT) return res.status(400).json({ success: false, error: '参考资料内容超过分析上限，请拆分上传' });
+  const charged = chargePromptOptimize(user.id, 'PPT提示词优化');
+  if (!charged.ok) return res.status(402).json({ success: false, error: charged.error, credits: charged.credits });
   // 提示词优化走独立通道；未启用或未填齐时自动回退内容规划模型
   const optimizeConfig = db.resolvePromptOptimizeConfig();
   if (!optimizeConfig.baseUrl || !optimizeConfig.apiKey) {
+    refundCredits(user.id, 1, 'PPT提示词优化未配置退款', 'optimize_prompt');
     return res.status(503).json({ success: false, error: '未配置提示词优化模型，无法进行 AI 提示词优化，请在管理后台「AI 接口配置 → 提示词优化模型」中设置' });
   }
   try {
     const result = await optimizePrompt(optimizeConfig, prompt, referencesText);
     res.json({ success: true, prompt: result.slice(0, 4000), fallback: false });
   } catch (err: any) {
+    refundCredits(user.id, 1, 'PPT提示词优化失败退款', 'optimize_prompt');
     console.warn('[ppt] 提示词优化调用失败：', String(err?.message || err).slice(0, 180));
     res.status(502).json({ success: false, error: 'AI 提示词优化失败：' + String(err?.message || err).slice(0, 200) });
   }

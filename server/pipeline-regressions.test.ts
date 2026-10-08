@@ -243,7 +243,7 @@ test('append after stop uses a fresh controller and reports an actual completed 
   const result = await appendSlide(user.id, deck.id, plan);
   assert.ok('id' in result);
   assert.equal(result.slides.find(slide => slide.id === result.appendedSlideId)?.status, 'done');
-  assert.equal(db.getUserById(user.id)?.credits, 80);
+  assert.equal(db.getUserById(user.id)?.credits, 85);
 });
 
 test('regeneration failure refunds unused prepayment once, while successful original pages retain their charge', async t => {

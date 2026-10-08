@@ -1,7 +1,7 @@
 /** Native image specifications shared by the UI, billing and image requests. */
 export type ImageResolution = '2K' | '4K';
-/** 零售价：1 元 = 10 点。2K 文生图 10 点、4K 文生图 20 点（见《会员体系与积分充值方案》）。 */
-export const IMAGE_COST: Record<ImageResolution, number> = { '2K': 10, '4K': 20 };
+/** 零售价：2K 生图/修改 5 点，4K 生图/修改 10 点。 */
+export const IMAGE_COST: Record<ImageResolution, number> = { '2K': 5, '4K': 10 };
 export const IMAGE_QUALITY: Record<ImageResolution, string> = { '2K': 'medium', '4K': 'high' };
 export const IMAGE_SIZE_PRESETS: Record<string, Record<string, string>> = {
   // Reference canvas: explicit 2K presets plus its 2048² area / 16-pixel unit calculation.

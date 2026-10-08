@@ -43,7 +43,7 @@ test('native dimension mismatch stops the PPT batch and refunds all unfinished p
   });
   const created = startDeck('mock-user', { prompt: '测试主题', pageCount: 20, concurrency: 6, resolution: '2K', referencesText: '参考资料正文'.repeat(3500) });
   assert.ok('id' in created);
-  assert.equal(deckView(created).chargedCredits, 200);
+  assert.equal(deckView(created).chargedCredits, 100);
   assert.equal(deckView(created).refundedCredits, 0);
   for (let i = 0; i < 200 && deck?.running; i++) await new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(deck?.running, false);
@@ -55,9 +55,9 @@ test('native dimension mismatch stops the PPT batch and refunds all unfinished p
   assert.ok(images <= 6, 'remaining pages must not be sent after a size mismatch');
   assert.equal(deck?.slides.filter(slide => slide.status === 'failed').length, 20);
   assert.match(deck?.error || '', /原生尺寸要求/);
-  assert.equal(refund, 200);
+  assert.equal(refund, 100);
   assert.equal(credits, 200);
-  assert.equal(deckView(deck!).refundedCredits, 200);
+  assert.equal(deckView(deck!).refundedCredits, 100);
 });
 
 test('failed reference analysis pauses before any image requests and refunds the task', async t => {
@@ -89,10 +89,10 @@ test('failed reference analysis pauses before any image requests and refunds the
   assert.equal(deck?.referenceAnalysisStatus, 'failed');
   assert.match(deck?.error || '', /AI 内容规划失败/);
   assert.equal(images, 0);
-  assert.equal(deck?.refundedCredits, 30);
+  assert.equal(deck?.refundedCredits, 15);
   assert.equal(credits, 30);
-  assert.equal(deckView(deck!).chargedCredits, 30);
-  assert.equal(deckView(deck!).refundedCredits, 30);
+  assert.equal(deckView(deck!).chargedCredits, 15);
+  assert.equal(deckView(deck!).refundedCredits, 15);
 });
 
 test('deleting pages and decks respects ownership, synchronizes page counts and refunds only unfinished prepaid pages', t => {
