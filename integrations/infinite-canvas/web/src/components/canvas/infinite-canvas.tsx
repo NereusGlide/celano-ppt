@@ -21,6 +21,7 @@ type InfiniteCanvasProps = {
 export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const panState = useRef({
+        pointerId: -1,
         isPanning: false,
         startX: 0,
         startY: 0,
@@ -107,6 +108,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
     };
 
     const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.isPrimary) return;
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest("[data-canvas-no-zoom]")) return;
         if (target?.closest("[data-connection-create-menu]")) return;
@@ -119,6 +121,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
             panState.current = {
+                pointerId: event.pointerId,
                 isPanning: true,
                 startX: event.clientX,
                 startY: event.clientY,
@@ -147,7 +150,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
     useEffect(() => {
         const handlePointerMove = (event: PointerEvent) => {
-            if (!panState.current.isPanning) return;
+            if (!panState.current.isPanning || event.pointerId !== panState.current.pointerId) return;
 
             const dx = event.clientX - panState.current.startX;
             const dy = event.clientY - panState.current.startY;
@@ -167,10 +170,14 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             });
         };
 
-        const handlePointerUp = () => {
-            if (!panState.current.isPanning) return;
+        const handlePointerUp = (event: PointerEvent) => {
+            if (!panState.current.isPanning || event.pointerId !== panState.current.pointerId) return;
+            if (frameRef.current) cancelAnimationFrame(frameRef.current);
+            frameRef.current = null;
+            if (event.type === "pointerup" && nextViewportRef.current) onViewportChange(nextViewportRef.current);
+            nextViewportRef.current = null;
 
-            if (!panState.current.hasMoved && panState.current.startedOnBackground) {
+            if (event.type === "pointerup" && !panState.current.hasMoved && panState.current.startedOnBackground) {
                 onCanvasDeselect?.();
             }
             panState.current.isPanning = false;
@@ -211,7 +218,7 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         <div
             ref={containerRef}
             className="relative h-full w-full select-none overflow-hidden"
-            style={{ background: theme.canvas.background, cursor }}
+            style={{ background: theme.canvas.background, cursor, touchAction: "none" }}
             onPointerDown={handlePointerDown}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}

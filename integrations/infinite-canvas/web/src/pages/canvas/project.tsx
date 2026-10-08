@@ -43,7 +43,7 @@ import { useAssetStore } from "@/stores/use-asset-store";
 import { defaultConfig,normalizeModelOptionValue,useConfigStore,useEffectiveConfig } from "@/stores/use-config-store";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType,type CanvasAssistantImage,type CanvasAssistantSession,type CanvasConnection,type CanvasNodeData,type CanvasNodeImage,type CanvasNodeText,type CanvasNodeTypeId,type ConnectionHandle,type ContextMenuState,type Position,type SelectionBox,type ViewportTransform } from "@/types/canvas";
-import { App,Button,Modal } from "antd";
+import { App,Button,Drawer,Modal } from "antd";
 import { saveAs } from "file-saver";
 import { nanoid } from "nanoid";
 import type { ChangeEvent as ReactChangeEvent,DragEvent as ReactDragEvent,MouseEvent as ReactMouseEvent,PointerEvent as ReactPointerEvent } from "react";
@@ -94,6 +94,13 @@ export default function CanvasPage() {
 function InfiniteCanvasPage() {
     const { message, modal } = App.useApp();
     const { t } = useTranslation();
+    const [mobileLayout, setMobileLayout] = useState(() => window.matchMedia("(max-width: 768px)").matches);
+    useEffect(() => {
+        const media = window.matchMedia("(max-width: 768px)");
+        const sync = () => setMobileLayout(media.matches);
+        media.addEventListener("change", sync);
+        return () => media.removeEventListener("change", sync);
+    }, []);
     // Subscribe to the registry version so plugin registration changes rerender the canvas.
     const nodeRegistryVersion = useNodeRegistryVersion((state) => state.version);
     const params = useParams<{
@@ -1035,8 +1042,9 @@ function InfiniteCanvasPage() {
     // It only selects; body onMouseDown still starts dragging, so text selection inside editors does not drag the node.
     // Cache the capture result for the following bubbling drag handler to avoid applying shift-selection twice.
     const pendingSelectionRef = useRef<Set<string> | null>(null);
-    const handleNodeSelectCapture = useCallback((event: ReactMouseEvent, nodeId: string) => {
-        if (event.button !== 0)
+    const activePointerRef = useRef<number | null>(null);
+    const handleNodeSelectCapture = useCallback((event: ReactPointerEvent, nodeId: string) => {
+        if (event.button !== 0 || !event.isPrimary)
             return;
         setContextMenu(null);
         setHoveredNodeId(null);
@@ -1044,7 +1052,9 @@ function InfiniteCanvasPage() {
         const { nextSelected } = selectNodeByEvent(event, nodeId);
         pendingSelectionRef.current = nextSelected;
     }, [selectNodeByEvent]);
-    const handleNodeMouseDown = useCallback((event: ReactMouseEvent, nodeId: string) => {
+    const handleNodeMouseDown = useCallback((event: ReactPointerEvent, nodeId: string) => {
+        if (event.button !== 0 || !event.isPrimary) return;
+        activePointerRef.current = event.pointerId;
         event.stopPropagation();
         // Capture already selected the node; this only starts dragging, with a fallback selection if capture did not run.
         const currentNodes = nodesRef.current;
@@ -1087,7 +1097,7 @@ function InfiniteCanvasPage() {
         }
         if (!dragRef.current.isDraggingNode)
             return;
-        const wasClick = !dragRef.current.hasMoved && dragRef.current.initialSelectedNodes.size === 1;
+        const wasClick = clientX != null && clientY != null && !dragRef.current.hasMoved && dragRef.current.initialSelectedNodes.size === 1;
         const clickedNodeId = dragRef.current.initialSelectedNodes.keys().next().value;
         const currentViewport = viewportRef.current;
         const dx = clientX == null ? 0 : (clientX - dragRef.current.startX) / currentViewport.k;
@@ -1216,23 +1226,36 @@ function InfiniteCanvasPage() {
         }
     }, [connectNodes, finishNodeDrag, getConnectionDropTarget, screenToCanvas, setConnecting]);
     useEffect(() => {
-        const handlePointerUp = (event: PointerEvent) => finishNodeDrag(event.clientX, event.clientY);
-        const cancelNodeDrag = () => finishNodeDrag();
-        window.addEventListener("mousemove", handleGlobalMouseMove);
-        window.addEventListener("mouseup", handleGlobalMouseUp);
-        window.addEventListener("pointerup", handlePointerUp);
-        window.addEventListener("pointercancel", cancelNodeDrag);
-        window.addEventListener("blur", cancelNodeDrag);
-        window.addEventListener("pointermove", handleGlobalPointerMove);
-        return () => {
-            window.removeEventListener("mousemove", handleGlobalMouseMove);
-            window.removeEventListener("mouseup", handleGlobalMouseUp);
-            window.removeEventListener("pointerup", handlePointerUp);
-            window.removeEventListener("pointercancel", cancelNodeDrag);
-            window.removeEventListener("blur", cancelNodeDrag);
-            window.removeEventListener("pointermove", handleGlobalPointerMove);
+        const move = (event: PointerEvent) => {
+            if (!event.isPrimary || (activePointerRef.current != null && event.pointerId !== activePointerRef.current)) return;
+            handleGlobalMouseMove(event);
+            handleGlobalPointerMove(event);
         };
-    }, [finishNodeDrag, handleGlobalMouseMove, handleGlobalMouseUp, handleGlobalPointerMove]);
+        const up = (event: PointerEvent) => {
+            if (!event.isPrimary || (activePointerRef.current != null && event.pointerId !== activePointerRef.current)) return;
+            handleGlobalMouseUp(event);
+            activePointerRef.current = null;
+        };
+        const cancel = (event?: PointerEvent | FocusEvent) => {
+            if (event instanceof PointerEvent && activePointerRef.current != null && event.pointerId !== activePointerRef.current) return;
+            finishNodeDrag();
+            activePointerRef.current = null;
+            pendingSelectionRef.current = null;
+            selectionBoxRef.current = null;
+            setSelectionBox(null);
+            setConnecting(null);
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+        window.addEventListener("pointercancel", cancel);
+        window.addEventListener("blur", cancel);
+        return () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+            window.removeEventListener("pointercancel", cancel);
+            window.removeEventListener("blur", cancel);
+        };
+    }, [finishNodeDrag, handleGlobalMouseMove, handleGlobalMouseUp, handleGlobalPointerMove, setConnecting]);
     const createImageFileNode = useCallback(async (file: File, position: Position) => {
         const image = await uploadImage(file);
         const size = fitNodeSize(image.width, image.height);
@@ -1367,7 +1390,10 @@ function InfiniteCanvasPage() {
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [copySelectedNodes, deleteConnection, deleteNodes, groupSelection, pasteCopiedNodes, pasteSystemClipboard, redoCanvas, selectedConnectionId, setConnecting, undoCanvas, ungroupSelection]);
-    const handleConnectStart = useCallback((event: ReactMouseEvent, nodeId: string, handleType: "source" | "target") => {
+    const handleConnectStart = useCallback((event: ReactPointerEvent, nodeId: string, handleType: "source" | "target") => {
+        if (event.button !== 0 || !event.isPrimary) return;
+        activePointerRef.current = event.pointerId;
+        event.preventDefault();
         event.stopPropagation();
         setMouseWorld(screenToCanvas(event.clientX, event.clientY));
         setConnecting({ nodeId, handleType });
@@ -2467,7 +2493,7 @@ function InfiniteCanvasPage() {
         }}/>), [configInputsById, confirmStopGeneration, handleConfigNodeChange, handleGenerateNode, runningNodeId]);
     if (!projectLoaded)
         return <CanvasRefreshShell />;
-    return (<main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
+    return (<main className="canvas-project-page flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
             <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert}/>
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar title={currentProject?.title || t("canvas.projectPage.untitledCanvas")} titleDraft={titleDraft} isTitleEditing={titleEditing} onTitleDraftChange={setTitleDraft} onStartTitleEditing={startTitleEditing} onFinishTitleEditing={finishTitleEditing} onCancelTitleEditing={() => setTitleEditing(false)} canUndo={historyState.canUndo} canRedo={historyState.canRedo} onHome={() => window.parent.postMessage({ type: "celano-canvas-exit" }, window.location.origin)} onProjects={() => navigate("/canvas")} onCreateProject={createAndOpenProject} onDeleteProject={deleteCurrentProject} onExportProject={exportCurrentProject} onImportImage={() => handleUploadRequest()} onUndo={undoCanvas} onRedo={redoCanvas}/>
@@ -2497,7 +2523,7 @@ function InfiniteCanvasPage() {
                         {connectingParams ? <ActiveConnectionPath node={nodeById.get(connectingParams.nodeId)} handle={connectingParams} mouseWorld={mouseWorld} target={connectionTargetNodeId ? nodeById.get(connectionTargetNodeId) : undefined}/> : null}
                     </svg>
 
-                    {visibleNodes.map((node) => (<CanvasNode key={node.id} data={node} scale={viewport.k} isSelected={selectedNodeIds.has(node.id)} isRelated={relatedHighlight.nodeIds.has(node.id)} isFocusRelated={activeNodeId === node.id} isConnectionTarget={connectionTargetNodeId === node.id} isConnecting={Boolean(connectingParams)} referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"} showPanel={!isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel} groupChildCount={groupChildCountById.get(node.id) || 0} isGroupDropTarget={dropTargetGroupId === node.id} batchExpanded={expandedBatchNodeIds.has(node.id)} showImageInfo={showImageInfo} mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES} registryVersion={nodeRegistryVersion} renderPanel={renderNodePanel} renderNodeContent={renderNodeContentPanel} onMouseDown={handleNodeMouseDown} onSelectCapture={handleNodeSelectCapture} onHoverStart={handleNodeHoverStart} onHoverEnd={handleNodeHoverEnd} onConnectStart={handleConnectStart} onResizeStart={handleNodeResizeStart} onResize={handleNodeResize} onResizeEnd={handleNodeResizeEnd} onContentChange={handleNodeContentChange} onTitleChange={handleNodeTitleChange} onToggleBatch={toggleBatchExpanded} onSetBatchPrimary={setBatchPrimary} onDuplicateBatchImage={duplicateBatchImage} onDownloadBatchImage={downloadBatchImage} onRetryBatchImage={retryBatchImage} onDeleteBatchImage={deleteBatchImage} onRetry={handleNodeRetry} onViewImage={handleNodeViewImage} onSelectReference={selectNodeReference} onContextMenu={handleNodeContextMenu}/>))}
+                    {visibleNodes.map((node) => (<CanvasNode key={node.id} data={node} scale={viewport.k} isSelected={selectedNodeIds.has(node.id)} isRelated={relatedHighlight.nodeIds.has(node.id)} isFocusRelated={activeNodeId === node.id} isConnectionTarget={connectionTargetNodeId === node.id} isConnecting={Boolean(connectingParams)} referenceSelectionState={!referencePickerNodeId ? undefined : node.id === referencePickerNodeId ? "target" : referenceConnectedNodeIds.has(node.id) || !isCanvasReferenceNode(node, nodes) ? "disabled" : "available"} showPanel={!mobileLayout && !isNodeResizing && dialogNodeId === node.id && !selectionBox && !getNodeDefinition(node.type)?.hidePanel} groupChildCount={groupChildCountById.get(node.id) || 0} isGroupDropTarget={dropTargetGroupId === node.id} batchExpanded={expandedBatchNodeIds.has(node.id)} showImageInfo={showImageInfo} mentionReferences={mentionReferencesByNodeId.get(node.id) || EMPTY_REFERENCES} registryVersion={nodeRegistryVersion} renderPanel={renderNodePanel} renderNodeContent={renderNodeContentPanel} onMouseDown={handleNodeMouseDown} onSelectCapture={handleNodeSelectCapture} onHoverStart={handleNodeHoverStart} onHoverEnd={handleNodeHoverEnd} onConnectStart={handleConnectStart} onResizeStart={handleNodeResizeStart} onResize={handleNodeResize} onResizeEnd={handleNodeResizeEnd} onContentChange={handleNodeContentChange} onTitleChange={handleNodeTitleChange} onToggleBatch={toggleBatchExpanded} onSetBatchPrimary={setBatchPrimary} onDuplicateBatchImage={duplicateBatchImage} onDownloadBatchImage={downloadBatchImage} onRetryBatchImage={retryBatchImage} onDeleteBatchImage={deleteBatchImage} onRetry={handleNodeRetry} onViewImage={handleNodeViewImage} onSelectReference={selectNodeReference} onContextMenu={handleNodeContextMenu}/>))}
 
                     {referencePickerNodeId ? <button type="button" className="absolute left-1/2 top-4 z-[90] -translate-x-1/2 rounded-full border px-4 py-2 text-sm font-medium shadow-lg backdrop-blur" style={{ background: theme.toolbar.panel, borderColor: theme.toolbar.border }} onClick={exitNodeReferenceSelection}>{t("canvas.references.selectingHint")}</button> : null}
 
@@ -2543,6 +2569,9 @@ function InfiniteCanvasPage() {
 
                 <input ref={imageInputRef} type="file" multiple accept="image/*" className="hidden" onChange={handleImageInputChange}/>
 
+                <Drawer className="canvas-mobile-editor" placement="bottom" height="min(72dvh, 620px)" title={nodes.find(node => node.id === dialogNodeId)?.title || t("canvas.node.untitled")} open={mobileLayout && !!dialogNodeId && !referencePickerNodeId} onClose={() => setDialogNodeId(null)} destroyOnHidden styles={{ content: { background: theme.toolbar.panel, color: theme.node.text } }}>
+                    {mobileLayout && dialogNodeId && nodes.find(node => node.id === dialogNodeId) ? renderNodePanel(nodes.find(node => node.id === dialogNodeId)!) : null}
+                </Drawer>
                 <CanvasNodeInfoModal node={infoNode} open={Boolean(infoNode)} onClose={() => setInfoNodeId(null)}/>
 
                 {cropNode?.metadata?.content ? <CanvasNodeCropDialog dataUrl={cropNode.metadata.content} open={Boolean(cropNode)} onClose={() => setCropNodeId(null)} onConfirm={(crop) => void cropImageNode(cropNode!, crop).catch(error => message.error(error instanceof Error ? error.message : t("canvas.projectPage.generationFailed")))}/> : null}

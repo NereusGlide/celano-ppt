@@ -199,3 +199,23 @@ test('画布拒绝会在hydrate或生成时抛错的嵌套字符串和集合元�
   value = JSON.stringify({ state: { projects: [{ ...project, chatSessions: [{ id: 'chat', title: '对话', createdAt: '2026-10-08', updatedAt: '2026-10-08', messages: [{ id: 'message', role: 'user', text: 'text', references: [{ id: 'ref', type: 'image', title: 'ref', dataUrl: 42 }] }] }] }] } });
   assert.equal(await api.getItem('test'), null, '非字符串dataUrl会在hydrateAssistantImages中调用startsWith而崩溃');
 });
+
+test('移动端忽略桌面展开偏好，抽屉初始关闭且不改存储', () => {
+  const source = read(canvas + 'stores/use-canvas-side-panel-store.ts').split('type CanvasSidePanelStore')[0];
+  const context = evaluate(source, { window: { innerWidth: 320 }, localStorage: { getItem: () => '1' } });
+  assert.equal(vm.runInContext('initialOpen()', context), false);
+  assert.equal(vm.runInContext('initialWidth()', context), 262);
+  (context.window as any).innerWidth = 1440;
+  assert.equal(vm.runInContext('initialOpen()', context), true);
+});
+
+test('画布移动编辑在缩放层外，拖动与缩放监听统一Pointer事件', () => {
+  const source = read(canvas + 'pages/canvas/project.tsx');
+  assert.match(source, /showPanel=\{!mobileLayout/);
+  assert.match(source, /<Drawer className="canvas-mobile-editor"/);
+  assert.match(source, /window\.addEventListener\("pointermove", move\)/);
+  assert.match(source, /window\.addEventListener\("pointercancel", cancel\)/);
+  const node = read(canvas + 'components/canvas/canvas-node.tsx');
+  assert.match(node, /onPointerDownCapture=/);
+  assert.match(node, /window\.addEventListener\("pointercancel", handleResizeUp\)/);
+});

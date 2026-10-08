@@ -64,7 +64,7 @@ export function CanvasTopBar({
 
     return (
         <>
-            <div className="pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between pl-1 pr-4">
+            <div className="canvas-top-bar pointer-events-none absolute left-0 right-0 top-0 z-50 flex h-16 items-center justify-between pl-1 pr-4">
                 <div className="pointer-events-auto flex min-w-0 items-center gap-2">
                     <Tooltip title={sidePanelOpen ? t("canvas.collapsePanel") : t("canvas.expandPanel")}>
                         <button
@@ -118,6 +118,7 @@ export function CanvasTopBar({
                             <button
                                 type="button"
                                 className="max-w-[280px] truncate border-b border-dashed border-transparent text-left text-lg font-semibold tracking-normal transition hover:border-current"
+                                onClick={() => { if (window.matchMedia("(max-width: 768px)").matches) onStartTitleEditing(); }}
                                 onDoubleClick={onStartTitleEditing}
                                 title={t("canvas.renameHint")}
                             >

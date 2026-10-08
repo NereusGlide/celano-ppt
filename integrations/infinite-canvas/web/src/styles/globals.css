@@ -608,27 +608,62 @@
     font-size: 0.75rem;
 }
 
-/* ===== 移动端适配 =====
-   无限画布原为桌面设计：侧边栏固定 280px 且默认展开，在 ≤768px 屏幕上
-   会把画布挤压到不足 100px。移动端改为「侧边栏悬浮抽屉」，不再占用画布宽度。 */
+/* Mobile chrome stays outside the transformed canvas coordinate system. */
+.canvas-side-panel-dismiss, .canvas-side-panel-backdrop { display: none; }
+.canvas-top-bar > div:first-child { flex: 1; }
+.canvas-top-bar > div:first-child > div:last-child { flex: 1; }
+.canvas-top-bar input, .canvas-top-bar div:last-child > button { min-width: 0; }
+.canvas-top-bar input { width: 100%; }
+.canvas-top-bar button:focus-visible, .canvas-toolbar-dock button:focus-visible,
+.canvas-zoom-dock button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 @media (max-width: 768px) {
-    /* 侧边栏脱离 flex 流，悬浮在画布左侧 */
-    main > div.z-\[60\] {
+    .canvas-project-page { position: relative; height: 100dvh; }
+    .canvas-side-panel {
         position: absolute;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        height: 100%;
-        z-index: 60;
-        box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+        inset: 0 auto 0 0;
+        z-index: 70;
+        max-width: calc(100% - 48px);
+        box-shadow: 8px 0 32px rgb(0 0 0 / 24%);
     }
-    /* 侧边栏右缘的拖拽把手在触屏上无法精确操作，隐藏 */
-    main > div.z-\[60\] button[aria-label] {
-        display: none;
-    }
-    /* 触控目标：顶栏/侧边栏图标按钮由 28px 放大到 36px */
-    main button.size-7 {
-        width: 36px;
-        height: 36px;
-    }
+    .canvas-side-panel > aside { max-width: 100%; }
+    .canvas-side-panel > aside > div:first-child { gap: 12px; padding: 4px 8px; }
+    .canvas-side-panel > aside > div:first-child > button { min-height: 44px; }
+    .canvas-side-panel-resize { display: none; }
+    .canvas-side-panel-dismiss { display: grid; place-items: center; margin-left: auto; width: 44px; height: 44px; flex: none; }
+    .canvas-side-panel-backdrop { display: block; position: absolute; inset: 0; z-index: 65; background: rgb(0 0 0 / 32%); }
+    .canvas-top-bar { height: 60px; padding: 4px 8px; gap: 4px; background: var(--background); border-bottom: 1px solid var(--border); }
+    .canvas-top-bar > div { gap: 2px; }
+    .canvas-top-bar button.size-7 { width: 44px; height: 44px; flex: none; }
+    .canvas-top-bar > div:first-child > div:last-child button { max-width: 100%; min-height: 44px; font-size: 14px; }
+    .canvas-top-bar input { font-size: 16px; min-height: 44px; }
+    .canvas-top-bar [aria-label="快捷键"], .canvas-top-bar [aria-label="Keyboard shortcuts"] { display: none; }
+    .canvas-toolbar-dock { left: 8px !important; right: 8px !important; bottom: calc(8px + env(safe-area-inset-bottom)); }
+    .canvas-toolbar-scroll { width: 100%; height: 60px; justify-content: flex-start; padding: 4px; overscroll-behavior-x: contain; }
+    .canvas-toolbar-dock button.ant-btn, .canvas-zoom-dock button.ant-btn { width: 44px !important; min-width: 44px !important; height: 44px !important; touch-action: manipulation; }
+    .canvas-toolbar-dock > div.absolute { left: 50% !important; width: min(280px, calc(100vw - 32px)); max-height: calc(100dvh - 180px); overflow-y: auto; }
+    .canvas-zoom-dock { left: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+    .canvas-zoom-dock > div { height: 52px; gap: 2px; padding: 2px 4px; }
+    .canvas-zoom-dock input[type="range"] { width: 64px; min-height: 44px; }
+    .canvas-zoom-dock button:last-child { display: none; }
+    .canvas-node-tools { top: 116px !important; }
+    .canvas-node-tools button { min-width: 44px; min-height: 44px; }
+    .canvas-node-prompt-panel > div.mt-2 { flex-wrap: wrap; }
+    .canvas-node-prompt-panel > div.mt-2 > div { width: 100%; flex-wrap: wrap; gap: 8px; }
+    .canvas-mobile-editor.canvas-mobile-editor .canvas-node-prompt-panel .ant-btn { height: 44px !important; min-height: 44px; min-width: 44px !important; }
+    .canvas-mobile-editor .ant-drawer-close { width: 44px; height: 44px; }
+    .canvas-mobile-editor .ant-drawer-header { padding: 8px 12px; }
+    .canvas-mobile-editor .ant-drawer-body { padding: 12px; overflow-y: auto; overscroll-behavior: contain; }
+    .canvas-mobile-editor .canvas-node-prompt-panel { box-shadow: none; border: 0; border-radius: 0; padding: 0 0 env(safe-area-inset-bottom); }
+    .canvas-mobile-editor [contenteditable="true"], .canvas-mobile-editor textarea { font-size: 16px; }
+    .canvas-project-library-actions { flex-wrap: wrap; width: 100%; }
+    .canvas-project-library-actions .ant-btn { min-height: 44px; }
+    .canvas-project-library-content { padding: 24px 16px; }
+    .canvas-side-panel button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+    .canvas-side-panel button.size-7 { width: 44px; height: 44px; }
+}
+@media (max-width: 480px) {
+    .canvas-top-bar > div:first-child { gap: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .canvas-top-bar *, .canvas-toolbar-dock *, .canvas-zoom-dock * { transition: none !important; }
 }
