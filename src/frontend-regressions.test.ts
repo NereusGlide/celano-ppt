@@ -209,6 +209,41 @@ test('移动端忽略桌面展开偏好，抽屉初始关闭且不改存储', ()
   assert.equal(vm.runInContext('initialOpen()', context), true);
 });
 
+test('生产源码映射在主站和画布静态资源之前拒绝，正常JS仍可访问', async () => {
+  const { default: express } = await import('express');
+  const { default: path } = await import('node:path');
+  const directory = fs.mkdtempSync(path.join(process.cwd(), 'map-guard-'));
+  const assets = path.join(directory, 'public/infinite-canvas/assets');
+  fs.mkdirSync(assets, { recursive: true });
+  fs.writeFileSync(path.join(assets, 'entry.js.map'), 'private-source');
+  fs.writeFileSync(path.join(assets, 'entry.js'), 'window.example = true;');
+  const source = read('server.ts');
+  const start = source.indexOf('// 在两套静态资源路由之前拦截');
+  const end = source.indexOf('async function startServer()', start);
+  assert.ok(start >= 0 && end > start);
+  const app = express();
+  evaluate(source.slice(start, end), { app, express, path, __dirname: directory, isProduction: true });
+  app.get('/assets/entry.js.map', (_req, res) => res.send('private-source'));
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const base = 'http://127.0.0.1:' + address.port;
+    for (const route of ['/assets/entry.js.map', '/infinite-canvas/assets/entry.js.map', '/infinite-canvas/assets/entry.js.MAP']) {
+      const response = await fetch(base + route);
+      assert.equal(response.status, 404, route);
+      assert.equal(await response.text(), 'Not Found');
+    }
+    const response = await fetch(base + '/infinite-canvas/assets/entry.js');
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'window.example = true;');
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('画布移动编辑在缩放层外，拖动与缩放监听统一Pointer事件', () => {
   const source = read(canvas + 'pages/canvas/project.tsx');
   assert.match(source, /showPanel=\{!mobileLayout/);
