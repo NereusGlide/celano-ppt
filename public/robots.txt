@@ -2,7 +2,6 @@
 # 允许搜索引擎收录公开页面，屏蔽需登录的功能页与后台。
 User-agent: *
 Allow: /$
-Allow: /#/templates
 Allow: /#/support
 Disallow: /admin
 Disallow: /#/workspace
@@ -13,4 +12,4 @@ Disallow: /api/
 Disallow: /legacy
 Disallow: /infinite-canvas
 
-Sitemap: https://celanoppt.com/sitemap.xml
+Sitemap: https://yamuai.cn/sitemap.xml

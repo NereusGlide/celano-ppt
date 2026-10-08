@@ -7,7 +7,7 @@ import {defineConfig, type Plugin} from 'vite';
  * 站点根地址。用于 canonical / og:url / sitemap 等必须绝对路径的元信息。
  * 部署时通过 VITE_APP_URL 环境变量注入；未配置时回落到默认值。
  */
-const SITE_URL = (process.env.VITE_APP_URL || 'https://celanoppt.com').replace(/\/+$/, '');
+const SITE_URL = (process.env.VITE_APP_URL || 'https://yamuai.cn').replace(/\/+$/, '');
 
 export default defineConfig(() => {
   return {
@@ -17,8 +17,12 @@ export default defineConfig(() => {
       {
         // 把构建期环境变量注入 index.html，避免在静态 HTML 里硬编码域名。
         name: 'celano-html-env',
-        transformIndexHtml(html: string) {
-          return html.replace(/%SITE_URL%/g, SITE_URL);
+        transformIndexHtml: {
+          order: 'post',
+          handler(html: string, context) {
+            const resolved = html.replace(/%SITE_URL%/g, SITE_URL);
+            return context.bundle ? resolved.replace(/<!--[\s\S]*?-->/g, '').replace(/>\s+</g, '><').trim() : resolved;
+          },
         },
       } satisfies Plugin,
     ],
@@ -28,9 +32,8 @@ export default defineConfig(() => {
       },
     },
     build: {
-      // 线上报错需要能定位到源码，但 sourcemap 不应随产物公开分发：
-      // 用 'hidden' 生成后上传到错误监控平台即可。
-      sourcemap: 'hidden' as const,
+      // 生产产物不生成源码映射，避免部署目录含可还原源码的文件。
+      sourcemap: false,
       // 单个 chunk 超过该体积（KB）时构建告警，用于防止体积静默膨胀。
       chunkSizeWarningLimit: 600,
       rollupOptions: {

@@ -837,18 +837,17 @@ app.post('/api/workspace/edit-page', (req, res) => {
 app.use('/api',(_req,res)=>res.status(404).json({success:false,error:'接口不存在'}));
 // 旧首页静态入口已从正式版本移除，避免旧地址被 SPA fallback 再次渲染成页面。
 app.use('/legacy', (_req, res) => res.status(410).send('旧版页面已下线，请访问首页或正式工作台'));
+// 在两套静态资源路由之前拦截，旧构建遗留映射也不能公开下载。
+app.use((req, res, next) => {
+  if (isProduction && /\.map$/i.test(req.path)) return res.status(404).type('text/plain').send('Not Found');
+  return next();
+});
 const canvasDir = path.resolve(__dirname, 'public/infinite-canvas');
 app.use('/infinite-canvas', express.static(canvasDir, { setHeaders(res){ res.setHeader('Cache-Control','public, max-age=86400'); } }));
 app.get('/infinite-canvas/*', (_req, res) => res.sendFile(path.join(canvasDir, 'index.html')));
 
 async function startServer(){const isProd=process.env.NODE_ENV==='production';if(!isProd){const {createServer}=await import('vite');const vite=await createServer({server:{middlewareMode:true,watch:{ignored:['**/data/**','**/dist/**','**/integrations/**','**/public/infinite-canvas/**','**/screenshots/**','**/2026-10-*/**','**/.tmp-*/**']}},appType:'spa'});app.use(vite.middlewares);}else{
     const distDir = path.resolve(__dirname,'dist');
-    // sourcemap 仅用于上传到错误监控平台，绝不随产物公开分发：
-    // 否则任何人下载 .map 即可还原完整源码（含业务逻辑与内部接口结构）。
-    app.use((req, res, next) => {
-      if (req.path.endsWith('.map')) return res.status(404).type('text/plain').send('Not Found');
-      return next();
-    });
     // 缓存策略：Vite 产物文件名带内容哈希，可永久缓存；
     // 模板图等无哈希的静态资源给一天；HTML 必须每次校验，保证发版即时生效。
     app.use(express.static(distDir, {

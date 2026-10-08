@@ -19,8 +19,8 @@ function initialWidth() {
 
 function initialOpen() {
     if (typeof window === "undefined") return true;
-    // 移动端首次进入默认关闭侧边栏，保证画布占满屏；用户手动打开后按 localStorage 记忆
-    if (window.innerWidth <= 768 && localStorage.getItem(OPEN_KEY) === null) return false;
+    // A desktop preference must not open an obscuring drawer when entering on a phone.
+    if (window.innerWidth <= 768) return false;
     return localStorage.getItem(OPEN_KEY) !== "0";
 }
 

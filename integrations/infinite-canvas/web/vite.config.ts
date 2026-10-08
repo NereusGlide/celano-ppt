@@ -26,6 +26,12 @@ function localPluginsManifest(): Plugin {
     };
     return {
         name: "local-plugins-manifest",
+        transformIndexHtml: {
+            order: "post",
+            handler(html, context) {
+                return context.bundle ? html.replace(/<!--[\s\S]*?-->/g, "").replace(/>\s+</g, "><").trim() : html;
+            },
+        },
         configureServer(server) {
             server.middlewares.use("/plugins/index.json", (_req, res) => {
                 res.setHeader("Content-Type", "application/json");
@@ -41,7 +47,7 @@ function localPluginsManifest(): Plugin {
 export default defineConfig({
     base: "/infinite-canvas/",
     plugins: [react(), localPluginsManifest()],
-    build: { target: "esnext", outDir: "../../../public/infinite-canvas", emptyOutDir: true },
+    build: { target: "esnext", outDir: "../../../public/infinite-canvas", emptyOutDir: true, sourcemap: false },
     resolve: {
         alias: {
             "@": resolve(webDir, "src"),

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { App,Empty,Input,Popconfirm,Select,Spin,Tag } from "antd";
-import { BookOpen,Check,ChevronRight,Download,Eye,FileText,Image as ImageIcon,ListChecks,Music2,Plus,Search,Settings2,Square,Trash2,Type,Video } from "lucide-react";
+import { BookOpen,Check,ChevronRight,Download,Eye,FileText,Image as ImageIcon,ListChecks,Music2,Plus,Search,Settings2,Square,Trash2,Type,Video,X } from "lucide-react";
 import { motion } from "motion/react";
-import { memo,useMemo,useRef,useState,useSyncExternalStore,type PointerEvent as ReactPointerEvent } from "react";
+import { memo,useEffect,useMemo,useRef,useState,useSyncExternalStore,type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { canvasThemes,type CanvasTheme } from "@/lib/canvas-theme";
@@ -59,7 +59,17 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
     const panelMounted = useCanvasSidePanelStore((state) => state.panelMounted);
     const panelClosing = useCanvasSidePanelStore((state) => state.panelClosing);
     const setWidth = useCanvasSidePanelStore((state) => state.setWidth);
+    const closePanel = useCanvasSidePanelStore((state) => state.closePanel);
+    const closeOnMobile = () => { if (window.matchMedia("(max-width: 768px)").matches) closePanel(); };
     const [resizing, setResizing] = useState(false);
+    useEffect(() => {
+        const syncWidth = () => {
+            if (window.innerWidth <= 768) setWidth(Math.min(280, Math.round(window.innerWidth * 0.82)));
+        };
+        syncWidth();
+        window.addEventListener("resize", syncWidth);
+        return () => window.removeEventListener("resize", syncWidth);
+    }, [setWidth]);
 
     const startResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -84,8 +94,10 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
     if (!panelMounted) return null;
 
     return (
+        <>
+        {panelOpen ? <button type="button" className="canvas-side-panel-backdrop" aria-label={t("canvas.collapsePanel")} onClick={closePanel} /> : null}
         <motion.div
-            className="relative z-[60] flex h-full shrink-0"
+            className="canvas-side-panel relative z-[60] flex h-full shrink-0"
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelOpen ? width + 1 : 0, opacity: panelOpen ? 1 : 0 }}
             transition={{ duration: resizing ? 0 : PANEL_MOTION_SECONDS, ease: PANEL_EASE }}
@@ -103,19 +115,21 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                     <TabButton label={t("canvas.sidePanel.canvas")} active={tab === "canvas"} theme={theme} onClick={() => setTab("canvas")} />
                     <TabButton label={t("canvas.sidePanel.assets")} active={tab === "assets"} theme={theme} onClick={() => setTab("assets")} />
                     <TabButton label={t("canvas.sidePanel.prompts")} active={tab === "prompts"} theme={theme} onClick={() => setTab("prompts")} />
+                    <button type="button" className="canvas-side-panel-dismiss" aria-label={t("canvas.collapsePanel")} onClick={closePanel}><X size={20} /></button>
                 </div>
                 <div className="mt-2 min-h-0 flex-1 overflow-hidden">
                     {tab === "canvas" ? (
-                        <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} theme={theme} />
+                        <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={id => { onFocusNode(id); closeOnMobile(); }} onPreviewNode={onPreviewNode} theme={theme} />
                     ) : tab === "assets" ? (
-                        <CanvasAssetsTab onInsert={onInsertAsset} theme={theme} />
+                        <CanvasAssetsTab onInsert={payload => { onInsertAsset(payload); closeOnMobile(); }} theme={theme} />
                     ) : (
-                        <CanvasPromptsTab onInsert={onInsertAsset} theme={theme} />
+                        <CanvasPromptsTab onInsert={payload => { onInsertAsset(payload); closeOnMobile(); }} theme={theme} />
                     )}
                 </div>
-                <button type="button" className="absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
+                <button type="button" className="canvas-side-panel-resize absolute inset-y-0 right-0 z-40 w-4 translate-x-1/2 cursor-col-resize" onPointerDown={startResize} aria-label={t("canvas.sidePanel.resize")} />
             </motion.aside>
         </motion.div>
+        </>
     );
 }
 

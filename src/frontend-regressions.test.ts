@@ -199,3 +199,58 @@ test('画布拒绝会在hydrate或生成时抛错的嵌套字符串和集合元�
   value = JSON.stringify({ state: { projects: [{ ...project, chatSessions: [{ id: 'chat', title: '对话', createdAt: '2026-10-08', updatedAt: '2026-10-08', messages: [{ id: 'message', role: 'user', text: 'text', references: [{ id: 'ref', type: 'image', title: 'ref', dataUrl: 42 }] }] }] }] } });
   assert.equal(await api.getItem('test'), null, '非字符串dataUrl会在hydrateAssistantImages中调用startsWith而崩溃');
 });
+
+test('移动端忽略桌面展开偏好，抽屉初始关闭且不改存储', () => {
+  const source = read(canvas + 'stores/use-canvas-side-panel-store.ts').split('type CanvasSidePanelStore')[0];
+  const context = evaluate(source, { window: { innerWidth: 320 }, localStorage: { getItem: () => '1' } });
+  assert.equal(vm.runInContext('initialOpen()', context), false);
+  assert.equal(vm.runInContext('initialWidth()', context), 262);
+  (context.window as any).innerWidth = 1440;
+  assert.equal(vm.runInContext('initialOpen()', context), true);
+});
+
+test('生产源码映射在主站和画布静态资源之前拒绝，正常JS仍可访问', async () => {
+  const { default: express } = await import('express');
+  const { default: path } = await import('node:path');
+  const directory = fs.mkdtempSync(path.join(process.cwd(), 'map-guard-'));
+  const assets = path.join(directory, 'public/infinite-canvas/assets');
+  fs.mkdirSync(assets, { recursive: true });
+  fs.writeFileSync(path.join(assets, 'entry.js.map'), 'private-source');
+  fs.writeFileSync(path.join(assets, 'entry.js'), 'window.example = true;');
+  const source = read('server.ts');
+  const start = source.indexOf('// 在两套静态资源路由之前拦截');
+  const end = source.indexOf('async function startServer()', start);
+  assert.ok(start >= 0 && end > start);
+  const app = express();
+  evaluate(source.slice(start, end), { app, express, path, __dirname: directory, isProduction: true });
+  app.get('/assets/entry.js.map', (_req, res) => res.send('private-source'));
+  const server = app.listen(0, '127.0.0.1');
+  try {
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const base = 'http://127.0.0.1:' + address.port;
+    for (const route of ['/assets/entry.js.map', '/infinite-canvas/assets/entry.js.map', '/infinite-canvas/assets/entry.js.MAP']) {
+      const response = await fetch(base + route);
+      assert.equal(response.status, 404, route);
+      assert.equal(await response.text(), 'Not Found');
+    }
+    const response = await fetch(base + '/infinite-canvas/assets/entry.js');
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'window.example = true;');
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('画布移动编辑在缩放层外，拖动与缩放监听统一Pointer事件', () => {
+  const source = read(canvas + 'pages/canvas/project.tsx');
+  assert.match(source, /showPanel=\{!mobileLayout/);
+  assert.match(source, /<Drawer className="canvas-mobile-editor"/);
+  assert.match(source, /window\.addEventListener\("pointermove", move\)/);
+  assert.match(source, /window\.addEventListener\("pointercancel", cancel\)/);
+  const node = read(canvas + 'components/canvas/canvas-node.tsx');
+  assert.match(node, /onPointerDownCapture=/);
+  assert.match(node, /window\.addEventListener\("pointercancel", handleResizeUp\)/);
+});
