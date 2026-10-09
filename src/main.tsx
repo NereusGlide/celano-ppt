@@ -68,7 +68,9 @@ const PPT_RESOLUTION_COST: Record<string, number> = IMAGE_COST;
 function generationCost(body: any) {
   const pageCount = Math.max(1, Math.min(100, Number(body?.slideCount ?? body?.pageCount ?? body?.slides?.length) || 6));
   const resolution = String(body?.resolution || '2K').toUpperCase();
-  const perPage = PPT_RESOLUTION_COST[resolution] || PPT_RESOLUTION_COST['2K'];
+  const base = PPT_RESOLUTION_COST[resolution] || PPT_RESOLUTION_COST['2K'];
+  const estimate = Number(body?.estimatedPerSlide);
+  const perPage = Number.isInteger(estimate) && estimate >= 1 && estimate <= base ? estimate : base;
   return { pageCount, resolution: PPT_RESOLUTION_COST[resolution] ? resolution : '2K', perPage, total: pageCount * perPage };
 }
 
@@ -89,6 +91,10 @@ function handoffReferenceImages(body: any) {
   };
   if (Array.isArray(body?.referenceFiles)) {
     for (const file of body.referenceFiles) {
+      if (String(file?.name || '').startsWith('视觉风格参考：') && Array.isArray(file?.styleImages)) {
+        for (const page of file.styleImages.slice(0, 3)) add(`视觉风格参考：${page.name || file.name}`, page);
+        continue;
+      }
       const type = String(file?.type || '').toLowerCase();
       if (type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(String(file?.name || file?.url || ''))) {
         add(file?.name || '参考图片', file);
@@ -178,6 +184,7 @@ const originalFetch = window.fetch.bind(window);
         sessionStorage.setItem('celano_new_ppt_options', JSON.stringify({
           pageCount: cost.pageCount,
           resolution: cost.resolution,
+          ownerId: typeof body.ownerId === 'string' ? body.ownerId : undefined,
           extraRequirements: body.extraRequirements || '',
           referenceContext: body.referenceContext || '',
           logo: body.logo && typeof body.logo === 'object' ? body.logo : undefined,
@@ -204,6 +211,7 @@ const originalFetch = window.fetch.bind(window);
         sessionStorage.setItem('celano_new_ppt_options', JSON.stringify({
           pageCount: cost.pageCount,
           resolution: cost.resolution,
+          ownerId: typeof body.ownerId === 'string' ? body.ownerId : undefined,
           extraRequirements: body.extraRequirements || '',
           referenceContext: body.referenceContext || '',
           logo: body.logo && typeof body.logo === 'object' ? body.logo : undefined,

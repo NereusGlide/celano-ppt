@@ -13,7 +13,7 @@ import { chargeCredits, editCostFor, normalizeResolution, resolutionImageSize, r
 import { chatText, editImage, generateImage } from './aiClient.js';
 import { GLOBAL_IMAGE_SLOTS, withImageSlot } from './imageSlots.js';
 import { fetchPublicImage, readLimitedBody } from '../remoteImages.js';
-import { assertNative16x9, assertPptImageSize, dataUrlBytes, type ImageDimensions } from './imageDimensions.js';
+import { assertNative16x9, assertPptImageSize, dataUrlBytes, readImageDimensions, type ImageDimensions } from './imageDimensions.js';
 import { analyzeReferences, analyzeStyleReferences, MAX_REFERENCE_TEXT, planningReferenceContext } from './referenceAnalysis.js';
 import {
   buildPlanPrompts,
@@ -24,6 +24,7 @@ import {
   PPT_PLAN_EFFORT,
   PPT_PLAN_MODEL,
   parseSlidePlan,
+  shouldUseProductReference,
 } from './plan.js';
 import type { LogoConfig, PptDeck, PptDeckSlide, PptPalette, PptReferenceImage, PptSlidePlan } from '../../src/types.js';
 
@@ -289,6 +290,7 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
           pageCount: to - from + 1,
           references: referenceAnalysis ? planningReferenceContext(deck.referencesText, referenceAnalysis) : deck.referencesText,
           faithfulReference: deck.referenceImages.some(ref => ref.name.startsWith('视觉风格参考：')),
+          productReference: deck.referenceImages.some(ref => ref.name.startsWith('商品参考：')),
           batch: batched ? {
             from,
             to,
@@ -374,6 +376,7 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
   if (!slide) return;
   const index = deck.slides.findIndex(s => s.id === slideId);
   patchSlide(deckId, slideId, { status: 'generating', error: undefined });
+  let writtenKey: string | undefined;
   try {
     const imageConfig = db.resolveImageConfig(deck.resolution);
     const references: string[] = [];
@@ -381,9 +384,13 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     const styleRefs = deck.referenceImages.filter(ref => ref.name.startsWith('视觉风格参考：'));
     const personRefs = deck.referenceImages.filter(ref => ref.name.startsWith('人物参考：'));
     const productRefs = deck.referenceImages.filter(ref => ref.name.startsWith('商品参考：'));
+    const useProduct = shouldUseProductReference({ slide: slide.plan, productReferenceAvailable: productRefs.length > 0, editInstruction: instruction });
     const faithfulReference = styleRefs.length > 0;
     const cover = deck.slides[0];
     const addCover = () => {
+      // 历史封面可能已强制带入商品；非商品页不以它作为视觉锚点。
+      if (!useProduct && productRefs.length > 0) return;
+      if (references.length >= MAX_REFERENCE_IMAGES) return;
       if (cover && cover.id !== slide.id && cover.status === 'done' && cover.storageKey) {
         const dataUrl = loadImageDataUrl(cover.storageKey);
         if (dataUrl) { references.push(dataUrl); referenceLabels.push('已生成封面，仅辅助系列一致性'); }
@@ -393,10 +400,9 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       const dataUrl = ref.storageKey ? loadImageDataUrl(ref.storageKey) : null;
       if (dataUrl) { references.push(dataUrl); referenceLabels.push(ref.name); }
     };
-    // 人物 / 商品参考是强一致约束：必须始终纳入参考图，优先级高于风格参考与封面，
-    // 确保逐页图生图都能基于这两类素材延展，而非被 offset 轮换遗漏。
+    // 人物策略保持不变，商品仅在本页需要展示时纳入。
     for (const ref of personRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
-    for (const ref of productRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
+    if (useProduct) for (const ref of productRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
     if (faithfulReference) {
       // 原始模版排在人物/商品之后：多图接口失败时，单图重试仍保留一致素材。
       const offset = index % styleRefs.length;
@@ -425,11 +431,12 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       slide: slide.plan,
       index,
       referenceCount: count,
-      faithfulReference,
+      faithfulReference: referenceLabels.slice(0, count).some(label => label.startsWith('视觉风格参考：')),
       referenceLabels: referenceLabels.slice(0, count),
       styleAnalysis: deck.styleAnalysis,
-      personReference: personRefs.length > 0,
-      productReference: productRefs.length > 0,
+      personReference: referenceLabels.slice(0, count).some(label => label.startsWith('人物参考：')),
+      productReference: referenceLabels.slice(0, count).some(label => label.startsWith('商品参考：')),
+      excludeProduct: productRefs.length > 0 && !useProduct,
       editInstruction: instruction,
     });
     const prompt = buildPrompt(refs.length);
@@ -459,12 +466,14 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       patchSlide(deckId, slideId, { status: 'idle', error: undefined });
       return;
     }
-    let storageKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '.png';
+    const versionedKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '-' + nanoid();
+    let storageKey = versionedKey + '.png';
     let dimensions: ImageDimensions;
     if (dataUrl.startsWith('data:')) {
       dimensions = assertPptImageSize(dataUrlBytes(dataUrl), resolutionImageSize(deck.resolution), deck.resolution);
-      storageKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '.' + imageExtensionFromDataUrl(dataUrl);
+      storageKey = versionedKey + '.' + imageExtensionFromDataUrl(dataUrl);
       saveDataUrlImage(storageKey, dataUrl);
+      writtenKey = storageKey;
     } else {
       const resp = await fetchPublicImage(dataUrl, signal);
       if (!resp.ok) { await resp.body?.cancel(); throw new Error('下载生成图片失败 HTTP ' + resp.status); }
@@ -475,18 +484,25 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       }
       const bytes = await readLimitedBody(resp);
       dimensions = assertPptImageSize(bytes, resolutionImageSize(deck.resolution), deck.resolution);
-      storageKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '.' + imageExtensionFromMime(contentType);
+      storageKey = versionedKey + '.' + imageExtensionFromMime(contentType);
       const full = imageFullPath(storageKey);
       if (!full) throw new Error('非法存储路径');
       ensureDir(full);
+      if (rt.runToken !== token || controller.signal.aborted || !db.getPptDeck(deckId)) return;
       fs.writeFileSync(full, bytes);
+      writtenKey = storageKey;
     }
     // 远程 URL 下载本身会跨越异步边界，期间可能发生 stop/resume；
     // 丢弃已经过期的一轮结果，避免旧请求覆盖新一轮页面。
     if (rt.runToken !== token) return;
     const completed = db.getPptDeck(deckId)?.slides.find(s => s.id === slideId);
     if (!completed) return;
-    patchSlide(deckId, slideId, { status: 'done', storageKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), deliveredCredits: Math.max(0, (completed.chargedCredits || 0) - (completed.refundedCredits || 0)) });
+    db.transaction(() => patchSlide(deckId, slideId, { status: 'done', error: undefined, storageKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), deliveredCredits: Math.max(0, (completed.chargedCredits || 0) - (completed.refundedCredits || 0)) }));
+    writtenKey = undefined;
+    if (slide.storageKey && slide.storageKey !== storageKey) {
+      const previous = imageFullPath(slide.storageKey);
+      if (previous) try { fs.rmSync(previous, { force: true }); } catch { /* 旧图清理不影响新图交付。 */ }
+    }
     console.log('[ppt] 页面生成完成:', deckId, slideId);
   } catch (err: any) {
     // 停止后立即继续时，旧请求不能覆盖新一轮任务的状态。
@@ -503,6 +519,11 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
         rt.cancelled = true;
         controller.abort();
       }
+    }
+  } finally {
+    if (writtenKey) {
+      const pending = imageFullPath(writtenKey);
+      if (pending) try { fs.rmSync(pending, { force: true }); } catch { /* 未提交图片留待定期清理。 */ }
     }
   }
 }
@@ -565,6 +586,13 @@ async function runWorkers(deckId: string, token: number): Promise<void> {
   rt.running = false;
 }
 
+/** 初始占位页没有可供生图的内容规划，暂停后继续时必须重新规划。 */
+function needsPlanning(deck: PptDeck): boolean {
+  if (!deck.slides.length || deck.stage === 'planning' || deck.planningSource === 'fallback') return true;
+  return deck.slides.every(slide => /^第\s*\d+\s*页(?:\s*·\s*规划未完成)?$/.test(slide.plan.title.trim())
+    && !slide.plan.subtitle && !slide.plan.summary && !slide.plan.imagePrompt && slide.plan.bullets.length === 0);
+}
+
 /** 完整任务：先规划（若尚无页面），再逐页渲染。 */
 async function runDeck(deckId: string, token: number) {
   const rt = runtimeFor(deckId);
@@ -573,7 +601,7 @@ async function runDeck(deckId: string, token: number) {
   rt.running = true;
   const deck = db.getPptDeck(deckId);
   if (!deck) { rt.running = false; return; }
-  if (!deck.slides.length || deck.stage === 'planning' || deck.planningSource === 'fallback') {
+  if (needsPlanning(deck)) {
     db.updatePptDeck(deckId, { stage: 'planning', running: true, finished: false });
     const planned = await planDeck(deckId, token);
     if (!planned) {
@@ -637,7 +665,17 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
   const active = db.getPptDecks(userId).find(d => d.running);
   if (active) return { error: '已有正在进行的生成任务，请先停止或等待完成' };
   const prompt = String(input.prompt || '').trim();
-  if (!prompt) return { error: '请输入主题或需求' };
+  if (!prompt || prompt.length > 4000) return { error: '请输入 1–4000 字的主题或需求' };
+  if (Array.isArray(input.referenceImages) && input.referenceImages.length > 18) return { error: '参考图片最多 18 张' };
+  const refs = Array.isArray(input.referenceImages) ? input.referenceImages : [];
+  for (const item of refs) {
+    try {
+      if (!item || typeof item.dataUrl !== 'string' || item.dataUrl.length > 8_388_710) throw new Error('格式无效或超过 6MB');
+      const bytes = dataUrlBytes(item.dataUrl);
+      const size = readImageDimensions(bytes);
+      if (bytes.length > 6 * 1024 * 1024 || size.width < 1 || size.height < 1 || size.width > 32768 || size.height > 32768 || size.width * size.height > 100_000_000) throw new Error('尺寸无效或文件过大');
+    } catch { return { error: '参考图片格式或像素尺寸无效，请使用 6MB 以内的 PNG、JPEG 或 WebP' }; }
+  }
   const pageCount = Number(input.pageCount);
   if (String(input.referencesText || '').length > MAX_REFERENCE_TEXT) return { error: '参考资料内容超过分析上限，请拆分上传' };
   if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > 100) return { error: 'PPT 页数必须为 1–100 的整数' };
@@ -657,19 +695,18 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
   const concurrency = 6;
   const id = 'deck_' + Date.now() + '_' + nanoid();
   const referenceImages: PptReferenceImage[] = [];
-  const refs = Array.isArray(input.referenceImages) ? input.referenceImages.slice(0, 18) : [];
   for (let i = 0; i < refs.length; i++) {
     const item = refs[i];
-    if (!item || typeof item.dataUrl !== 'string' || !/^data:image\/(png|jpeg|webp);base64,/.test(item.dataUrl)) continue;
-    // data URL 会比原始文件膨胀约三分之一；允许约 6MB 的上传图片正常进入任务。
-    if (item.dataUrl.length > 12_000_000) continue;
+    // 已在扣费前验证全部参考图，保存失败时不创建缺失素材的任务。
     const ext = item.dataUrl.match(/^data:image\/(png|jpeg|webp);/)?.[1] === 'jpeg' ? 'jpg' : (item.dataUrl.match(/^data:image\/(png|jpeg|webp);/)?.[1] || 'png');
     const storageKey = 'user-' + userId + '/deck-' + id + '/ref-' + i + '.' + ext;
     try {
       saveDataUrlImage(storageKey, item.dataUrl);
       referenceImages.push({ id: 'ref_' + i, name: String(item.name || '参考图').slice(0, 60), storageKey });
     } catch {
-      // 单张参考图保存失败不影响整体任务
+      const directory = imageFullPath('user-' + userId + '/deck-' + id);
+      if (directory) fs.rmSync(directory, { recursive: true, force: true });
+      return { error: '参考图保存失败，未创建任务或扣费，请重试' };
     }
   }
   const deck: PptDeck = {
@@ -772,7 +809,7 @@ export function resumeDeck(userId: string, deckId: string): PptDeck | { error: s
   rt.runToken += 1;
   const token = rt.runToken;
   const slides = billingDeck.slides.map(s => (s.status !== 'done' ? { ...s, status: 'idle' as const, error: undefined } : s));
-  db.updatePptDeck(deckId, { running: true, finished: false, slides, stage: billingDeck.slides.length ? 'rendering' : 'planning' });
+  db.updatePptDeck(deckId, { running: true, finished: false, slides, stage: needsPlanning(billingDeck) ? 'planning' : 'rendering' });
   launchDeck(deckId, token);
   return db.getPptDeck(deckId) || deck;
 }
@@ -839,6 +876,7 @@ export async function regenerateSlide(userId: string, deckId: string, slideId: s
   const token = ++rt.runToken;
   rt.busy.add(slideId);
   let cancelled = false;
+  let renderError = '';
   try {
     await renderSlide(deckId, slideId, instruction ? String(instruction).trim().slice(0, 2000) || undefined : undefined, token);
     cancelled = rt.runToken !== token || (rt.controller.signal.aborted && !rt.fatalImageError);
@@ -847,8 +885,10 @@ export async function regenerateSlide(userId: string, deckId: string, slideId: s
       const fresh = db.getPptDeck(deckId);
       const slide = fresh?.slides.find(s => s.id === slideId);
       if (slide && slide.status !== 'done') {
-        patchSlide(deckId, slideId, { status: 'failed', error: cancelled ? '单页生成已取消，已退回点数' : slide.error || '单页生成未完成' });
+        renderError = cancelled ? '单页生成已取消，已退回本次点数' : slide.error || '单页生成未完成，已退回本次点数';
+        patchSlide(deckId, slideId, { status: 'failed', error: renderError });
         refundFailedSlides(deckId, [slideId]);
+        if (target.storageKey) patchSlide(deckId, slideId, { status: 'done', storageKey: target.storageKey, width: target.width, height: target.height, updatedAt: target.updatedAt, error: renderError });
       }
     } finally {
       rt.busy.delete(slideId);
@@ -856,6 +896,7 @@ export async function regenerateSlide(userId: string, deckId: string, slideId: s
     }
   }
   if (cancelled) return { error: '单页生成已取消，已退回点数', cancelled: true };
+  if (renderError && target.storageKey) return { error: renderError };
   return db.getPptDeck(deckId) || { error: '任务不存在' };
 }
 
@@ -919,6 +960,8 @@ export function replaceSlideImage(userId: string, deckId: string, slideId: strin
   if (!deck || deck.userId !== userId) return { error: '任务不存在' };
   const slide = deck.slides.find(s => s.id === slideId);
   if (!slide) return { error: '页面不存在' };
+  const rt = runtimeFor(deckId);
+  if (deck.running || rt.running || rt.workersActive || rt.appendActive || rt.busy.size) return { error: '页面正在生成或修改中，请等待完成后再替换图片' };
   if (typeof dataUrl !== 'string' || dataUrl.length > MAX_IMAGE_DATA_URL_LENGTH || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) {
     return { error: '单页图片格式无效或文件过大' };
   }
@@ -933,22 +976,27 @@ export function replaceSlideImage(userId: string, deckId: string, slideId: strin
   } catch (err: any) {
     return { error: String(err?.message || '单页图片必须为原生 16:9').slice(0, 200) };
   }
-  const nextKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '.' + ext;
+  const nextKey = 'user-' + deck.userId + '/deck-' + deckId + '/slide-' + slideId + '-' + nanoid() + '.' + ext;
   try {
     saveDataUrlImage(nextKey, dataUrl);
+    const dimensions = assertNative16x9(dataUrlBytes(dataUrl));
+    const updated = db.transaction(() => {
+      patchSlide(deckId, slideId, { status: 'done', storageKey: nextKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), error: undefined });
+      const fresh = db.getPptDeck(deckId);
+      if (!fresh) throw new Error('任务不存在');
+      const finished = !fresh.running && fresh.slides.every(item => item.status === 'done');
+      return db.updatePptDeck(deckId, { finished, stage: finished ? 'finished' : fresh.stage }) || fresh;
+    });
     if (slide.storageKey && slide.storageKey !== nextKey) {
       const previous = imageFullPath(slide.storageKey);
-      if (previous) fs.rmSync(previous, { force: true });
+      if (previous) try { fs.rmSync(previous, { force: true }); } catch { /* 清理旧图不影响已保存新图。 */ }
     }
+    return updated;
   } catch (err: any) {
+    const pending = imageFullPath(nextKey);
+    if (pending) try { fs.rmSync(pending, { force: true }); } catch { /* 失败文件留待定期清理。 */ }
     return { error: '保存单页图片失败：' + String(err?.message || err).slice(0, 120) };
   }
-  const dimensions = assertNative16x9(dataUrlBytes(dataUrl));
-  patchSlide(deckId, slideId, { status: 'done', storageKey: nextKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), error: undefined });
-  const fresh = db.getPptDeck(deckId);
-  if (!fresh) return { error: '任务不存在' };
-  const finished = !fresh.running && fresh.slides.every(item => item.status === 'done');
-  return db.updatePptDeck(deckId, { finished, stage: finished ? 'finished' : fresh.stage }) || fresh;
 }
 
 /** 删除任务与磁盘图片。 */
@@ -1012,6 +1060,7 @@ export function deleteSlide(userId: string, deckId: string, slideId: string): Pp
 export function deckView(deck: PptDeck) {
   return {
     id: deck.id,
+    userId: deck.userId,
     title: deck.title,
     prompt: deck.prompt,
     resolution: normalizeResolution(deck.resolution),
@@ -1044,7 +1093,7 @@ export function deckView(deck: PptDeck) {
       width: s.width,
       height: s.height,
       // slide.updatedAt 作为缓存版本号：单页重生成只改变本页 URL，其他页图片继续命中长缓存。
-      imageUrl: s.status === 'done' && s.storageKey ? '/api/ppt/decks/' + deck.id + '/slides/' + s.id + '/image?v=' + encodeURIComponent(String(s.updatedAt || deck.updatedAt)) : undefined,
+      imageUrl: s.storageKey ? '/api/ppt/decks/' + deck.id + '/slides/' + s.id + '/image?v=' + encodeURIComponent(String(s.updatedAt || deck.updatedAt)) : undefined,
     })),
   };
 }
@@ -1065,8 +1114,10 @@ export function recoverDecksOnBoot() {
   interrupted.forEach((deck, index) => {
     const deckId = deck.id;
     const userId = deck.userId;
+    const recoveryToken = runtimeFor(deckId).runToken;
     setTimeout(() => {
       try {
+        if (runtimes.get(deckId)?.runToken !== recoveryToken || !db.getPptDeck(deckId)) return;
         resumeDeck(userId, deckId);
       } catch (err) {
         console.error('[ppt] 恢复任务失败:', err);

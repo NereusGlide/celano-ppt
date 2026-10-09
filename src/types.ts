@@ -379,6 +379,8 @@ export interface PptSlidePlan {
   summary?: string;
   pageType: PptPageType;
   imagePrompt?: string;
+  /** 本页是否需要展示上传商品；未提供时兼容历史规划。 */
+  productReference?: boolean;
 }
 
 export interface PptReferenceImage {

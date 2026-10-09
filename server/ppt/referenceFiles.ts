@@ -1,16 +1,19 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { MAX_REFERENCE_TEXT, type ReferenceParseStatus } from '../../src/shared/referenceFiles.js';
 import { chatVision } from './aiClient.js';
+import { readImageDimensions } from './imageDimensions.js';
 import type { PlanningModelConfig } from '../../src/types.js';
 
 const runFile = promisify(execFile);
 const commandOptions = { encoding: 'utf8' as const, timeout: 30_000, maxBuffer: 8 * 1024 * 1024 };
 type ReferenceFile = { filename: string; contentType: string; data: Buffer };
-type Extraction = { extractedText: string; parseStatus: ReferenceParseStatus; parseError?: string };
+export type StyleReferenceImage = { name: string; dataUrl: string };
+type Extraction = { extractedText: string; parseStatus: ReferenceParseStatus; parseError?: string; styleImages?: StyleReferenceImage[] };
 /** 进度回调：percent 0-100，phase 为给用户看的阶段描述。 */
 export type ReferenceProgressFn = (percent: number, phase: string) => void;
 
@@ -19,7 +22,7 @@ async function ocrPdf(savedPath: string, onProgress?: ReferenceProgressFn): Prom
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-ocr-'));
   try {
     onProgress?.(4, 'PDF 转换为图片');
-    await runFile('pdftoppm', ['-png', '-r', '150', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
+    await runFile('pdftoppm', ['-png', '-r', '150', '-scale-to', '2200', '-f', '1', '-l', '81', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
     const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.png')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('OCR 图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
@@ -47,7 +50,7 @@ async function visionReadPdf(config: PlanningModelConfig, savedPath: string, onP
     // 扫描件用 JPEG + 120 DPI + 75 质量，体积远小于 PNG（约 1/5~1/8），
     // 减小批量请求体、加快上游传输，且 75 质量对文字转录可读性几乎无影响。
     onProgress?.(4, 'PDF 转换为图片');
-    await runFile('pdftoppm', ['-jpeg', '-r', '120', '-jpegopt', 'quality=75', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
+    await runFile('pdftoppm', ['-jpeg', '-r', '120', '-scale-to', '1600', '-f', '1', '-l', '81', '-jpegopt', 'quality=75', savedPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 64 * 1024 * 1024 });
     const files = fs.readdirSync(tmpDir).filter(f => f.endsWith('.jpg')).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     if (!files.length) throw new Error('视觉读取图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
@@ -108,8 +111,61 @@ export function spreadsheetText(xml: string, sharedStrings: string[]): string {
   ).filter(Boolean).join('\n');
 }
 
-export async function extractReferenceFile(file: ReferenceFile, savedPath: string, visionConfig?: PlanningModelConfig, onProgress?: ReferenceProgressFn): Promise<Extraction> {
+export async function renderStyleReference(file: ReferenceFile, savedPath: string, onProgress?: ReferenceProgressFn, run: typeof runFile = runFile): Promise<StyleReferenceImage[]> {
+  const extension = path.extname(file.filename).toLowerCase();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-style-'));
+  try {
+    let pdfPath = savedPath;
+    if (extension !== '.pdf' && extension !== '.pptx') throw new Error('风格参考仅支持 PDF 或 PPTX');
+    if (extension === '.pdf' && !file.data.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('PDF 文件格式无效，请上传真实 PDF');
+    if (extension === '.pptx' && !file.data.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 3, 4]))) throw new Error('PPTX 文件格式无效，请上传真实 PPTX');
+    if (extension === '.pptx') {
+      const outputDir = path.join(tmpDir, 'converted');
+      fs.mkdirSync(outputDir, { recursive: true });
+      onProgress?.(5, 'PPTX 转换为 PDF');
+      try {
+        await run('soffice', ['-env:UserInstallation=' + pathToFileURL(path.join(tmpDir, 'profile')).href, '--headless', '--convert-to', 'pdf', '--outdir', outputDir, savedPath], { ...commandOptions, timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('当前服务未安装 PPTX 页面渲染器，请先将 PPTX 导出为 PDF 后上传');
+        throw new Error('PPTX 页面转换失败或超时，请检查文件或导出 PDF 后上传');
+      }
+      pdfPath = path.join(outputDir, path.basename(savedPath, path.extname(savedPath)) + '.pdf');
+      if (!fs.existsSync(pdfPath)) throw new Error('PPTX 页面转换失败，请改用 PDF 上传');
+    }
+    onProgress?.(15, '提取前 3 页风格参考');
+    try {
+      await run('pdftoppm', ['-jpeg', '-scale-to', '1600', '-f', '1', '-l', '3', '-jpegopt', 'quality=82', pdfPath, path.join(tmpDir, 'page')], { ...commandOptions, timeout: 180_000, maxBuffer: 32 * 1024 * 1024 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('当前服务未安装 PDF 页面渲染器，请改用参考图片');
+      throw new Error('参考页面转换失败或超时，请检查文件是否损坏或加密');
+    }
+    const files = fs.readdirSync(tmpDir).filter(item => /^page-\d+\.jpg$/i.test(item)).sort((a, b) => a.localeCompare(b, 'en', { numeric: true })).slice(0, 3);
+    if (!files.length) throw new Error('没有提取到可用的参考页面');
+    return files.map((item, index) => {
+      const imagePath = path.join(tmpDir, item);
+      if (fs.statSync(imagePath).size > 4 * 1024 * 1024) throw new Error('风格页面图片过大，请简化文件后重试');
+      const bytes = fs.readFileSync(imagePath);
+      const size = readImageDimensions(bytes);
+      if (bytes[0] !== 0xff || bytes[1] !== 0xd8 || Math.max(size.width, size.height) > 1600) throw new Error('风格页面图片格式或尺寸无效');
+      onProgress?.(20 + Math.round((index + 1) / files.length * 75), `整理风格页面 ${index + 1}/${files.length}`);
+      return { name: `${file.filename} · 第${index + 1}页`, dataUrl: 'data:image/jpeg;base64,' + bytes.toString('base64') };
+    });
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+export async function extractReferenceFile(file: ReferenceFile, savedPath: string, visionConfig?: PlanningModelConfig, onProgress?: ReferenceProgressFn, options?: { style?: boolean }): Promise<Extraction> {
   const name = file.filename.toLowerCase();
+  if (options?.style && !/\.(png|jpe?g|webp|pdf|pptx)$/i.test(name)) return { extractedText: '', parseStatus: 'unsupported', parseError: '风格参考仅支持 PNG、JPEG、WebP、PDF 或 PPTX' };
+  if (options?.style && /\.(pdf|pptx)$/i.test(name)) {
+    try {
+      const styleImages = await renderStyleReference(file, savedPath, onProgress);
+      return { extractedText: '', parseStatus: 'image', styleImages };
+    } catch (error) {
+      return { extractedText: '', parseStatus: 'failed', parseError: error instanceof Error ? error.message : '风格页面提取失败' };
+    }
+  }
   if (file.contentType.startsWith('image/') || /\.(png|jpe?g|webp|svg)$/i.test(name)) return { extractedText: '', parseStatus: 'image' };
   const supported = file.contentType.startsWith('text/') || /\.(txt|md|markdown|csv|json|pdf|docx|pptx|xlsx|doc|ppt|xls)$/i.test(name);
   if (!supported) return { extractedText: '', parseStatus: 'unsupported', parseError: '该格式暂不支持正文分析，请使用 PDF、Word、PPT、Excel 或文本文件' };

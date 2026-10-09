@@ -32,6 +32,7 @@ interface PageData {
 }
 
 const STORAGE_KEY = 'celano_ws_annotations';
+function annotationStorageKey(owner: string, deckId: string) { return `${STORAGE_KEY}:${owner}:${deckId}`; }
 
 function logoPositionStyle(logo: { position?: string }): React.CSSProperties {
   if (logo.position === 'top-left') return { top: '6%', left: '5%' };
@@ -48,7 +49,7 @@ function logoSizeStyle(logo: { size?: string }): React.CSSProperties {
 
 function normalizeAnnotations(raw: any[]): Annotation[] {
   const list: Annotation[] = [];
-  for (const a of (raw || [])) {
+  for (const a of (Array.isArray(raw) ? raw : [])) {
     if (!a || (a.kind !== 'scribble' && a.kind !== 'box')) continue;
     if (a.kind === 'scribble' && !Array.isArray(a.points)) continue;
     list.push({
@@ -61,20 +62,22 @@ function normalizeAnnotations(raw: any[]): Annotation[] {
   return list.map((a, i) => ({ ...a, number: i + 1 }));
 }
 
-async function materializeHandoffImages(raw: any[]): Promise<Array<{ name: string; dataUrl: string }>> {
+async function materializeHandoffImages(raw: any[], signal?: AbortSignal): Promise<Array<{ name: string; dataUrl: string }>> {
   const result: Array<{ name: string; dataUrl: string }> = [];
-  for (const item of Array.isArray(raw) ? raw.slice(0, 18) : []) {
+  if (Array.isArray(raw) && raw.length > 18) throw new Error('参考图片最多 18 张');
+  for (const item of Array.isArray(raw) ? raw : []) {
+    signal?.throwIfAborted();
     const source = typeof item?.dataUrl === 'string' ? item.dataUrl : typeof item?.url === 'string' ? item.url : '';
-    if (!source) continue;
+    if (!source) throw new Error('参考图地址缺失，任务未提交');
     try {
       let dataUrl = source;
       if (!/^data:image\/(png|jpeg|webp);base64,/i.test(source)) {
         const parsed = new URL(source, window.location.origin);
-        if (parsed.origin !== window.location.origin) continue;
-        const response = await fetch(parsed.toString(), { credentials: 'same-origin' });
-        if (!response.ok) continue;
+        if (parsed.origin !== window.location.origin) throw new Error('参考图必须来自当前站点');
+        const response = await fetch(parsed.toString(), { credentials: 'same-origin', signal });
+        if (!response.ok) throw new Error('下载参考图失败 HTTP ' + response.status);
         const blob = await response.blob();
-        if (!['image/png', 'image/jpeg', 'image/webp'].includes(blob.type.toLowerCase()) || blob.size > 6 * 1024 * 1024) continue;
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(blob.type.toLowerCase()) || blob.size > 6 * 1024 * 1024) throw new Error('参考图格式无效或超过 6MB');
         dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result || ''));
@@ -82,10 +85,12 @@ async function materializeHandoffImages(raw: any[]): Promise<Array<{ name: strin
           reader.readAsDataURL(blob);
         });
       }
-      if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(dataUrl)) {
-        result.push({ name: String(item?.name || '参考图片').slice(0, 80), dataUrl });
-      }
-    } catch { /* 单张素材读取失败不阻断整个任务 */ }
+      if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(dataUrl) || dataUrl.length > 8_388_710) throw new Error('参考图格式无效或超过 6MB');
+      result.push({ name: String(item?.name || '参考图片').slice(0, 80), dataUrl });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      throw new Error(`${String(item?.name || '参考图片')}：${error instanceof Error ? error.message : '参考图读取失败'}，任务未提交`);
+    }
   }
   return result;
 }
@@ -130,10 +135,24 @@ export const WorkspaceApp: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [editNotice, setEditNotice] = useState('');
   const [editError, setEditError] = useState('');
+  const [pendingEdit, setPendingEdit] = useState<{ deckId: string; pageId: string; image: string } | null>(null);
+  const editBusy = useRef(false);
 
+  const pagesDeckId = useRef('');
+  const ownerRef = useRef(currentUser?.id);
+  const annotationOwner = useRef(currentUser?.id);
+  ownerRef.current = currentUser?.id;
+  const activeDeckId = useRef(deck?.id);
+  activeDeckId.current = deck?.id;
+  const mounted = useRef(true);
+  const isCurrentWork = (owner: string | undefined, id: string | undefined) => mounted.current && ownerRef.current === owner && activeDeckId.current === id;
+  const libraryGeneration = useRef(0);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; libraryGeneration.current++; }; }, []);
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(pages)); } catch { /* 忽略 */ }
-  }, [pages]);
+    if (!deck || !currentUser || deck.userId !== currentUser.id || pagesDeckId.current !== deck.id || !pages.length) return;
+    if (pages.map(page => page.id).join(',') !== deck.slides.map(slide => slide.id).join(',')) return;
+    try { localStorage.setItem(annotationStorageKey(currentUser.id, deck.id), JSON.stringify(pages.map(({ id, annotations, instruction }) => ({ id, annotations, instruction })))); } catch { /* 浏览器存储不可用时仍可编辑。 */ }
+  }, [pages, deck?.id, currentUser?.id]);
 
   useEffect(() => {
     // 等待初始会话恢复完成再判断：避免已登录用户在 /auth/me 返回前被误弹登录框。
@@ -281,20 +300,42 @@ export const WorkspaceApp: React.FC = () => {
   const hasInstruction = active.instruction.trim() !== '' || active.annotations.some(a => a.instruction.trim() !== '');
 
   /** 原图 + 局部遮罩 + 逐处修改指令 → 局部图生图编辑 */
+  const retryEditSave = async () => {
+    if (!pendingEdit || editBusy.current) return;
+    const owner = currentUser?.id;
+    const input = pendingEdit;
+    editBusy.current = true; setSending(true); setEditError('');
+    try {
+      const saved = await replacePptSlideImage(input.deckId, input.pageId, input.image);
+      if (!isCurrentWork(owner, input.deckId)) return;
+      setDeck(saved.deck); setPendingEdit(null);
+      setPages(prev => prev.map(page => page.id === input.pageId ? { ...page, imageUrl: saved.deck.slides.find(slide => slide.id === page.id)?.imageUrl || input.image, annotations: [], instruction: '' } : page));
+      setEditNotice('修改结果已保存');
+    } catch (error) { if (isCurrentWork(owner, input.deckId)) setEditError(error instanceof Error ? error.message : '保存失败，请重试'); }
+    finally { if (isCurrentWork(owner, input.deckId)) { editBusy.current = false; setSending(false); } }
+  };
   const sendEdit = async () => {
+    if (editBusy.current || pendingEdit || deck?.running || appending) return;
+    const owner = currentUser?.id;
+    const requestDeck = deck?.id;
     const page = pages[activeIndex];
-    if (!page.imageUrl || sending) return;
+    if (!page?.imageUrl || sending) return;
     if (!page.annotations.length) { setEditError('请先涂抹或框选需要修改的区域，未选中的内容将保持原样'); return; }
     if (!hasInstruction) { setEditError('请为标记区域填写修改指令（或填写整体修改指令）'); return; }
     const prompt = buildEditPrompt(page.annotations, page.instruction);
     if (prompt.length > 2000) { setEditError('指令总长度超过 2000 字，请精简各处的修改要求'); return; }
-    setSending(true); setEditError(''); setEditNotice('');
+    editBusy.current = true; setSending(true); setEditError(''); setEditNotice('');
     try {
       const input = await composeEditInput(page.imageUrl, page.annotations);
+      if (!isCurrentWork(owner, requestDeck)) return;
       const res = await workspaceEditPage({ image: input.image, mask: input.mask, prompt });
+      if (!isCurrentWork(owner, requestDeck)) return;
       if (deck) {
+        setPendingEdit({ deckId: deck.id, pageId: page.id, image: res.image });
+        setPages(prev => prev.map(item => item.id === page.id ? { ...item, imageUrl: res.image } : item));
         const saved = await replacePptSlideImage(deck.id, page.id, res.image);
-        setDeck(saved.deck);
+        if (!isCurrentWork(owner, requestDeck)) return;
+        setPendingEdit(null); setDeck(saved.deck);
         setTaskList(prev => prev.map(item => item.id === saved.deck.id ? saved.deck : item));
         const replacement = saved.deck.slides.find(slide => slide.id === page.id)?.imageUrl;
         setPages(prev => prev.map(item => item.id === page.id ? { ...item, imageUrl: replacement || res.image, annotations: [], instruction: '' } : item));
@@ -303,9 +344,9 @@ export const WorkspaceApp: React.FC = () => {
       }
       setEditNotice('修改已生成，页面图片已更新');
     } catch (e: any) {
-      setEditError(e.message || '修改失败，请重试');
+      if (isCurrentWork(owner, requestDeck)) setEditError(e.message || '修改失败，请重试');
     } finally {
-      setSending(false);
+      if (isCurrentWork(owner, requestDeck)) { editBusy.current = false; setSending(false); }
     }
   };
 
@@ -326,7 +367,11 @@ export const WorkspaceApp: React.FC = () => {
 
   function buildDeckPages(value: PptDeckView): PageData[] {
     let saved: any[] = [];
-    try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { /* 忽略损坏数据 */ }
+    try {
+      const raw = JSON.parse(localStorage.getItem(annotationStorageKey(currentUser?.id || 'guest', value.id)) || localStorage.getItem(STORAGE_KEY) || '[]');
+      saved = Array.isArray(raw) ? raw : [];
+    } catch { /* 损坏缓存不影响作品读取。 */ }
+    pagesDeckId.current = value.id;
     return value.slides.map((slide, i) => {
       const hit = saved.find((s: any) => s && s.id === slide.id);
       return {
@@ -334,15 +379,23 @@ export const WorkspaceApp: React.FC = () => {
         title: slide.plan.title || '页面 ' + (i + 1),
         annotations: normalizeAnnotations(hit?.annotations || []),
         instruction: typeof hit?.instruction === 'string' ? hit.instruction : '',
-        imageUrl: hit?.imageUrl && String(hit.imageUrl).startsWith('data:') ? hit.imageUrl : slide.imageUrl,
+        imageUrl: slide.imageUrl,
       };
     });
   }
 
   // 打开工作台时接管最近一次任务；首页提交的主题会在这里自动创建后台任务。
   useEffect(() => {
+    pagesDeckId.current = ''; autoCreateStarted.current = false;
+    if (annotationOwner.current && annotationOwner.current !== currentUser?.id) localStorage.removeItem(STORAGE_KEY);
+    annotationOwner.current = currentUser?.id;
+    libraryGeneration.current++;
+    setDeck(null); setPages([]); setTaskList([]); setTaskCreating(false); setActiveIndex(0);
+    setEditError(''); setEditNotice(''); setSending(false); setPendingEdit(null); editBusy.current = false; taskActionBusy.current = false; setAppendOpen(false); setAppending(false);
     if (!currentUser) return;
+    const owner = currentUser.id;
     let alive = true;
+    const controller = new AbortController();
     void (async () => {
       try {
         const res = await listPptDecks();
@@ -356,8 +409,13 @@ export const WorkspaceApp: React.FC = () => {
           setTaskCreating(true);
           let options: any = {};
           try { options = JSON.parse(sessionStorage.getItem('celano_new_ppt_options') || '{}'); } catch { /* ignore malformed handoff */ }
+          if (options.ownerId && options.ownerId !== owner) {
+            for (const key of ['celano_new_topic', 'celano_new_ppt_options', 'celano_new_request_key']) sessionStorage.removeItem(key);
+            throw new Error('账号已切换，请从当前账号重新提交创作');
+          }
           const finalPrompt = [storedTopic, options.extraRequirements].filter(Boolean).join('\n');
-          const referenceImages = await materializeHandoffImages(options.referenceImages);
+          const referenceImages = await materializeHandoffImages(options.referenceImages, controller.signal);
+          if (!alive || ownerRef.current !== owner) return;
           // 兼容新旧桥接：新首页把 requestKey 放进 options，旧版本可能单独存储。
           const requestKey = sessionStorage.getItem('celano_new_request_key') || options.requestKey || undefined;
           const created = await createPptDeck({
@@ -406,12 +464,14 @@ export const WorkspaceApp: React.FC = () => {
         if (adopt) sessionStorage.setItem('celano_active_deck', adopt.id);
         setTaskCreating(false);
       } catch (e: any) {
+        if (!alive || ownerRef.current !== owner) return;
+        autoCreateStarted.current = false;
         setTaskCreating(false);
         setGenError(e?.message || '任务加载失败，请稍后重试');
       }
     })();
-    return () => { alive = false; };
-  }, [currentUser]);
+    return () => { alive = false; controller.abort(); };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (deck) sessionStorage.setItem('celano_active_deck', deck.id);
@@ -428,14 +488,15 @@ export const WorkspaceApp: React.FC = () => {
   useEffect(() => {
   // 只有服务端明确处于运行状态时轮询。暂停/失败/已完成的任务保持当前结果，
   // 避免工作台在用户离开生成页面后仍持续请求接口，造成“自动刷新”的观感。
-  if (!deck || !deck.running) return;
+  if (!deck || !deck.running || !currentUser) return;
+    const owner = currentUser.id;
     let alive = true;
     let delay = 1500;
     let timer: number | undefined;
     const poll = async () => {
       try {
         const res = await getPptDeck(deck.id);
-        if (!alive) return;
+        if (!alive || ownerRef.current !== owner) return;
         delay = 1500;
         setGenError(current => current.startsWith('任务连接') ? '' : current);
         setDeck(res.deck);
@@ -462,7 +523,7 @@ export const WorkspaceApp: React.FC = () => {
     };
     timer = window.setTimeout(poll, delay);
     return () => { alive = false; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [deck?.id, deck?.running, deck?.finished]);
+  }, [deck?.id, deck?.running, deck?.finished, currentUser?.id]);
 
   // 任务页面 ↔ 工作台页面联动：页面集合变化时重建，否则仅同步状态与图片
   useEffect(() => {
@@ -471,90 +532,127 @@ export const WorkspaceApp: React.FC = () => {
       if (!deck.slides.length) return prev;
       const deckIds = deck.slides.map(s => s.id).join(',');
       const prevIds = prev.map(p => p.id).join(',');
-      if (prevIds !== deckIds) return buildDeckPages(deck);
+      if (prevIds !== deckIds || pagesDeckId.current !== deck.id) return buildDeckPages(deck);
       return prev.map(p => {
         const s = deck.slides.find(x => x.id === p.id);
         if (!s) return p;
         const override = p.imageUrl && p.imageUrl.startsWith('data:') ? p.imageUrl : undefined;
-        if (s.status === 'done' && s.imageUrl) return { ...p, imageUrl: override || s.imageUrl };
+        if (s.imageUrl) return { ...p, title: s.plan.title || p.title, imageUrl: override || s.imageUrl };
         if (s.status === 'generating' || s.status === 'idle' || s.status === 'failed') return { ...p, imageUrl: override || undefined };
         return p;
       });
     });
   }, [deck]);
 
-  const handleStop = async () => {
-    if (!deck) return;
-    try { const res = await stopPptDeck(deck.id); setDeck(res.deck); setTaskList(prev => prev.map(item => item.id === res.deck.id ? res.deck : item)); } catch (e: any) { setGenError(e?.message || '操作失败'); }
+  const taskActionBusy = useRef(false);
+  const runTaskAction = async (action: (id: string) => Promise<{ deck: PptDeckView }>) => {
+    if (!deck || taskActionBusy.current || sending || appending || pendingEdit) return;
+    const owner = currentUser?.id;
+    const id = deck.id;
+    taskActionBusy.current = true;
+    try {
+      const res = await action(id);
+      if (!isCurrentWork(owner, id)) return;
+      setDeck(res.deck); setTaskList(prev => prev.map(item => item.id === res.deck.id ? res.deck : item));
+    } catch (error) { if (isCurrentWork(owner, id)) setGenError(error instanceof Error ? error.message : '操作失败'); }
+    finally { if (isCurrentWork(owner, id)) taskActionBusy.current = false; }
   };
-  const handleResume = async () => {
-    if (!deck) return;
-    try { const res = await resumePptDeck(deck.id); setDeck(res.deck); setTaskList(prev => prev.map(item => item.id === res.deck.id ? res.deck : item)); } catch (e: any) { setGenError(e?.message || '操作失败'); }
-  };
-  const handleRetryFailed = async () => {
-    if (!deck) return;
-    try { const res = await retryFailedPptDeck(deck.id); setDeck(res.deck); setTaskList(prev => prev.map(item => item.id === res.deck.id ? res.deck : item)); } catch (e: any) { setGenError(e?.message || '操作失败'); }
-  };
+  const handleStop = () => runTaskAction(stopPptDeck);
+  const handleResume = () => runTaskAction(resumePptDeck);
+  const handleRetryFailed = () => runTaskAction(retryFailedPptDeck);
   const resetWork = () => {
+    libraryGeneration.current++;
+    pagesDeckId.current = ''; activeDeckId.current = undefined;
+    setPendingEdit(null);
     sessionStorage.removeItem('celano_active_deck');
     sessionStorage.removeItem('celano_open_deck');
-    localStorage.removeItem(STORAGE_KEY);
+    if (deck && currentUser) localStorage.removeItem(annotationStorageKey(currentUser.id, deck.id));
     setDeck(null);
     setPages([]);
     setActiveIndex(0);
     setGenError('');
   };
-  useEffect(() => subscribeLibraryChanges(change => {
-    if (change.resource !== 'ppt' || change.id !== deck?.id) return;
-    if (change.action === 'deleted') { setTaskList(items => items.filter(item => item.id !== change.id)); resetWork(); }
-    else void getPptDeck(change.id).then(result => { setDeck(result.deck); setPages(buildDeckPages(result.deck)); }).catch(() => undefined);
-  }), [deck?.id]);
+  useEffect(() => {
+    let alive = true;
+    const owner = currentUser?.id;
+    const stop = subscribeLibraryChanges(change => {
+      if (change.resource !== 'ppt' || change.id !== deck?.id) return;
+      const generation = ++libraryGeneration.current;
+      if (change.action === 'deleted') { setTaskList(items => items.filter(item => item.id !== change.id)); resetWork(); }
+      else void getPptDeck(change.id).then(result => {
+        if (!alive || ownerRef.current !== owner || generation !== libraryGeneration.current) return;
+        setDeck(result.deck); setPages(buildDeckPages(result.deck));
+      }).catch(() => undefined);
+    });
+    return () => { alive = false; libraryGeneration.current++; stop(); };
+  }, [deck?.id, currentUser?.id]);
   useEffect(() => { if (deck?.finished) publishLibraryChange({ resource: 'ppt', action: 'saved', id: deck.id }); }, [deck?.id, deck?.finished]);
   const handleClear = () => setDeleteTarget('deck');
   const confirmDelete = async () => {
-    if (!deck || !deleteTarget || deleting) return;
+    if (!deck || !deleteTarget || deleting || sending || appending || pendingEdit) return;
+    const owner = currentUser?.id;
+    const id = deck.id;
     setDeleting(true);
     try {
       if (deleteTarget === 'slide') {
         const result = await deletePptSlide(deck.id, active.id);
+        if (!isCurrentWork(owner, id)) return;
         if (result.deck) {
           setDeck(result.deck); setPages(buildDeckPages(result.deck));
           setActiveIndex(index => Math.min(index, result.deck!.slides.length - 1));
         } else resetWork();
       } else {
         await deletePptDeck(deck.id);
+        if (!mounted.current || ownerRef.current !== owner) return;
         setTaskList(items => items.filter(item => item.id !== deck.id)); resetWork();
       }
       setDeleteTarget(null);
-    } catch (error) { setGenError(error instanceof Error ? error.message : '删除失败'); }
-    finally { setDeleting(false); }
+    } catch (error) { if (isCurrentWork(owner, id)) setGenError(error instanceof Error ? error.message : '删除失败'); }
+    finally { if (mounted.current && ownerRef.current === owner) setDeleting(false); }
   };
   const handleRegenCurrent = async () => {
-    if (!deck) return;
+    if (!deck || deck.running || editBusy.current || appending || pendingEdit) return;
+    const owner = currentUser?.id;
+    const id = deck.id;
     const slide = deck.slides.find(s => s.id === active.id);
     if (!slide || slide.status === 'generating') return;
+    editBusy.current = true; setSending(true);
     try {
       const res = await regeneratePptSlide(deck.id, slide.id);
+      if (!isCurrentWork(owner, id)) return;
       setDeck(res.deck);
       // 生成本页后以服务端新图为准，清掉本地覆盖
       setPages(prev => prev.map(p => (p.id === slide.id ? { ...p, imageUrl: undefined } : p)));
-    } catch (e: any) { setGenError(e?.message || '操作失败'); }
+    } catch (e: any) {
+      if (isCurrentWork(owner, id)) {
+        setGenError(e?.message || '操作失败');
+        try { const fresh = await getPptDeck(id); if (isCurrentWork(owner, id)) setDeck(fresh.deck); } catch { /* 下一次刷新可读取保留的原图。 */ }
+      }
+    } finally { if (isCurrentWork(owner, id)) { editBusy.current = false; setSending(false); } }
   };
   const handleAppendSlide = async () => {
-    if (!deck || appending) return;
+    if (!deck || appending || sending || pendingEdit || deck.running) return;
     const title = appendTitle.trim();
     if (!title) { setGenError('请输入新页面标题'); return; }
+    const owner = currentUser?.id;
+    const id = deck.id;
     setAppending(true); setGenError('');
     try {
       const res = await appendPptSlide(deck.id, { title, imagePrompt: appendContent.trim() || undefined });
+      if (!isCurrentWork(owner, id)) return;
       setDeck(res.deck);
       setPages(buildDeckPages(res.deck));
       setActiveIndex(res.deck.slides.length - 1);
       setAppendOpen(false);
       setAppendTitle('');
       setAppendContent('');
-    } catch (e: any) { setGenError(e?.message || '新增页面失败'); }
-    finally { setAppending(false); }
+    } catch (e: any) {
+      if (isCurrentWork(owner, id)) {
+        setGenError(e?.message || '新增页面失败');
+        try { const fresh = await getPptDeck(id); if (isCurrentWork(owner, id)) { setDeck(fresh.deck); setPages(buildDeckPages(fresh.deck)); } } catch { /* 保留错误供用户刷新。 */ }
+      }
+    }
+    finally { if (isCurrentWork(owner, id)) setAppending(false); }
   };
 
   // PPTX 导出（与源实现一致：16:9 版面，比例不符时居中留白绝不拉伸）
@@ -579,6 +677,7 @@ export const WorkspaceApp: React.FC = () => {
     });
   }
   const exportPptx = async () => {
+    if (exporting || pendingEdit) return;
     if (deck && (!deck.finished || deck.slides.some(s => s.status !== 'done'))) {
       setGenError('请等待所有页面生成完成后再导出，失败页面请先重试');
       return;
@@ -587,11 +686,21 @@ export const WorkspaceApp: React.FC = () => {
     if (!slides.length) { setGenError('还没有可导出的页面图片'); return; }
     setExporting(true);
     try {
+      if (deck) {
+        const response = await fetch('/api/presentations/' + encodeURIComponent(deck.id) + '/download', { credentials: 'same-origin' });
+        if (!response.ok) { const result = await response.json().catch(() => null); throw new Error(result?.error || '导出失败 HTTP ' + response.status); }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url; link.download = (deck.title || '演示文稿').replace(/[\\/:*?"<>|]/g, '_') + '.pptx';
+        link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return;
+      }
       const { default: PptxGenJS } = await import('pptxgenjs');
       const pptx = new PptxGenJS();
       pptx.defineLayout({ name: 'SLIDE_16_9', width: PPT_PAGE_WIDTH, height: PPT_PAGE_HEIGHT });
       pptx.layout = 'SLIDE_16_9';
-      pptx.title = deck?.title || '演示文稿';
+      pptx.title = '演示文稿';
       const slideWidth = PPT_PAGE_WIDTH;
       const slideHeight = PPT_PAGE_HEIGHT;
       const slideRatio = slideWidth / slideHeight;
@@ -618,7 +727,7 @@ export const WorkspaceApp: React.FC = () => {
           page.addImage({ data, x: (slideWidth - w) / 2, y: 0, w, h });
         }
       }
-      await pptx.writeFile({ fileName: (deck?.title || '演示文稿') + '.pptx' });
+      await pptx.writeFile({ fileName: '演示文稿.pptx' });
     } catch (e: any) {
       setGenError(e?.message || '导出失败');
     } finally {
@@ -672,7 +781,7 @@ export const WorkspaceApp: React.FC = () => {
             <span className="ws-task-dot" aria-hidden="true" />
             <span>{deck?.running ? `生成中 ${doneCount}/${totalSlides || '…'}` : deck?.finished ? '已完成' : deck ? '已暂停' : '任务后台'}</span>
           </button>
-          <button className="ws-button ws-ghost" disabled={exporting || !pages.some(p => p.imageUrl)} title={pages.some(p => p.imageUrl) ? '将已生成页面导出为 PPTX' : '生成页面后可导出 PPTX'} onClick={() => void exportPptx()}><Download size={14} /> {exporting ? '导出中…' : '下载 PPTX'}</button>
+          <button className="ws-button ws-ghost" disabled={exporting || !!pendingEdit || !!deck?.running || appending || sending || !pages.some(p => p.imageUrl)} title={pages.some(p => p.imageUrl) ? '将已生成页面导出为 PPTX' : '生成页面后可导出 PPTX'} onClick={() => void exportPptx()}><Download size={14} /> {exporting ? '导出中…' : '下载 PPTX'}</button>
         </div>
       </header>
 
@@ -918,7 +1027,7 @@ export const WorkspaceApp: React.FC = () => {
                 )}
                 <button
                   className="ws-button ws-primary"
-                  disabled={sending || !active.imageUrl || !active.annotations.length || !hasInstruction}
+                  disabled={sending || !!pendingEdit || !!deck?.running || appending || !active.imageUrl || !active.annotations.length || !hasInstruction}
                   onClick={() => void sendEdit()}
                   title={active.imageUrl ? '只修改涂抹/框选区域，未选中内容保持原样' : '页面生成后可修改'}
                 >
@@ -927,6 +1036,7 @@ export const WorkspaceApp: React.FC = () => {
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: '100%' }}>
                   {active.annotations.length ? '已启用局部编辑：仅修改透明遮罩对应的选区，其他内容保持原图。' : '请先涂抹或框选选区，再填写修改要求。'}
                 </span>
+                {pendingEdit ? <button className="ws-button ws-ghost" disabled={sending} onClick={() => void retryEditSave()}><RefreshCw size={14} /> 重试保存修改</button> : null}
                 {editError && <span style={{ fontSize: 11, color: 'var(--danger-text)', width: '100%' }}>{editError}</span>}
                 {editNotice && <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: '100%' }}>{editNotice}</span>}
           </div>

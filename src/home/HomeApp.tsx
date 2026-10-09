@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowRight, Check, FileImage, Image as ImageIcon, Layers3, LoaderCircle, Package, Plus, Sparkles, Trash2, Upload, UserRound, WandSparkles, X } from 'lucide-react';
 import { deleteAccountWork, fetchAccountSummary } from '../services/account.js';
 import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
@@ -9,10 +9,11 @@ import { Select } from '../components/Select.js';
 import { referenceContext, type ReferenceParseStatus } from '../shared/referenceFiles.js';
 import { subscribeLibraryChanges } from '../shared/libraryEvents.js';
 import { useAuth } from '../context/AuthContext.js';
-import { memberImageCost } from '../shared/membership.js';
+import { getMembershipCatalogVersion, isActiveMember, memberImageCost, subscribeMembershipCatalog } from '../shared/membership.js';
+import { fetchCurrentUser } from '../services/account.js';
 
 type Resolution = '2K' | '4K';
-type UploadedFile = { id: string; name: string; size: number; type: string; url: string; extractedText?: string; parseStatus?: ReferenceParseStatus; parseError?: string; progress?: number; parsePhase?: string };
+type UploadedFile = { id: string; name: string; size: number; type: string; url: string; extractedText?: string; styleImages?: { name: string; url: string }[]; parseStatus?: ReferenceParseStatus; parseError?: string; progress?: number; parsePhase?: string };
 
 const go = (route: string) => { window.location.hash = route; };
 
@@ -74,12 +75,14 @@ async function uploadFile(endpoint: string, file: File, field = 'file') {
 }
 
 function FileChip({ file, onRemove }: { file: UploadedFile; onRemove: () => void }) {
-  const state = file.parseStatus === 'pending' ? ` · 分析中${file.progress ? ` ${file.progress}%` : '…'}` : file.parseStatus === 'ready' ? ' · 正文已读取' : file.parseStatus === 'failed' || file.parseStatus === 'unsupported' ? ' · 正文未读取' : '';
-  return <div className="celano-file-chip">{file.type.startsWith('image/') ? <img src={file.url} alt="" /> : file.parseStatus === 'pending' ? <LoaderCircle size={16} className="celano-spin" /> : <FileImage size={16} />}<span title={file.parseError || (file.parseStatus === 'pending' && file.parsePhase ? `${file.parsePhase}（${file.progress ?? 0}%）` : file.name)}>{file.name}{state}</span><button onClick={onRemove} aria-label={`删除 ${file.name}`}><X size={13} /></button></div>;
+  const state = file.styleImages?.length ? ` · ${file.styleImages.length} 页风格参考` : file.parseStatus === 'pending' ? ` · 分析中${file.progress ? ` ${file.progress}%` : '…'}` : file.parseStatus === 'ready' ? ' · 正文已读取' : file.parseStatus === 'failed' || file.parseStatus === 'unsupported' ? ' · 正文未读取' : '';
+  return <div className="celano-file-chip">{file.styleImages?.length ? <img src={file.styleImages[0].url} alt="" width={32} height={32} /> : file.type.startsWith('image/') ? <img src={file.url} alt="" /> : file.parseStatus === 'pending' ? <LoaderCircle size={16} className="celano-spin" /> : <FileImage size={16} />}<span title={file.parseError || (file.parseStatus === 'pending' && file.parsePhase ? `${file.parsePhase}（${file.progress ?? 0}%）` : file.name)}>{file.name}{state}</span><button onClick={onRemove} aria-label={`删除 ${file.name}`}><X size={13} /></button></div>;
 }
 
 export const PptGenerateApp: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, syncUser } = useAuth();
+  const catalogVersion = useSyncExternalStore(subscribeMembershipCatalog, getMembershipCatalogVersion);
+  const quoteReady = !isActiveMember(currentUser) || catalogVersion > 0;
   const [topic, setTopic] = useState('');
   const [pageInput, setPageInput] = useState('1');
   const pages = Number(pageInput);
@@ -91,7 +94,9 @@ export const PptGenerateApp: React.FC = () => {
   const [productReferences, setProductReferences] = useState<UploadedFile[]>([]);
   const [logo, setLogo] = useState<{ url: string; name: string } | null>(null);
   const [notice, setNotice] = useState('');
-  const [credits, setCredits] = useState<number | null>(null);
+  const [noticeTone, setNoticeTone] = useState<'success' | 'warning' | 'error'>('error');
+  const showNotice = (message: string, tone: 'success' | 'warning' | 'error' = 'error') => { setNotice(message); setNoticeTone(tone); };
+  const credits = typeof currentUser?.credits === 'number' ? currentUser.credits : null;
   const [uploading, setUploading] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const referenceInput = useRef<HTMLInputElement>(null);
@@ -99,23 +104,39 @@ export const PptGenerateApp: React.FC = () => {
   const logoInput = useRef<HTMLInputElement>(null);
   const personInput = useRef<HTMLInputElement>(null);
   const productInput = useRef<HTMLInputElement>(null);
-  useEffect(() => { const controller = new AbortController(); fetchAccountSummary(controller.signal).then(data => setCredits(typeof data.user?.credits === 'number' ? data.user.credits : null)).catch(() => undefined); return () => controller.abort(); }, []);
+  const lifecycleRef = useRef({ active: true, owner: currentUser?.id });
+  const analysisControllers = useRef(new Map<string, AbortController>());
+  const uploadBusy = useRef(false);
+  const optimizeBusy = useRef(false);
+  const topicRef = useRef(topic);
+  topicRef.current = topic;
+  useEffect(() => {
+    const life = { active: true, owner: currentUser?.id };
+    lifecycleRef.current = life;
+    setReferences([]); setStyleReferences([]); setPersonReferences([]); setProductReferences([]); setLogo(null);
+    setUploading(false); setOptimizing(false); uploadBusy.current = false; optimizeBusy.current = false;
+    return () => { life.active = false; for (const controller of analysisControllers.current.values()) controller.abort(); analysisControllers.current.clear(); };
+  }, [currentUser?.id]);
   const perSlide = memberImageCost(currentUser, resolution);
   const total = validPages ? pages * perSlide : 0;
   // 成本前置：把「本次消耗 / 单价构成 / 生成后余额」常驻在生成按钮旁，
   // 而不是只在确认弹窗里出现一次。余额未知（未登录或接口失败）时不参与判断。
   const remaining = credits === null || !validPages ? null : credits - total;
-  const insufficient = remaining !== null && remaining < 0;
+  const insufficient = quoteReady && remaining !== null && remaining < 0;
   const unreadReferences = references.filter(file => file.parseStatus === 'failed' || file.parseStatus === 'unsupported');
   const pendingReferences = references.filter(file => file.parseStatus === 'pending');
-  const canGenerate = topic.trim().length > 0 && !uploading && !optimizing && validPages && !pendingReferences.length && !unreadReferences.length && !insufficient;
+  const unreadStyleReferences = styleReferences.filter(file => file.parseStatus === 'failed' || file.parseStatus === 'unsupported' || (file.type.startsWith('image/') ? false : !file.styleImages?.length));
+  const pendingStyleReferences = styleReferences.filter(file => file.parseStatus === 'pending');
+  const canGenerate = topic.trim().length > 0 && !uploading && !optimizing && validPages && !pendingReferences.length && !unreadReferences.length && !pendingStyleReferences.length && !unreadStyleReferences.length && !insufficient;
   const analyzeReference = async (file: UploadedFile, style: boolean) => {
     const setter = style ? setStyleReferences : setReferences;
-    const apply = (update: Partial<UploadedFile>) => setter(prev => prev.map(item => item.id === file.id ? { ...item, ...update } : item));
+    const life = lifecycleRef.current;
     const controller = new AbortController();
+    analysisControllers.current.set(file.id, controller);
+    const apply = (update: Partial<UploadedFile>) => { if (life.active) setter(prev => prev.map(item => item.id === file.id ? { ...item, ...update } : item)); };
     const timer = setTimeout(() => controller.abort(), 900_000);
     try {
-      const response = await fetch('/api/references/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: file.id, poll: true }), signal: controller.signal });
+      const response = await fetch('/api/references/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ id: file.id, poll: true, style }), signal: controller.signal });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.success) throw new Error(result?.error || '正文分析失败');
       // 轮询真实进度：后端按批次/页数回报百分比，完成时返回最终 file
@@ -124,9 +145,10 @@ export const PptGenerateApp: React.FC = () => {
         const progressResponse = await fetch('/api/references/progress?id=' + encodeURIComponent(file.id), { credentials: 'same-origin', signal: controller.signal });
         const progress = await progressResponse.json().catch(() => null);
         if (!progressResponse.ok || !progress?.success) throw new Error(progress?.error || '正文分析进度查询失败');
+        if (!life.active || controller.signal.aborted) return;
         if (progress.file) {
-          apply({ extractedText: progress.file.extractedText, parseStatus: progress.file.parseStatus, parseError: progress.file.parseError, progress: undefined, parsePhase: undefined });
-          setNotice(progress.file.parseStatus === 'ready' ? `「${file.name}」正文已读取，可开始生成` : `「${file.name}」${progress.file.parseError || '正文分析失败'}`);
+          apply({ extractedText: progress.file.extractedText, styleImages: progress.file.styleImages, parseStatus: progress.file.parseStatus, parseError: progress.file.parseError, progress: undefined, parsePhase: undefined });
+          showNotice(progress.file.parseStatus === 'image' && progress.file.styleImages?.length ? `「${file.name}」已提取 ${progress.file.styleImages.length} 页风格参考` : progress.file.parseStatus === 'ready' ? `「${file.name}」正文已读取，可开始生成` : `「${file.name}」${progress.file.parseError || '参考文件分析失败'}`, progress.file.parseStatus === 'image' || progress.file.parseStatus === 'ready' ? 'success' : 'error');
           return;
         }
         apply({ progress: Math.max(1, Math.min(99, Math.round(progress.progress?.percent ?? 1))), parsePhase: progress.progress?.phase });
@@ -136,24 +158,38 @@ export const PptGenerateApp: React.FC = () => {
       apply({ parseStatus: 'failed', parseError: error instanceof Error && error.name === 'AbortError' ? '正文分析超时，请重试' : error instanceof Error ? error.message : '正文分析失败' });
     } finally {
       clearTimeout(timer);
+      if (analysisControllers.current.get(file.id) === controller) analysisControllers.current.delete(file.id);
     }
   };
+  const removeReference = (file: UploadedFile, style: boolean) => {
+    analysisControllers.current.get(file.id)?.abort();
+    analysisControllers.current.delete(file.id);
+    (style ? setStyleReferences : setReferences)(prev => prev.filter(item => item.id !== file.id));
+  };
   const handleReferences = async (files: FileList | null, style = false) => {
-    if (!files?.length) return; setNotice(''); setUploading(true);
+    if (!files?.length || uploadBusy.current || optimizeBusy.current) return;
+    const life = lifecycleRef.current;
     const setter = style ? setStyleReferences : setReferences;
     const limit = style ? 3 : 6;
-    const selected = Array.from(files).slice(0, limit);
+    const retained = style ? styleReferences.length : references.length;
+    const selected = Array.from(files).slice(0, Math.max(0, limit - retained));
+    if (!selected.length) { showNotice(`最多保留 ${limit} 个${style ? '风格参考' : '参考资料'}，请先移除已有文件`); return; }
+    uploadBusy.current = true; showNotice(''); setUploading(true);
     // 并行上传，缩短多文件上传耗时；每个文件独立返回成功或具体错误。
     const results = await Promise.all(selected.map(async (file): Promise<{ file?: UploadedFile; error?: string }> => {
-      if (file.size > 100 * 1024 * 1024) return { error: `${file.name}：文件过大（单个不能超过 100MB）` };
+      const maxSize = /\.(png|jpe?g|webp)$/i.test(file.name) ? 6 * 1024 * 1024 : 100 * 1024 * 1024;
+      if (file.size > maxSize) return { error: `${file.name}：文件过大（图片不超过 6MB，文档不超过 100MB）` };
       try {
-        const result = await uploadFile('/api/upload-reference', file);
+        if (style && !/\.(png|jpe?g|webp|pdf|pptx)$/i.test(file.name)) return { error: `${file.name}：风格参考仅支持 PNG、JPEG、WebP、PDF 或 PPTX` };
+        const result = await uploadFile(style ? '/api/upload-reference?style=true' : '/api/upload-reference', file);
         return { file: result.file };
       } catch (error) {
         return { error: `${file.name}：${error instanceof Error ? error.message : '上传失败'}` };
       }
     }));
+    if (!life.active) return;
     let okCount = 0; let pendingCount = 0; const errors: string[] = [];
+    if (files.length > selected.length) errors.push(`超过上限的 ${files.length - selected.length} 个文件未上传`);
     for (const { file, error } of results) {
       if (error || !file) { errors.push(error!); continue; }
       setter(prev => [...prev, file].slice(0, limit));
@@ -161,17 +197,56 @@ export const PptGenerateApp: React.FC = () => {
       if (file.parseStatus === 'pending') { pendingCount++; void analyzeReference(file, style); }
     }
     const parts: string[] = [];
-    if (okCount) parts.push(`已上传 ${okCount} 个文件${pendingCount ? '，正在分析正文…' : ''}`);
+    if (okCount) parts.push(`已上传 ${okCount} 个文件${pendingCount ? style ? '，正在提取风格页面…' : '，正在分析正文…' : ''}`);
     if (errors.length) parts.push(errors.join('；'));
-    setNotice(parts.join(' ') || '上传失败');
-    setUploading(false);
+    showNotice(parts.join(' ') || '上传失败', errors.length ? (okCount ? 'warning' : 'error') : 'success');
+    setUploading(false); uploadBusy.current = false;
     if (styleInput.current) styleInput.current.value = '';
     if (referenceInput.current) referenceInput.current.value = '';
   };
-  const handleLogo = async (file: File | undefined) => { if (!file) return; setNotice(''); setUploading(true); try { const result = await uploadFile('/api/upload-logo', file); setLogo({ url: result.url, name: file.name }); } catch (error) { setNotice(error instanceof Error ? error.message : 'Logo 上传失败'); } finally { setUploading(false); if (logoInput.current) logoInput.current.value = ''; } };
-  const handleSubjectReference = async (files: FileList | null, kind: 'person' | 'product') => { if (!files?.length) return; const file = files[0]; if (file.size > 100 * 1024 * 1024) { setNotice(`${file.name}：文件过大（单个不能超过 100MB）`); return; } setNotice(''); setUploading(true); try { const result = await uploadFile('/api/upload-reference', file); if (kind === 'person') setPersonReferences([result.file]); else setProductReferences([result.file]); setNotice(`已上传${kind === 'person' ? '人物' : '商品'}参考：${file.name}`); } catch (error) { setNotice(error instanceof Error ? error.message : '上传失败'); } finally { setUploading(false); if (personInput.current) personInput.current.value = ''; if (productInput.current) productInput.current.value = ''; } };
-  const optimize = async () => { if (!topic.trim() || optimizing || uploading) return; if (pendingReferences.length) { setNotice('参考资料正在分析正文，请稍候再优化'); return; } if (unreadReferences.length) { setNotice('参考资料正文未读取，请移除或重新上传后优化'); return; } setOptimizing(true); setNotice(''); try { const response = await fetch('/api/ppt/optimize-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ prompt: topic, referencesText: referenceContext(references) }) }); const result = await response.json().catch(() => null); if (!response.ok || !result?.success) throw new Error(result?.error || '优化失败'); setTopic(String(result.prompt || result.optimizedPrompt || topic)); } catch (error) { setNotice(error instanceof Error ? error.message : '优化失败'); } finally { setOptimizing(false); } };
-  const generate = async () => { if (!canGenerate) { setNotice(pendingReferences.length ? '参考资料正在分析正文，请稍候再生成' : unreadReferences.length ? '参考资料正文未读取，请移除或重新上传后生成' : insufficient ? `点数不足：本次需要 ${total} 点，当前 ${credits} 点` : '请输入主题，并选择 1–100 页'); return; } setNotice(''); try { const response = await fetch('/api/presentations/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ topic: topic.trim(), slideCount: pages, resolution, referenceContext: referenceContext(references), referenceFiles: [...styleReferences.map(file => ({ ...file, type: file.type || 'image/png', name: `视觉风格参考：${file.name}` })), ...personReferences.map(file => ({ ...file, type: file.type || 'image/png', name: `人物参考：${file.name}` })), ...productReferences.map(file => ({ ...file, type: file.type || 'image/png', name: `商品参考：${file.name}` })), ...references], logo: logo ? { url: logo.url, enabled: true, position: 'bottom-right', opacity: 0.8, size: 'sm' } : undefined }) }); const result = await response.json().catch(() => null); if (!response.ok) { if (result?.error !== '用户取消生成') setNotice(result?.error || '提交失败'); return; } if (!result?.queued) setNotice(result?.message || '任务已提交'); } catch (error) { setNotice(error instanceof Error ? error.message : '提交失败'); } };
+  const handleLogo = async (file: File | undefined) => {
+    if (!file || uploadBusy.current || optimizeBusy.current) return;
+    const life = lifecycleRef.current;
+    uploadBusy.current = true; showNotice(''); setUploading(true);
+    try { const result = await uploadFile('/api/upload-logo', file); if (life.active) setLogo({ url: result.url, name: file.name }); }
+    catch (error) { if (life.active) showNotice(error instanceof Error ? error.message : 'Logo 上传失败'); }
+    finally { if (life.active) { setUploading(false); uploadBusy.current = false; if (logoInput.current) logoInput.current.value = ''; } }
+  };
+  const handleSubjectReference = async (files: FileList | null, kind: 'person' | 'product') => {
+    if (!files?.length || uploadBusy.current || optimizeBusy.current) return;
+    const file = files[0];
+    if (!/\.(png|jpe?g|webp)$/i.test(file.name) || file.size > 6 * 1024 * 1024) { showNotice('人物/商品参考仅支持 6MB 以内的 PNG、JPEG 或 WebP'); return; }
+    const life = lifecycleRef.current;
+    uploadBusy.current = true; showNotice(''); setUploading(true);
+    try {
+      const result = await uploadFile('/api/upload-reference', file);
+      if (!life.active) return;
+      (kind === 'person' ? setPersonReferences : setProductReferences)([result.file]);
+      showNotice(`已上传${kind === 'person' ? '人物' : '商品'}参考：${file.name}`, 'success');
+    } catch (error) { if (life.active) showNotice(error instanceof Error ? error.message : '上传失败'); }
+    finally { if (life.active) { setUploading(false); uploadBusy.current = false; if (personInput.current) personInput.current.value = ''; if (productInput.current) productInput.current.value = ''; } }
+  };
+  const optimize = async () => {
+    if (!topic.trim() || optimizeBusy.current || uploadBusy.current) return;
+    if (pendingReferences.length || unreadReferences.length) { showNotice('请等待参考资料分析完成或移除未读取文件'); return; }
+    if (!currentUser) { showNotice('请先登录后优化'); return; }
+    if ((currentUser.credits || 0) < 1) { showNotice('提示词优化需要 1 点，余额不足'); return; }
+    if (!window.confirm('优化提示词将消耗 1 点，是否继续？')) return;
+    const life = lifecycleRef.current;
+    const original = topic;
+    optimizeBusy.current = true; setOptimizing(true); showNotice('');
+    try {
+      const response = await fetch('/api/ppt/optimize-prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ prompt: original, referencesText: referenceContext(references) }) });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) throw new Error(result?.error || '优化失败');
+      if (life.active && topicRef.current === original) setTopic(String(result.prompt || result.optimizedPrompt || original));
+    } catch (error) { if (life.active) showNotice(error instanceof Error ? error.message : '优化失败'); }
+    finally {
+      if (life.active) { setOptimizing(false); optimizeBusy.current = false; }
+      void fetchCurrentUser().then(user => { if (life.active && user && user.id === life.owner) syncUser(user); }).catch(() => undefined);
+    }
+  };
+  const generate = async () => { if (!canGenerate || !quoteReady) { showNotice(!quoteReady ? '会员报价正在加载，请稍候' : pendingStyleReferences.length ? '风格参考正在提取页面，请稍候再生成' : unreadStyleReferences.length ? '风格参考页面未提取，请移除或重新上传' : pendingReferences.length ? '参考资料正在分析正文，请稍候再生成' : unreadReferences.length ? '参考资料正文未读取，请移除或重新上传后生成' : insufficient ? `点数不足：本次需要 ${total} 点，当前 ${credits} 点` : '请输入主题，并选择 1–100 页'); return; } showNotice(''); try { const response = await fetch('/api/presentations/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ topic: topic.trim(), ownerId: currentUser?.id, slideCount: pages, resolution, estimatedPerSlide: perSlide, referenceContext: referenceContext(references), referenceFiles: [...styleReferences.map(file => ({ ...file, type: file.type || 'image/png', name: `视觉风格参考：${file.name}` })), ...personReferences.map(file => ({ ...file, type: file.type || 'image/png', name: `人物参考：${file.name}` })), ...productReferences.map(file => ({ ...file, type: file.type || 'image/png', name: `商品参考：${file.name}` })), ...references], logo: logo ? { url: logo.url, enabled: true, position: 'bottom-right', opacity: 0.8, size: 'sm' } : undefined }) }); const result = await response.json().catch(() => null); if (!response.ok) { if (result?.error !== '用户取消生成') showNotice(result?.error || '提交失败'); return; } if (!result?.queued) showNotice(result?.message || '任务已提交'); } catch (error) { showNotice(error instanceof Error ? error.message : '提交失败'); } };
   return <div className="celano-ppt-app"><Nav active="ppt" /><main className="celano-ppt-main celano-feature-main"><CreationHeading title="从主题开始，生成一份完整的演示。" description="16:9 原生画面，页数与画质由你选择。排版、配图与视觉风格交给模型原生构建。" />
-    <section className="celano-compose-card celano-composer-card"><textarea className="celano-composer-input" value={topic} onChange={event => { setTopic(event.target.value); setNotice(''); }} placeholder="描述你想制作的演示文稿，例如：为品牌团队制作一份年度招商方案……" rows={5} aria-label="PPT 主题" /><div className="celano-compose-toolbar celano-composer-toolbar"><label className="celano-select-pill celano-composer-control"><Layers3 size={16} /><span>页数</span><input className="celano-page-count" type="number" min={1} max={100} step={1} aria-label="PPT 页数（1–100 页）" title="自定义 1–100 页" value={pageInput} onChange={event => setPageInput(event.target.value)} onBlur={() => setPageInput(String(Math.min(100, Math.max(1, Math.floor(Number(pageInput) || 1)))))} /><span>页</span></label><label className="celano-select-pill celano-composer-control"><span className="celano-resolution-icon">▣</span><span>画质</span><Select bare value={resolution} ariaLabel="画质" onChange={v => setResolution(v as Resolution)} options={[{ label: '2K', value: '2K' }, { label: '4K', value: '4K' }]} /></label><button className="celano-tool-pill celano-composer-control" onClick={() => personInput.current?.click()}><UserRound size={16} /> 人物参考</button><button className="celano-tool-pill celano-composer-control" onClick={() => productInput.current?.click()}><Package size={16} /> 商品参考</button><button className="celano-tool-pill celano-composer-control" onClick={() => styleInput.current?.click()}><Sparkles size={16} /> 风格参考</button><button className="celano-tool-pill celano-composer-control" onClick={() => logoInput.current?.click()}><ImageIcon size={16} /> Logo 上传</button><input ref={referenceInput} hidden type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.markdown,.csv,.json,.png,.jpg,.jpeg,.webp" onChange={event => handleReferences(event.target.files)} /><input ref={styleInput} hidden type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={event => handleReferences(event.target.files, true)} /><input ref={logoInput} hidden type="file" accept="image/png,image/jpeg,image/webp, image/svg+xml" onChange={event => handleLogo(event.target.files?.[0])} /><input ref={personInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={event => handleSubjectReference(event.target.files, 'person')} /><input ref={productInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={event => handleSubjectReference(event.target.files, 'product')} /><button className="celano-optimize-button celano-composer-control" onClick={optimize} disabled={!topic.trim() || optimizing}>{optimizing ? <LoaderCircle size={16} className="celano-spin" /> : <WandSparkles size={16} />} {optimizing ? '优化中' : '优化'}</button><button className="celano-generate-button celano-composer-primary" onClick={generate} disabled={!canGenerate}><Sparkles size={17} /> 生成{total > 0 ? ` · ${total} 点` : ''}</button></div><div className="celano-cost-line"><span>本次预计消耗 <strong className="celano-num">{total} 点</strong></span><span>{pages} 页 × {perSlide} 点/页 · {resolution}</span>{remaining === null ? null : insufficient ? <span className="celano-cost-warn">点数不足：当前 {credits} 点，还差 {total - (credits || 0)} 点<button type="button" className="celano-cost-recharge" onClick={() => go('/membership')}>去充值</button></span> : <span>生成后余额 <strong className="celano-num">{remaining} 点</strong></span>}</div>{(references.length || personReferences.length || productReferences.length || styleReferences.length || logo) ? <div className="celano-file-list">{references.map(file => <FileChip key={file.id} file={file} onRemove={() => setReferences(items => items.filter(item => item.id !== file.id))} />)}{personReferences.map(file => <FileChip key={`person-${file.id}`} file={file} onRemove={() => setPersonReferences([])} />)}{productReferences.map(file => <FileChip key={`product-${file.id}`} file={file} onRemove={() => setProductReferences([])} />)}{styleReferences.map(file => <FileChip key={`style-${file.id}`} file={file} onRemove={() => setStyleReferences(items => items.filter(item => item.id !== file.id))} />)}{logo ? <div className="celano-file-chip"><img src={logo.url} alt="" /><span title={logo.name}>{logo.name}</span><button onClick={() => setLogo(null)} aria-label="删除 Logo"><X size={13} /></button></div> : null}</div> : null}<div className="celano-compose-footer"><button className="celano-add-reference" onClick={() => referenceInput.current?.click()}><Plus size={17} /> 添加参考资料</button><span>{uploading ? '上传中，请稍候…' : pendingReferences.length ? '正在分析参考资料…' : optimizing ? (references.length ? '正在分析参考资料并优化主题…' : '正在优化主题…') : '最多 6 个参考资料、3 张风格参考图'}</span></div></section>{notice ? <div className="celano-ppt-notice" role="status">{notice}</div> : null}<p className="celano-ppt-tip"><Check size={14} /> 生成完成后会自动保存到当前账号的作品库，并进入 PPT 工作台继续编辑。</p></main></div>;
+    <section className="celano-compose-card celano-composer-card"><textarea className="celano-composer-input" value={topic} onChange={event => { setTopic(event.target.value); showNotice(''); }} placeholder="描述你想制作的演示文稿，例如：为品牌团队制作一份年度招商方案……" rows={5} aria-label="PPT 主题" /><div className="celano-compose-toolbar celano-composer-toolbar"><label className="celano-select-pill celano-composer-control"><Layers3 size={16} /><span>页数</span><input className="celano-page-count" type="number" min={1} max={100} step={1} aria-label="PPT 页数（1–100 页）" title="自定义 1–100 页" value={pageInput} onChange={event => setPageInput(event.target.value)} onBlur={() => setPageInput(String(Math.min(100, Math.max(1, Math.floor(Number(pageInput) || 1)))))} /><span>页</span></label><label className="celano-select-pill celano-composer-control"><span className="celano-resolution-icon">▣</span><span>画质</span><Select bare value={resolution} ariaLabel="画质" onChange={v => setResolution(v as Resolution)} options={[{ label: '2K', value: '2K' }, { label: '4K', value: '4K' }]} /></label><button className="celano-tool-pill celano-composer-control" onClick={() => personInput.current?.click()}><UserRound size={16} /> 人物参考</button><button className="celano-tool-pill celano-composer-control" onClick={() => productInput.current?.click()}><Package size={16} /> 商品参考</button><button className="celano-tool-pill celano-composer-control" onClick={() => styleInput.current?.click()}><Sparkles size={16} /> 风格参考</button><button className="celano-tool-pill celano-composer-control" onClick={() => logoInput.current?.click()}><ImageIcon size={16} /> Logo 上传</button><input ref={referenceInput} hidden type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.markdown,.csv,.json,.png,.jpg,.jpeg,.webp" onChange={event => handleReferences(event.target.files)} /><input ref={styleInput} hidden type="file" multiple accept=".pdf,.pptx,image/png,image/jpeg,image/webp" onChange={event => handleReferences(event.target.files, true)} /><input ref={logoInput} hidden type="file" accept="image/png,image/jpeg,image/webp, image/svg+xml" onChange={event => handleLogo(event.target.files?.[0])} /><input ref={personInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={event => handleSubjectReference(event.target.files, 'person')} /><input ref={productInput} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={event => handleSubjectReference(event.target.files, 'product')} /><button className="celano-optimize-button celano-composer-control" onClick={optimize} disabled={!topic.trim() || optimizing || uploading}>{optimizing ? <LoaderCircle size={16} className="celano-spin" /> : <WandSparkles size={16} />} {optimizing ? '优化中' : '优化 · 1 点'}</button><button className="celano-generate-button celano-composer-primary" onClick={generate} disabled={!canGenerate}><Sparkles size={17} /> 生成{total > 0 ? ` · ${total} 点` : ''}</button></div><div className="celano-cost-line"><span>本次预计消耗 <strong className="celano-num">{total} 点</strong></span><span>{pages} 页 × {perSlide} 点/页 · {resolution}</span>{remaining === null ? null : insufficient ? <span className="celano-cost-warn">点数不足：当前 {credits} 点，还差 {total - (credits || 0)} 点<button type="button" className="celano-cost-recharge" onClick={() => go('/membership')}>去充值</button></span> : <span>生成后余额 <strong className="celano-num">{remaining} 点</strong></span>}</div>{(references.length || personReferences.length || productReferences.length || styleReferences.length || logo) ? <div className="celano-file-list">{references.map(file => <FileChip key={file.id} file={file} onRemove={() => removeReference(file, false)} />)}{personReferences.map(file => <FileChip key={`person-${file.id}`} file={file} onRemove={() => setPersonReferences([])} />)}{productReferences.map(file => <FileChip key={`product-${file.id}`} file={file} onRemove={() => setProductReferences([])} />)}{styleReferences.map(file => <FileChip key={`style-${file.id}`} file={file} onRemove={() => removeReference(file, true)} />)}{logo ? <div className="celano-file-chip"><img src={logo.url} alt="" /><span title={logo.name}>{logo.name}</span><button onClick={() => setLogo(null)} aria-label="删除 Logo"><X size={13} /></button></div> : null}</div> : null}<div className="celano-compose-footer"><button className="celano-add-reference" onClick={() => referenceInput.current?.click()}><Plus size={17} /> 添加参考资料</button><span>{uploading ? '上传中，请稍候…' : pendingReferences.length ? '正在分析参考资料…' : optimizing ? (references.length ? '正在分析参考资料并优化主题…' : '正在优化主题…') : '最多 6 份资料、3 份风格参考；PDF/PPTX 每份取前 3 页'}</span></div></section>{notice ? <div className={`celano-ppt-notice celano-ppt-notice-${noticeTone}`} role="status">{notice}</div> : null}<p className="celano-ppt-tip"><Check size={14} /> 生成完成后会自动保存到当前账号的作品库，并进入 PPT 工作台继续编辑。</p></main></div>;
 };

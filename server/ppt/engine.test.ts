@@ -1,8 +1,52 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { db } from '../db.js';
-import { deckView, deleteDeck, deleteSlide, startDeck } from './engine.js';
-import type { PptDeck } from '../../src/types.js';
+import { appendSlide, deckView, deleteDeck, deleteSlide, regenerateSlide, replaceSlideImage, resumeDeck, startDeck, stopDeck } from './engine.js';
+import type { PptDeck, PptSlidePlan, User } from '../../src/types.js';
+
+let sequence = 0;
+
+function fixtureUser(credits = 100): User {
+  const id = 'ppt-engine-fixture-' + (++sequence);
+  const value: User = { id, username: id, name: 'PPT 测试用户', phone: '1391000' + String(sequence).padStart(4, '0'), avatar: '', role: 'creator', createdAt: Date.now(), credits };
+  db.createUser(value);
+  return value;
+}
+
+function pngDataUrl(width = 2048, height = 1152): string {
+  const bytes = Buffer.alloc(24);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(bytes);
+  bytes.writeUInt32BE(width, 16); bytes.writeUInt32BE(height, 20);
+  return 'data:image/png;base64,' + bytes.toString('base64');
+}
+
+function fixtureDeck(user: User, id: string, slides: PptDeck['slides'], referenceImages: PptDeck['referenceImages'] = []): PptDeck {
+  const value: PptDeck = {
+    id, userId: user.id, title: '引擎测试', prompt: '引擎测试主题', resolution: '2K', pageCount: slides.length,
+    referencesText: '', referenceImages, subtitle: '', visualDirection: '', palette: { accent: '#fff', deep: '#000', ink: '#000', muted: '#ccc' },
+    slides, concurrency: 6, stage: 'paused', running: false, finished: false, startedAt: Date.now(), updatedAt: Date.now(), chargedCredits: slides.reduce((sum, slide) => sum + (slide.chargedCredits || 0), 0), refundedCredits: 0, refundedSlideIds: [],
+  };
+  db.createPptDeck(value);
+  return value;
+}
+
+function writeFixtureImage(storageKey: string, width = 2048, height = 1152, marker = 0) {
+  const full = path.resolve(process.cwd(), 'data', 'images', storageKey);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  const bytes = Buffer.from(pngDataUrl(width, height).split(',')[1], 'base64');
+  bytes[15] = marker;
+  fs.writeFileSync(full, bytes);
+  return full;
+}
+
+function cleanupFixture(user: User, deckId: string) {
+  db.deletePptDeck(deckId);
+  db.deleteUser(user.id);
+}
+
+const basePlan: PptSlidePlan = { title: '测试页', bullets: [], pageType: 'core-insight' };
 
 test('native dimension mismatch stops the PPT batch and refunds all unfinished pages', async t => {
   let deck: PptDeck | undefined;
@@ -93,6 +137,160 @@ test('failed reference analysis pauses before any image requests and refunds the
   assert.equal(credits, 30);
   assert.equal(deckView(deck!).chargedCredits, 15);
   assert.equal(deckView(deck!).refundedCredits, 15);
+});
+
+test('商品页包含商品参考，非商品页不发送商品封面或商品参考', async t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-product-' + sequence;
+  const productKey = 'user-' + user.id + '/deck-' + deckId + '/product.png';
+  const coverKey = 'user-' + user.id + '/deck-' + deckId + '/cover.png';
+  writeFixtureImage(productKey, 2048, 1152, 7);
+  writeFixtureImage(coverKey, 2048, 1152, 0);
+  const deck = fixtureDeck(user, deckId, [{ id: 'existing', plan: { ...basePlan, title: '已完成封面', pageType: 'cover' }, status: 'done', storageKey: coverKey, width: 2048, height: 1152, chargedCredits: 5, billingCost: 5, refundedCredits: 0, deliveredCredits: 5 }], [{ id: 'product', name: '商品参考：原型', storageKey: productKey }]);
+  t.after(() => cleanupFixture(user, deckId));
+  t.mock.method(db, 'resolveImageConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-image' }));
+  const requests: Array<{ path: string; productImage: boolean; prompt: string }> = [];
+  t.mock.method(globalThis, 'fetch', async (url: unknown, init: RequestInit) => {
+    const endpoint = String(url);
+    if (endpoint.includes('/images/edits')) {
+      const form = init.body as FormData;
+      const images = [...form.getAll('image'), ...form.getAll('image[]')] as Blob[];
+      const contents = await Promise.all(images.map(async image => Buffer.from(await image.arrayBuffer())));
+      requests.push({ path: 'edits', productImage: contents.some(bytes => bytes[15] === 7), prompt: String(form.get('prompt') || '') });
+    } else {
+      requests.push({ path: 'generations', productImage: false, prompt: String(JSON.parse(String(init.body)).prompt || '') });
+    }
+    return Response.json({ data: [{ b64_json: pngDataUrl().split(',')[1] }] });
+  });
+  const product = await appendSlide(user.id, deckId, { ...basePlan, title: '商品展示', productReference: true });
+  assert.ok('id' in product);
+  const nonProduct = await appendSlide(user.id, deckId, { ...basePlan, title: '趋势分析', productReference: false });
+  assert.ok('id' in nonProduct);
+  assert.deepEqual(requests.map(item => item.path), ['edits', 'generations']);
+  assert.equal(requests[0].productImage, true);
+  assert.match(requests[0].prompt, /商品一致性模式/);
+  assert.equal(requests[1].productImage, false);
+  assert.match(requests[1].prompt, /不要额外加入上传商品/);
+});
+
+test('暂停初始占位规划后继续会重新发起真实规划并生成图片', async t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-resume-planning-' + sequence;
+  t.after(() => cleanupFixture(user, deckId));
+  t.mock.method(db, 'resolveImageConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-image' }));
+  t.mock.method(db, 'getPlanningConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-text', reasoningEffort: 'auto' }));
+  let planningRequests = 0;
+  let imageRequests = 0;
+  let firstPlanningStarted!: () => void;
+  const planningStarted = new Promise<void>(resolve => { firstPlanningStarted = resolve; });
+  t.mock.method(globalThis, 'fetch', async (url: unknown, init: RequestInit) => {
+    if (String(url).includes('/chat/completions')) {
+      planningRequests++;
+      if (planningRequests === 1) {
+        firstPlanningStarted();
+        await new Promise<never>((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('任务已停止')), { once: true }));
+      }
+      return Response.json({ choices: [{ message: { content: JSON.stringify({ deck_title: '真实规划', slides: [{ title: '真实页面', page_type: 'core-insight', image_prompt: '真实内容' }] }) } }] });
+    }
+    imageRequests++;
+    return Response.json({ data: [{ b64_json: pngDataUrl().split(',')[1] }] });
+  });
+  const started = startDeck(user.id, { prompt: '暂停后继续测试', pageCount: 1, concurrency: 1, resolution: '2K' });
+  assert.ok('id' in started);
+  await planningStarted;
+  const stopped = stopDeck(user.id, started.id);
+  assert.ok('id' in stopped);
+  assert.equal(stopped.stage, 'paused');
+  const resumed = resumeDeck(user.id, started.id);
+  assert.ok('id' in resumed);
+  for (let i = 0; i < 300 && db.getPptDeck(started.id)?.running; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  const final = db.getPptDeck(started.id)!;
+  assert.equal(planningRequests, 2);
+  assert.equal(imageRequests, 1);
+  assert.equal(final.slides[0].status, 'done');
+  assert.equal(final.slides[0].plan.title, '真实页面');
+  assert.equal(final.stage, 'finished');
+});
+
+test('单页重生成失败保留旧图并只退回本次点数', async t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-regenerate-failure-' + sequence;
+  const storageKey = 'user-' + user.id + '/deck-' + deckId + '/slide-old.png';
+  writeFixtureImage(storageKey);
+  const originalUpdatedAt = 123456;
+  const deck = fixtureDeck(user, deckId, [{ id: 'one', plan: { ...basePlan, title: '旧图页面' }, status: 'done', storageKey, width: 2048, height: 1152, updatedAt: originalUpdatedAt, billingCost: 5, chargedCredits: 5, refundedCredits: 0, deliveredCredits: 5 }]);
+  t.after(() => cleanupFixture(user, deckId));
+  t.mock.method(db, 'resolveImageConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-image' }));
+  let imageRequests = 0;
+  t.mock.method(globalThis, 'fetch', async () => { imageRequests++; return Response.json({ error: { message: 'mock failure' } }, { status: 500 }); });
+  const result = await regenerateSlide(user.id, deckId, 'one', '改成另一种表达');
+  assert.ok('error' in result);
+  assert.equal(imageRequests, 1);
+  const final = db.getPptDeck(deckId)!;
+  const slide = final.slides[0];
+  assert.equal(slide.status, 'done');
+  assert.equal(slide.storageKey, storageKey);
+  assert.equal(slide.updatedAt, originalUpdatedAt);
+  assert.equal(slide.width, 2048);
+  assert.equal(slide.height, 1152);
+  assert.equal(slide.error, '生图接口 HTTP 500：mock failure');
+  assert.equal(final.refundedCredits, 5);
+  assert.equal(db.getUserById(user.id)?.credits, 100);
+});
+
+test('活动任务禁止替换页面图片', t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-replace-active-' + sequence;
+  const deck = fixtureDeck(user, deckId, [{ id: 'one', plan: basePlan, status: 'done', chargedCredits: 5, billingCost: 5, refundedCredits: 0, deliveredCredits: 5 }]);
+  db.updatePptDeck(deckId, { running: true, stage: 'rendering' });
+  t.after(() => cleanupFixture(user, deckId));
+  const result = replaceSlideImage(user.id, deckId, 'one', pngDataUrl());
+  assert.ok('error' in result);
+  assert.match(result.error || '', /正在生成或修改/);
+  assert.equal(db.getPptDeck(deckId)?.slides[0].status, 'done');
+});
+
+test('单页替换图片写入失败不改变旧图或作品记录', t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-replace-image-write-' + sequence;
+  const key = 'user-' + user.id + '/deck-' + deckId + '/original.png';
+  const full = writeFixtureImage(key);
+  const previous = fs.readFileSync(full);
+  fixtureDeck(user, deckId, [{ id: 'one', plan: basePlan, status: 'done', storageKey: key, width: 2048, height: 1152, billingCost: 5, chargedCredits: 5, refundedCredits: 0, deliveredCredits: 5 }]);
+  t.after(() => { t.mock.restoreAll(); cleanupFixture(user, deckId); });
+  const write = fs.writeFileSync;
+  let imageWrites = 0;
+  t.mock.method(fs, 'writeFileSync', (filename: Parameters<typeof fs.writeFileSync>[0], data: Parameters<typeof fs.writeFileSync>[1], options?: Parameters<typeof fs.writeFileSync>[2]) => {
+    if (String(filename).endsWith('.png')) { imageWrites++; throw new Error('image write failure'); }
+    return write(filename, data, options);
+  });
+  const result = replaceSlideImage(user.id, deckId, 'one', pngDataUrl());
+  assert.ok(!('id' in result));
+  assert.match(result.error, /image write failure/);
+  assert.equal(imageWrites, 1);
+  assert.equal(db.getPptDeck(deckId)?.slides[0].storageKey, key);
+  assert.deepEqual(fs.readFileSync(full), previous);
+  assert.equal(db.getUserById(user.id)?.credits, 100);
+});
+
+test('单页替换数据库提交失败保留旧图片和记录，重试成功才清理旧图', t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-replace-disk-' + sequence;
+  const key = 'user-' + user.id + '/deck-' + deckId + '/original.png';
+  const full = writeFixtureImage(key);
+  const previous = fs.readFileSync(full);
+  fixtureDeck(user, deckId, [{ id: 'one', plan: basePlan, status: 'done', storageKey: key, width: 2048, height: 1152, billingCost: 5, chargedCredits: 5, refundedCredits: 0, deliveredCredits: 5 }]);
+  t.after(() => { t.mock.restoreAll(); cleanupFixture(user, deckId); });
+  t.mock.method(fs, 'renameSync', (() => { throw new Error('disk failure'); }) as never);
+  const failed = replaceSlideImage(user.id, deckId, 'one', pngDataUrl());
+  assert.ok('error' in failed);
+  assert.equal(db.getPptDeck(deckId)?.slides[0].storageKey, key);
+  assert.deepEqual(fs.readFileSync(full), previous);
+  t.mock.restoreAll();
+  const saved = replaceSlideImage(user.id, deckId, 'one', pngDataUrl());
+  assert.ok('id' in saved);
+  assert.notEqual(saved.slides[0].storageKey, key);
+  assert.equal(fs.existsSync(full), false);
 });
 
 test('deleting pages and decks respects ownership, synchronizes page counts and refunds only unfinished prepaid pages', t => {
