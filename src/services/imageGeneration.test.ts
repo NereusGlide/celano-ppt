@@ -2,6 +2,40 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultImageDraft, forgetImageJob, getImageJobs, saveImageGeneration, startImageGeneration, subscribeImageJobs } from './imageGeneration.js';
 
+test('参考图生成发送multipart编辑参数，保留所有画质比例和账号边界', async t => {
+  let fields: FormData | undefined;
+  t.mock.method(globalThis, 'fetch', async (input: any, init: any) => {
+    const url = String(input);
+    if (url === '/api/canvas/config') return Response.json({ proxyToken: 'token', channels: [{ id: 'celano-image', models: [{ name: 'image-model' }] }] });
+    if (url.endsWith('/images/edits')) { fields = init.body; return Response.json({ error: { message: 'mock request stopped' } }, { status: 400 }); }
+    throw new Error('Unexpected request');
+  });
+  const draft = { ...defaultImageDraft(), prompt: '商品摄影', ratio: '9:16', resolution: '4K' as const, reference: { name: 'reference.png', file: new File(['image'], 'reference.png', { type: 'image/png' }) } };
+  const id = startImageGeneration('reference-owner', draft);
+  try {
+    await settled(id);
+    assert.ok(fields instanceof FormData);
+    assert.equal(fields.get('resolution'), '4K');
+    assert.equal(fields.get('size'), '2160x3840');
+    assert.equal(fields.get('quality'), 'high');
+    assert.equal(fields.get('expectedOwnerId'), 'reference-owner');
+    assert.ok(fields.get('image') instanceof File);
+  } finally { forgetImageJob(id); }
+});
+
+test('non-JSON image gateway failures show a readable error rather than a JSON parser exception', async t => {
+  t.mock.method(globalThis, 'fetch', async (input: any) => String(input) === '/api/canvas/config'
+    ? new Response(JSON.stringify({ proxyToken: 'token', channels: [{ id: 'celano-image', models: [{ name: 'image-model' }] }] }), { status: 200 })
+    : new Response('<html>gateway unavailable</html>', { status: 502 }));
+  const id = startImageGeneration('gateway-owner', { ...defaultImageDraft(), prompt: '海报' });
+  try {
+    const job = await settled(id);
+    assert.equal(job.phase, 'failed');
+    assert.match(job.error!, /生成服务暂不可用/);
+    assert.doesNotMatch(job.error!, /JSON|Unexpected token/);
+  } finally { forgetImageJob(id); }
+});
+
 async function settled(id: string) {
   const complete = () => getImageJobs().find(job => job.id === id && ['done', 'failed'].includes(job.phase));
   if (complete()) return complete()!;

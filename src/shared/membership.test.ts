@@ -1,6 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { membershipView, parseMembership } from './membership.js';
+import { applyMembershipCatalog, getMembershipCatalogVersion, memberImageCost, membershipView, parseMembership, subscribeMembershipCatalog } from './membership.js';
+
+test('会员目录加载和更新通知订阅方重算实时折扣', () => {
+  const user = { membership: { planId: 'custom-plan', status: 'active' as const, expiresAt: Date.now() + 60_000 } };
+  let notifications = 0;
+  const version = getMembershipCatalogVersion();
+  const stop = subscribeMembershipCatalog(() => { notifications++; });
+  try {
+    applyMembershipCatalog([{ id: 'custom-plan', name: '定制会员', discount2k: 3, discount4k: 7 }]);
+    assert.equal(getMembershipCatalogVersion(), version + 1);
+    assert.equal(memberImageCost(user, '2K'), 3);
+    applyMembershipCatalog([{ id: 'custom-plan', name: '定制会员', discount2k: 4, discount4k: 8 }]);
+    assert.equal(getMembershipCatalogVersion(), version + 2);
+    assert.equal(memberImageCost(user, '2K'), 4);
+    assert.equal(notifications, 2);
+  } finally { stop(); applyMembershipCatalog([]); }
+});
 
 test('会员以确认状态和有效期为准，余额或账号角色不能冒充会员', () => {
   const now = Date.now();

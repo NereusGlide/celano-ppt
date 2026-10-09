@@ -29,6 +29,10 @@ let membershipNames: Record<string, string> = { ...DEFAULT_MEMBERSHIP_NAMES };
 /** 运行时的套餐折扣目录（前端展示预计消耗用，与后端会员折扣口径一致） */
 type PlanDiscount = { id: string; discount2k: number; discount4k: number };
 let membershipDiscounts: PlanDiscount[] = [];
+let membershipCatalogVersion = 0;
+const membershipCatalogListeners = new Set<() => void>();
+export const getMembershipCatalogVersion = () => membershipCatalogVersion;
+export const subscribeMembershipCatalog = (listener: () => void) => { membershipCatalogListeners.add(listener); return () => membershipCatalogListeners.delete(listener); };
 
 /** 前端拿到会员套餐目录后调用，更新套餐 ID → 名称/折扣 映射（未覆盖的内置名保留）。 */
 export function applyMembershipCatalog(plans: Array<{ id: string; name: string; discount2k?: number; discount4k?: number }>): void {
@@ -46,6 +50,8 @@ export function applyMembershipCatalog(plans: Array<{ id: string; name: string; 
   }
   membershipNames = next;
   membershipDiscounts = discounts;
+  membershipCatalogVersion += 1;
+  membershipCatalogListeners.forEach(listener => listener());
 }
 
 export function membershipName(planId: string | undefined): string {

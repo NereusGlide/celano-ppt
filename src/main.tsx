@@ -23,9 +23,7 @@ const load = <T extends Record<string, unknown>>(loader: () => Promise<T>, name:
 
 const HomeApp = load(() => import('./home/HomeApp.tsx'), 'HomeApp');
 const AdminApp = load(() => import('./admin/AdminApp.tsx'), 'AdminApp');
-const WorkspaceApp = load(() => import('./workspace/WorkspaceApp.tsx'), 'WorkspaceApp');
 const CanvasEditorApp = load(() => import('./canvas/CanvasApp.tsx'), 'CanvasEditorApp');
-const ImageResultsApp = load(() => import('./image/ImageResultsApp.tsx'), 'ImageResultsApp');
 const KimiShellApp = load(() => import('./kimi/KimiShellApp.tsx'), 'KimiShellApp');
 
 /** 分包加载期间的首屏占位，避免白屏。 */
@@ -277,18 +275,18 @@ function mountRoute() {
   appRoot = null;
   mountedRoute = route;
   // 主站页面（含会员与个人中心）统一挂到外壳容器，由 KimiShellApp 以 initialPage 定位；
-  // 只有工作台、画布编辑器、文生图作品页等「全屏子页面」使用独立容器。
+  // 图片结果与 PPT 工作台也共用首页外壳；仅画布编辑器使用独立全屏容器。
   const activeRoot = route === 'app-shell' || route === 'ppt' || route === 'account' || route === 'membership'
-    || route === 'image' || route === 'canvas' || route === 'support' ? homeRootEl : workspaceRootEl;
+    || route === 'image' || route === 'image-results' || route === 'workspace' || route === 'canvas' || route === 'support' ? homeRootEl : workspaceRootEl;
   activeRoot.classList.remove('celano-route-enter');
   void activeRoot.offsetWidth;
   activeRoot.classList.add('celano-route-enter');
   if (route === 'workspace') {
     rootEl.style.display = 'none';
-    homeRootEl.style.display = 'none';
-    workspaceRootEl.style.display = '';
-    if (!appRoot) appRoot = createRoot(workspaceRootEl);
-    appRoot.render(<StrictMode>{wrap(<WorkspaceApp />, 'workspace')}</StrictMode>);
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="workspace" />, 'workspace')}</StrictMode>);
   } else if (route === 'ppt') {
     rootEl.style.display = 'none';
     workspaceRootEl.style.display = 'none';
@@ -339,10 +337,10 @@ function mountRoute() {
     appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="prompts" />, 'prompts')}</StrictMode>);
   } else if (route === 'image-results') {
     rootEl.style.display = 'none';
-    homeRootEl.style.display = 'none';
-    workspaceRootEl.style.display = '';
-    if (!appRoot) appRoot = createRoot(workspaceRootEl);
-    appRoot.render(<StrictMode>{wrap(<ImageResultsApp />, 'image-results')}</StrictMode>);
+    workspaceRootEl.style.display = 'none';
+    homeRootEl.style.display = '';
+    if (!appRoot) appRoot = createRoot(homeRootEl);
+    appRoot.render(<StrictMode>{wrap(<KimiShellApp initialPage="image-results" />, 'image-results')}</StrictMode>);
   } else if (route === 'support') {
     rootEl.style.display = 'none';
     workspaceRootEl.style.display = 'none';

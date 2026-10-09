@@ -27,13 +27,15 @@ import '../styles/kimi-shell.css';
 const HomeApp = lazy(() => import('../home/HomeApp.js').then(m => ({ default: m.HomeApp })));
 const PptGenerateApp = lazy(() => import('../home/HomeApp.js').then(m => ({ default: m.PptGenerateApp })));
 const ImageApp = lazy(() => import('../image/ImageApp.js').then(m => ({ default: m.ImageApp })));
+const ImageResultsApp = lazy(() => import('../image/ImageResultsApp.js').then(m => ({ default: m.ImageResultsApp })));
+const WorkspaceApp = lazy(() => import('../workspace/WorkspaceApp.js').then(m => ({ default: m.WorkspaceApp })));
 const CanvasApp = lazy(() => import('../canvas/CanvasApp.js').then(m => ({ default: m.CanvasApp })));
 const SupportApp = lazy(() => import('../support/SupportApp.js').then(m => ({ default: m.SupportApp })));
 const PromptLibraryApp = lazy(() => import('../prompts/PromptLibraryApp.js').then(m => ({ default: m.PromptLibraryApp })));
 const MembershipApp = lazy(() => import('../membership/MembershipApp.js').then(m => ({ default: m.MembershipApp })));
 const AccountCenterApp = lazy(() => import('../account/AccountCenterApp.js').then(m => ({ default: m.AccountCenterApp })));
 
-type PageKey = 'home' | 'ppt' | 'image' | 'canvas' | 'prompts' | 'support' | 'membership' | 'account';
+type PageKey = 'home' | 'ppt' | 'workspace' | 'image' | 'image-results' | 'canvas' | 'prompts' | 'support' | 'membership' | 'account';
 
 const NAV: { key: PageKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
   { key: 'home', label: '首页', icon: Home },
@@ -46,7 +48,7 @@ const NAV: { key: PageKey; label: string; icon: React.ComponentType<{ size?: num
 
 /** 每个页面在地址栏对应的路径，保证深链可直达。 */
 const PAGE_PATH: Record<PageKey, string> = {
-  home: '/', ppt: '/ppt', image: '/image', canvas: '/canvas',
+  home: '/', ppt: '/ppt', workspace: '/workspace', image: '/image', 'image-results': '/image/results', canvas: '/canvas',
   prompts: '/prompts',
   support: '/support', membership: '/membership', account: '/account',
 };
@@ -79,13 +81,15 @@ export const KimiShellApp: React.FC<{ initialPage?: PageKey }> = ({ initialPage 
           <nav className="kimi-topnav-nav" aria-label="主导航">
             {NAV.map(item => {
               const Icon = item.icon;
-              const active = page === item.key;
+              const active = page === item.key || (page === 'image-results' && item.key === 'image') || (page === 'workspace' && item.key === 'ppt');
               return (
                 <button
                   key={item.key}
                   type="button"
                   className="kimi-nav-item"
                   aria-current={active ? 'page' : undefined}
+                  aria-label={item.label}
+                  title={item.label}
                   onClick={() => switchPage(item.key)}
                 >
                   <Icon size={16} className="kimi-nav-icon" />
@@ -120,11 +124,13 @@ export const KimiShellApp: React.FC<{ initialPage?: PageKey }> = ({ initialPage 
           )}
         </header>
 
-        <div className="kimi-stage kimi-shell-stage">
+        <div className={`kimi-stage kimi-shell-stage${page === 'workspace' ? ' kimi-workspace-stage' : ''}`}>
           <Suspense fallback={<div className="kimi-shell-loading" role="status">正在加载页面…</div>}>
             {page === 'home' ? <HomeApp /> : null}
             {page === 'ppt' ? <PptGenerateApp /> : null}
+            {page === 'workspace' ? <WorkspaceApp /> : null}
             {page === 'image' ? <ImageApp /> : null}
+            {page === 'image-results' ? <ImageResultsApp /> : null}
             {page === 'canvas' ? <CanvasApp /> : null}
             {page === 'prompts' ? <PromptLibraryApp /> : null}
             {page === 'support' ? <SupportApp /> : null}

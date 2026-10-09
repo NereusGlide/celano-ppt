@@ -31,6 +31,44 @@ function storageHarness(file: string) {
   return { api: (context.module as any).exports, stores, live, thumbnailCount: () => thumbnails };
 }
 
+test('图片结果和PPT工作台复用首页唯一导航且保持作品交接入口', () => {
+  const main = read('src/main.tsx');
+  const shell = read('src/kimi/KimiShellApp.tsx');
+  const image = read('src/image/ImageResultsApp.tsx');
+  const workspace = read('src/workspace/WorkspaceApp.tsx');
+  const assets = read('src/account/CanvasAssetsPanel.tsx');
+  assert.match(main, /KimiShellApp initialPage="workspace"/);
+  assert.match(main, /KimiShellApp initialPage="image-results"/);
+  assert.equal((shell.match(/<header className="kimi-topbar kimi-topnav"/g) || []).length, 1);
+  assert.match(shell, /page === 'workspace' && item.key === 'ppt'/);
+  assert.doesNotMatch(image, /PrimaryNav|YOUR IMAGE COLLECTION/);
+  assert.doesNotMatch(workspace, /ws-brand-wordmark/);
+  assert.match(workspace, /celano_open_deck/);
+  assert.match(workspace, /celano_active_deck/);
+  assert.match(assets, /useFocusTrap<HTMLDivElement>/);
+});
+
+test('文生图优化完成不等待余额刷新，账户切换时不回填旧结果', async () => {
+  const source = read('src/image/ImageApp.tsx');
+  const body = source.slice(source.indexOf('  const optimize = async'), source.indexOf('  return <div'));
+  const state: boolean[] = [];
+  const patches: unknown[] = [];
+  const timers = new Map<number, () => void>();
+  const ownerRef = { current: 'owner-A' };
+  const context = evaluate(`${body}\nmodule.exports = { optimize };`, {
+    currentUser: { id: 'owner-A' }, locked: false, prompt: '海报', owner: 'owner-A', ownerRef,
+    setConfirm: () => {}, setOptimizing: (value: boolean) => state.push(value), setNotice: () => {}, set: (value: unknown) => patches.push(value),
+    optimizeImagePrompt: async () => ({ prompt: '优化结果' }), fetchCurrentUser: () => new Promise(() => {}), syncUser: () => {},
+    window: { setTimeout: (fn: () => void) => { timers.set(1, fn); return 1; }, clearTimeout: (id: number) => timers.delete(id) },
+  });
+  await (context.module as any).exports.optimize();
+  assert.deepEqual(state, [true, false]);
+  assert.equal(patches.length, 1);
+  ownerRef.current = 'owner-B';
+  await (context.module as any).exports.optimize();
+  assert.equal(patches.length, 1);
+});
+
 test('显式hash深链接优先于pathname，根hash可从深链接返回首页', () => {
   const source = read('src/main.tsx').match(/function currentRoute\(\) \{[\s\S]*?\n\}/)![0];
   const context = evaluate(source, { window: { location: { pathname: '/image', hash: '#/prompts' } } });

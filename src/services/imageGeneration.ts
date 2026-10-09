@@ -6,7 +6,7 @@ export type ImageDraft = { prompt: string; resolution: ImageResolution; ratio: s
 export type ImageJob = {
   id: string; userId: string; input: ImageDraft; startedAt: number;
   phase: 'generating' | 'saving' | 'done' | 'failed';
-  error?: string; image?: { url: string; width?: number; height?: number }; assetId?: string;
+  error?: string; image?: { url: string; width?: number; height?: number; mimeType?: string }; assetId?: string;
 };
 const drafts = new Map<string, ImageDraft>();
 const listeners = new Set<() => void>();
@@ -68,11 +68,15 @@ async function runGeneration(id: string) {
       headers['Content-Type'] = 'application/json'; body = JSON.stringify(fields);
     }
     const resultResponse = await fetch('/api/canvas/image/v1/images/' + (reference ? 'edits' : 'generations'), { method: 'POST', headers, body, credentials: 'same-origin' });
-    const result = await resultResponse.json();
-    if (!resultResponse.ok) throw new Error(result.error?.message || result.error || '生成失败');
+    const result = await resultResponse.json().catch(() => null);
+    if (!resultResponse.ok) {
+      const error = result?.error;
+      throw new Error(typeof error === 'string' ? error : error?.message || (resultResponse.status === 401 ? '登录已失效，请重新登录' : '生成服务暂不可用，请稍后重试'));
+    }
+    if (!result) throw new Error('生成服务返回了无效结果，请稍后重试');
     const image = result.data?.[0];
     if (!image?.url) throw new Error('接口没有返回图片');
-    update(id, { image: { url: image.url, width: image.width, height: image.height }, phase: 'saving' });
+    update(id, { image: { url: image.url, width: image.width, height: image.height, mimeType: image.mimeType }, phase: 'saving' });
     await saveImageGeneration(id);
   } catch (error) {
     update(id, { phase: 'failed', error: error instanceof Error ? (error.message === 'Failed to fetch' ? '网络连接失败，请检查服务是否在线后重试。' : error.message) : '生成失败' });
@@ -85,7 +89,8 @@ export async function saveImageGeneration(id: string) {
   update(id, { phase: 'saving', error: undefined });
   try {
     const saved = await saveCanvasAsset({ id, expectedOwnerId: job.userId, kind: 'image', title: job.input.prompt.trim().slice(0, 60), note: job.input.prompt, imageData: job.image.url, tags: ['文生图', job.input.resolution, job.input.ratio], data: { width: job.image.width, height: job.image.height }, metadata: { source: 'text-image' } });
-    update(id, { phase: 'done', assetId: id, image: { ...job.image, url: saved.asset.data.dataUrl } });
+    const assetId = saved.asset.id || id;
+    update(id, { phase: 'done', assetId, image: { ...job.image, url: saved.asset.data.dataUrl || job.image.url, mimeType: saved.asset.data.mimeType || job.image.mimeType } });
   } catch (error) {
     update(id, { phase: 'failed', error: '图片已生成，保存失败：' + (error instanceof Error ? error.message : '请重试保存或下载原图') });
   }

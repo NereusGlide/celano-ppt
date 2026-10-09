@@ -652,12 +652,9 @@ export const WorkspaceApp: React.FC = () => {
     <div className="ws-root ws-editor celano-page-surface">
       <header className="ws-topbar">
         <div className="ws-topbar-left">
-          <button className="ws-brand" onClick={goHome} title="返回首页">
-            <img src="/brand/celano-wordmark-white.png" alt="CELANO" className="ws-brand-wordmark" />
-          </button>
-          <span className="ws-topbar-divider" aria-hidden="true" />
+          <button className="ws-icon-btn" onClick={goHome} title="返回首页" aria-label="返回首页"><ArrowLeft size={16} /></button>
           <div className="ws-topbar-title">
-            <strong>PPT 工作台</strong>
+            <h1>PPT 图片工作台</h1>
             <small title={deck?.title || ''}>{deck?.title ? `主题：${deck.title}` : '任务预览与画板编辑'}</small>
           </div>
         </div>
@@ -735,7 +732,7 @@ export const WorkspaceApp: React.FC = () => {
 
       <div className="ws-layout" data-inspector={inspectorOpen ? 'on' : 'off'}>
         <aside ref={sidebarRef} className="ws-sidebar">
-          <p className="ws-nav-label">PAGES</p>
+          <p className="ws-nav-label">页面作品 <span>{pages.length}</span></p>
           <div className="ws-pages">
             {pages.map((p, i) => (
               <button
@@ -872,7 +869,7 @@ export const WorkspaceApp: React.FC = () => {
           <div className="ws-inspector-head">
             <strong className="ws-inspector-title">页面检查器</strong>
             <span className="ws-mono ws-inspector-pos">第 {activeIndex + 1} / {pages.length} 页</span>
-            <button type="button" className="ws-icon-btn" onClick={() => setInspectorOpen(v => !v)} aria-expanded={inspectorOpen} title="折叠 / 展开检查器（⌘B）"><ChevronRight size={16} /></button>
+            <button type="button" className="ws-icon-btn" onClick={() => setInspectorOpen(v => !v)} aria-expanded={inspectorOpen} aria-label={inspectorOpen ? '关闭页面检查器' : '打开页面检查器'} title="折叠 / 展开检查器（⌘B）"><ChevronRight size={16} /></button>
           </div>
           <div className="ws-inspector-body">
               {/* 逐处修改指令列表 */}
