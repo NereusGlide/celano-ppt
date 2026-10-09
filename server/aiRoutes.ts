@@ -2,10 +2,11 @@
  * 首页（旧版构建产物）仍会调用的 AI 端点：
  * - POST /api/ai/optimize-topic-prompt  提示词优化（首页「优化」按钮）
  * - POST /api/ai/outline                 大纲构思（首页「先构思审阅大纲」按钮）
- * 均使用管理端「内容规划模型配置」，复用新规划管线输出旧协议结构；不涉及计费。
+ * 均使用管理端「内容规划模型配置」，复用新规划管线输出旧协议结构；提示词优化每次扣1点。
  */
 import express from 'express';
 import { db } from './db.js';
+import { chargePromptOptimize, refundCredits } from './billing.js';
 import { requireUser } from './sessionGuard.js';
 import { chatText } from './ppt/aiClient.js';
 import { buildFallbackPlan, buildPlanPrompts, parseSlidePlan, PPT_PLAN_EFFORT, PPT_PLAN_MODEL, type PptDeckPlan } from './ppt/plan.js';
@@ -61,12 +62,16 @@ function buildLocalPromptBrief(topic: string, context: string): string {
 aiRouter.post('/optimize-topic-prompt', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  let charged = false;
   try {
     const body = (req.body || {}) as Record<string, unknown>;
     const topic = String(body.topic || '').trim();
     if (!topic) return res.status(400).json({ success: false, error: '请先输入主题或提示词' });
     if (topic.length > 5000) return res.status(400).json({ success: false, error: '主题内容过长' });
     const context = referenceText(body.referenceContext);
+    const chargedResult = chargePromptOptimize(user.id, '首页提示词优化');
+    if (!chargedResult.ok) return res.status(402).json({ success: false, error: chargedResult.error, credits: chargedResult.credits });
+    charged = true;
     // 提示词优化走独立通道；未启用或未填齐时自动回退内容规划模型
     const cfg = db.resolvePromptOptimizeConfig();
     const system = [
@@ -96,6 +101,7 @@ aiRouter.post('/optimize-topic-prompt', async (req, res) => {
     if (!text) text = buildLocalPromptBrief(topic, context);
     res.json({ success: true, result: { optimizedTopic: text.slice(0, 2000) }, fallback });
   } catch (err: any) {
+    if (charged) refundCredits(user.id, 1, '首页提示词优化失败退款', 'optimize_prompt');
     res.status(502).json({ success: false, error: String(err?.message || err).slice(0, 160) });
   }
 });
@@ -104,7 +110,7 @@ aiRouter.post('/optimize-topic-prompt', async (req, res) => {
  * 文生图提示词优化：文生图页「优化」按钮。
  *
  * 与其它优化入口（PPT 页 / 旧版首页 / 画布）完全一致：走
- * resolvePromptOptimizeConfig()（独立通道未启用时回退内容规划模型），不扣点。
+ * resolvePromptOptimizeConfig()（独立通道未启用时回退内容规划模型），每次扣1点。
  * 系统提示词针对「画面描述」优化 —— 参考 prompt-optimizer 的文生图思路
  * （不是简单扩写，而是围绕主体线索 / 空间关系与构图 / 氛围锚点补全，
  * 让结果更「可指挥」），同时遵守本项目一致的约束：不替用户改创作方向、
@@ -113,13 +119,18 @@ aiRouter.post('/optimize-topic-prompt', async (req, res) => {
 aiRouter.post('/optimize-image-prompt', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  let charged = false;
   try {
     const prompt = String((req.body || {}).prompt || '').trim();
     if (!prompt) return res.status(400).json({ success: false, error: '请输入需要优化的画面描述' });
     if (prompt.length > 5000) return res.status(400).json({ success: false, error: '画面描述过长' });
 
+    const chargedResult = chargePromptOptimize(user.id, '文生图提示词优化');
+    if (!chargedResult.ok) return res.status(402).json({ success: false, error: chargedResult.error, credits: chargedResult.credits });
+    charged = true;
     const cfg = db.resolvePromptOptimizeConfig();
     if (!cfg.baseUrl || !cfg.apiKey) {
+      if (charged) refundCredits(user.id, 1, '文生图提示词优化未配置退款', 'optimize_prompt');
       return res.status(503).json({ success: false, error: '未配置提示词优化模型，请在管理后台「AI 接口配置 → 提示词优化模型」中设置' });
     }
     const system = [
@@ -143,10 +154,12 @@ aiRouter.post('/optimize-image-prompt', async (req, res) => {
       ]);
       res.json({ success: true, prompt: text.slice(0, 4000) });
     } catch (err: any) {
+      if (charged) refundCredits(user.id, 1, '文生图提示词优化失败退款', 'optimize_prompt');
       console.warn('[ai] 文生图提示词优化调用失败：', String(err?.message || err).slice(0, 180));
       res.status(502).json({ success: false, error: '提示词优化失败：' + String(err?.message || err).slice(0, 200) });
     }
   } catch (err: any) {
+    if (charged) refundCredits(user.id, 1, '文生图提示词优化失败退款', 'optimize_prompt');
     res.status(502).json({ success: false, error: String(err?.message || err).slice(0, 160) });
   }
 });

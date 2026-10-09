@@ -15,7 +15,7 @@ Precisely edit ONLY two menu labels and their small icons in panel 02 of this CE
 
 资源路径：public/tutorials/{ppt,image,canvas,reference,works}.png
 
-交付校准：PPT 示例采用 8 页、2K，每页 3 点，总计 24 点；自动保存展示为状态而非用户必须点击的按钮。个人中心示意只保留实际存在的账号资料和账号安全。
+交付校准：PPT 示例采用 8 页、2K，每页 5 点，总计 40 点；自动保存展示为状态而非用户必须点击的按钮。个人中心示意只保留实际存在的账号资料和账号安全。
 
 ## PPT 生成
 

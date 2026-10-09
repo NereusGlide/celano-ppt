@@ -8,7 +8,7 @@ import { testTextModelConnection, mergeTextTestOverride } from './textProviders.
 import { generateImage } from './ppt/aiClient.js';
 import { withImageSlot } from './ppt/imageSlots.js';
 import { dataUrlBytes, readImageDimensions } from './ppt/imageDimensions.js';
-import { imageSizeFor } from '../src/shared/imageSpecs.js';
+import { imageSizeFor, IMAGE_COST } from '../src/shared/imageSpecs.js';
 import { isUserOnline, onlineUserIds, forgetUser } from './presence.js';
 import {
   AdminAccount,
@@ -711,9 +711,9 @@ function normalizeMembershipPlans(value: unknown): MembershipPlanConfig[] {
     const renewalPrice = Number(plan.renewalPrice);
     if (!Number.isFinite(renewalPrice) || renewalPrice < 0) throw new Error(`第 ${index + 1} 项套餐续费价需为非负数`);
     const benefits = Array.isArray(plan.benefits) ? plan.benefits.filter((b): b is string => typeof b === 'string' && !!b.trim()).map(b => b.trim().slice(0, 80)).slice(0, 12) : [];
-    // 画质折扣：落在 1..零售价 区间（2K=10、4K=20），非法值回退到默认值。
-    const discount2k = Math.max(1, Math.min(10, Math.floor(Number(plan.discount2k) || 10)));
-    const discount4k = Math.max(1, Math.min(20, Math.floor(Number(plan.discount4k) || 20)));
+    // 画质折扣：落在 1..零售价 区间（2K=5、4K=10），非法值回退到零售价，与 IMAGE_COST 保持单一数据源。
+    const discount2k = Math.max(1, Math.min(IMAGE_COST['2K'], Math.floor(Number(plan.discount2k) || IMAGE_COST['2K'])));
+    const discount4k = Math.max(1, Math.min(IMAGE_COST['4K'], Math.floor(Number(plan.discount4k) || IMAGE_COST['4K'])));
     return {
       id,
       name,

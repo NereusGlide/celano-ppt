@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../api.js';
+import { IMAGE_COST } from '../../shared/imageSpecs.js';
 import { Alert, Button, Field, Modal, PageHeader, Select, Table, Tag, TextInput, Column } from '../ui.js';
 import { MembershipPlanConfig } from '../../types.js';
 
@@ -16,7 +17,7 @@ const BOOL_OPTIONS = [
 ];
 
 const blankPlan = (): MembershipPlanConfig => ({
-  id: '', name: '', price: '¥', renewalPrice: 0, points: 0, note: '', accent: 'blue', recommended: false, benefits: [], enabled: true, discount2k: 10, discount4k: 20,
+  id: '', name: '', price: '¥', renewalPrice: 0, points: 0, note: '', accent: 'blue', recommended: false, benefits: [], enabled: true, discount2k: IMAGE_COST['2K'], discount4k: IMAGE_COST['4K'],
 });
 
 export const MembershipPlansPage: React.FC = () => {
@@ -97,7 +98,7 @@ export const MembershipPlansPage: React.FC = () => {
       <div className="ws-panel">
         <div style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-secondary)', fontSize: 13 }}>
           <Tag type="info">内置</Tag>
-          <span><b style={{ color: 'var(--text-primary)' }}>免费版</b>（celano-free）— 每日 3 张 2K 免费 · 提示词优化免费 · 带水印 · 无画质折扣，随用户注册自动生效，无需配置。</span>
+          <span><b style={{ color: 'var(--text-primary)' }}>免费版</b>（celano-free）— 每日 3 张 2K 免费 · 提示词优化 1 点/次 · 带水印 · 无画质折扣，随用户注册自动生效，无需配置。</span>
         </div>
         {error && <div style={{ padding: '0 20px' }}><Alert type="error">{error}</Alert></div>}
         {notice && <div style={{ padding: '0 20px' }}><Alert type="success">{notice}</Alert></div>}
@@ -120,10 +121,10 @@ export const MembershipPlansPage: React.FC = () => {
               <Field label="续费价（元）"><TextInput type="number" value={String(editing.renewalPrice)} onChange={(v) => setEditing({ ...editing, renewalPrice: Number(v) || 0 })} className="w-full" /></Field>
             </div>
             <Field label="每月发放点数"><TextInput type="number" value={String(editing.points)} onChange={(v) => setEditing({ ...editing, points: Math.max(0, Math.floor(Number(v) || 0)) })} className="w-full" /></Field>
-            <Field label="画质折扣（实扣点数）" hint="2K 与 4K 的会员实扣点数；零售价为 2K=10 点、4K=20 点，折扣不得高于零售价">
+            <Field label="画质折扣（实扣点数）" hint={`2K 与 4K 的会员实扣点数；零售价为 2K=${IMAGE_COST['2K']} 点、4K=${IMAGE_COST['4K']} 点，折扣不得高于零售价`}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <TextInput type="number" value={String(editing.discount2k)} onChange={(v) => setEditing({ ...editing, discount2k: Math.max(1, Math.min(20, Math.floor(Number(v) || 10))) })} className="w-full" />
-                <TextInput type="number" value={String(editing.discount4k)} onChange={(v) => setEditing({ ...editing, discount4k: Math.max(1, Math.min(20, Math.floor(Number(v) || 20))) })} className="w-full" />
+                <TextInput type="number" value={String(editing.discount2k)} onChange={(v) => setEditing({ ...editing, discount2k: Math.max(1, Math.min(IMAGE_COST['2K'], Math.floor(Number(v) || IMAGE_COST['2K']))) })} className="w-full" />
+                <TextInput type="number" value={String(editing.discount4k)} onChange={(v) => setEditing({ ...editing, discount4k: Math.max(1, Math.min(IMAGE_COST['4K'], Math.floor(Number(v) || IMAGE_COST['4K']))) })} className="w-full" />
               </div>
             </Field>
             <Field label="套餐说明"><TextInput value={editing.note} onChange={(v) => setEditing({ ...editing, note: v })} className="w-full" placeholder="如：适合团队和商业化生产" /></Field>

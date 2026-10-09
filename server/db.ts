@@ -74,10 +74,10 @@ const initialPresentations: Presentation[] = [];
 
 /** 默认会员套餐目录：管理后台可整体增删改；首月价仅作展示，真实成交以后端支付配置为准。 */
 const DEFAULT_MEMBERSHIP_PLANS: MembershipPlanConfig[] = [
-  { id: 'celano-basic', name: '基础会员', price: '¥29', renewalPrice: 29, points: 300, note: '适合轻度创作与日常出图', accent: 'blue', benefits: ['每月 300 点', '2K / 4K 九折', '无水印 · PNG 无损', '失败免费重试'], discount2k: 9, discount4k: 18, enabled: true },
-  { id: 'celano-pro', name: '专业会员', price: '¥79', renewalPrice: 79, points: 850, note: '适合稳定高频的视觉创作', accent: 'teal', recommended: true, benefits: ['每月 850 点', '2K 九折 · 4K 八折', '优先生成队列', '批量生成（一次 4 张）'], discount2k: 9, discount4k: 16, enabled: true },
-  { id: 'celano-premium', name: '尊享会员', price: '¥199', renewalPrice: 199, points: 2400, note: '适合重度个人创作者', accent: 'violet', benefits: ['每月 2400 点', '2K 八折 · 4K 七折', '极速生成通道', '批量生成（一次 20 张）'], discount2k: 8, discount4k: 14, enabled: true },
-  { id: 'celano-flagship', name: '旗舰会员', price: '¥399', renewalPrice: 399, points: 5000, note: '适合专业商用与团队生产', accent: 'gold', benefits: ['每月 5000 点', '2K 七折 · 4K 六折', '极速 + 最高并发', '批量生成（一次 100 张）'], discount2k: 7, discount4k: 12, enabled: true },
+  { id: 'celano-basic', name: '基础会员', price: '¥29', renewalPrice: 29, points: 300, note: '适合轻度创作与日常出图', accent: 'blue', benefits: ['每月 300 点', '2K 4 点 · 4K 9 点', '无水印 · PNG 无损', '失败免费重试'], discount2k: 4, discount4k: 9, enabled: true },
+  { id: 'celano-pro', name: '专业会员', price: '¥79', renewalPrice: 79, points: 850, note: '适合稳定高频的视觉创作', accent: 'teal', recommended: true, benefits: ['每月 850 点', '2K 4 点 · 4K 8 点', '优先生成队列', '批量生成（一次 4 张）'], discount2k: 4, discount4k: 8, enabled: true },
+  { id: 'celano-premium', name: '尊享会员', price: '¥199', renewalPrice: 199, points: 2400, note: '适合重度个人创作者', accent: 'violet', benefits: ['每月 2400 点', '2K 3 点 · 4K 7 点', '极速生成通道', '批量生成（一次 20 张）'], discount2k: 3, discount4k: 7, enabled: true },
+  { id: 'celano-flagship', name: '旗舰会员', price: '¥399', renewalPrice: 399, points: 5000, note: '适合专业商用与团队生产', accent: 'gold', benefits: ['每月 5000 点', '2K 3 点 · 4K 6 点', '极速 + 最高并发', '批量生成（一次 100 张）'], discount2k: 3, discount4k: 6, enabled: true },
 ];
 
 /**
@@ -327,6 +327,25 @@ class Database {
     const plansWithoutDiscount = Array.isArray(this.data.membershipPlans) && this.data.membershipPlans.length > 0
       && this.data.membershipPlans.every(plan => !('discount2k' in plan) || !('discount4k' in plan));
     if (plansWithoutDiscount) this.data.membershipPlans = [...DEFAULT_MEMBERSHIP_PLANS];
+
+    // 计费目录升级：新零售价为2K=5点、4K=10点。只迁移仍使用上一版内置折扣值的标准套餐，
+    // 不覆盖管理员自行配置过的自定义套餐；历史任务页快照保持原单价，避免退款对账改变。
+    const standardDiscounts: Record<string, { discount2k: number; discount4k: number; benefits: string[] }> = {
+      'celano-basic': { discount2k: 4, discount4k: 9, benefits: ['每月 300 点', '2K 4 点 · 4K 9 点', '无水印 · PNG 无损', '失败免费重试'] },
+      'celano-pro': { discount2k: 4, discount4k: 8, benefits: ['每月 850 点', '2K 4 点 · 4K 8 点', '优先生成队列', '批量生成（一次 4 张）'] },
+      'celano-premium': { discount2k: 3, discount4k: 7, benefits: ['每月 2400 点', '2K 3 点 · 4K 7 点', '极速生成通道', '批量生成（一次 20 张）'] },
+      'celano-flagship': { discount2k: 3, discount4k: 6, benefits: ['每月 5000 点', '2K 3 点 · 4K 6 点', '极速 + 最高并发', '批量生成（一次 100 张）'] },
+    };
+    for (const plan of this.data.membershipPlans) {
+      const next = standardDiscounts[plan.id];
+      if (!next) continue;
+      const old = { discount2k: Number(plan.discount2k), discount4k: Number(plan.discount4k) };
+      const isPreviousBuiltIn = (plan.id === 'celano-basic' && old.discount2k === 9 && old.discount4k === 18)
+        || (plan.id === 'celano-pro' && old.discount2k === 9 && old.discount4k === 16)
+        || (plan.id === 'celano-premium' && old.discount2k === 8 && old.discount4k === 14)
+        || (plan.id === 'celano-flagship' && old.discount2k === 7 && old.discount4k === 12);
+      if (isPreviousBuiltIn) Object.assign(plan, next);
+    }
 
     // 预置超级管理员
     if (this.data.admins.length === 0) {
@@ -731,7 +750,7 @@ class Database {
   /**
    * 仅登记某页已退款（不改余额、不记流水），供单页重生成失败退款使用。
    *
-   * 单页重生成是独立的扣费-退款闭环（每次重生成单独扣 2 点、失败单独退 2 点），
+   * 单页重生成是独立的扣费-退款闭环（按画质单价单独扣点、失败单独退回），
    * 退款金额走 refundCredits 记流水；这里只把该页加入 refundedSlideIds 幂等集合，
    * 避免后续批量退款流程（refundFailedSlides）对这个 failed 页重复退。
    * 与 refundPptSlide 的区别是它不因「已登记」而吞掉本次退款。

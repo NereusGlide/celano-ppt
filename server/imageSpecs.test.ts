@@ -16,7 +16,7 @@ test('all image presets have consistent resolution tiers and valid native dimens
     assert.equal(width / height, 16 / 9);
   }
   assert.ok(Math.abs(PPT_PAGE_WIDTH / PPT_PAGE_HEIGHT - 16 / 9) < 1e-12);
-  assert.deepEqual(IMAGE_COST, { '2K': 10, '4K': 20 });
+  assert.deepEqual(IMAGE_COST, { '2K': 5, '4K': 10 });
 });
 
 test('every 2K ratio matches the reference canvas presets or its area-based calculation', () => {

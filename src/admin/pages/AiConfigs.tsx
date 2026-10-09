@@ -6,8 +6,8 @@ import type { ImageResolution, PlanningModelConfig, PromptOptimizeModelConfig } 
 import type { ImageConfigSlot } from '../api.js';
 
 const tiers: Array<{ resolution: ImageResolution; title: string; description: string; cost: number }> = [
-  { resolution: '2K', title: '高清', description: '适合正式图片与页面', cost: 3 },
-  { resolution: '4K', title: '超高清', description: '适合高质量导出', cost: 5 },
+  { resolution: '2K', title: '高清', description: '适合正式图片与页面', cost: 5 },
+  { resolution: '4K', title: '超高清', description: '适合高质量导出', cost: 10 },
 ];
 
 type Draft = { displayName: string; baseUrl: string; apiKey: string; modelName: string; provider: string; enabled: boolean; remark: string };
@@ -161,7 +161,7 @@ export const AiConfigsPage: React.FC = () => {
     {error && <Alert type="error"><CircleAlert size={14} /> {error}</Alert>}
     {notice && <Alert type="success"><Check size={14} /> {notice}</Alert>}
 
-    <Card title="生图通道 · 2K / 4K 独立映射" extra={<span className="text-[11px] text-[color:var(--text-secondary)]">每张图片按档位扣除 3 / 5 点</span>}>
+    <Card title="生图通道 · 2K / 4K 独立映射" extra={<span className="text-[11px] text-[color:var(--text-secondary)]">每张图片按档位扣除 5 / 10 点</span>}>
       <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
         {tiers.map(tier => { const slot = slots.find(item => item.resolution === tier.resolution); return <button key={tier.resolution} onClick={() => setOpen(tier.resolution)} className="rounded-2xl border p-4 text-left transition hover:-translate-y-0.5" style={{ borderColor: open === tier.resolution ? 'var(--accent)' : 'var(--border-subtle)', background: open === tier.resolution ? 'var(--accent-soft)' : 'var(--fill-soft)' }}><div className="flex items-center justify-between"><strong style={{ color: open === tier.resolution ? 'var(--accent)' : 'var(--text-primary)' }}>{tier.resolution}</strong>{slot?.ready ? <span className="text-[11px] text-[color:var(--accent)]">已就绪</span> : <span className="text-[11px] text-[color:var(--text-secondary)]">待配置</span>}</div><p className="mt-2 text-[12px] text-[color:var(--text-secondary)]">{tier.title}</p><p className="mt-1 text-[11px] text-[color:var(--text-secondary)]">{tier.description} · {tier.cost} 点/张</p></button>; })}
       </div>
@@ -206,7 +206,7 @@ export const AiConfigsPage: React.FC = () => {
           <Field label="最大输出 token" hint="正整数；留空使用上游默认"><TextInput value={promptOptimize.maxOutputTokens} onChange={v => setPromptOptimize({ ...promptOptimize, maxOutputTokens: v })} placeholder="留空使用上游默认" className="w-full" /></Field>
         </div>
         <Field label="系统提示词补充" hint="追加在内置优化提示词之后，例如统一语气或输出语言；留空只用内置提示词"><TextInput value={promptOptimize.systemPrompt} onChange={v => setPromptOptimize({ ...promptOptimize, systemPrompt: v })} placeholder="留空使用内置提示词" className="w-full" /></Field>
-        <p className="text-[11px] leading-6 text-[color:var(--text-secondary)]">生效范围：PPT 生成页「优化」按钮、旧版首页「优化」、画布节点「优化提示词」。提示词优化不消耗用户点数。</p>
+        <p className="text-[11px] leading-6 text-[color:var(--text-secondary)]">生效范围：PPT 生成页「优化」按钮、旧版首页「优化」、画布节点「优化提示词」。提示词优化每次扣除 1 点。</p>
       </div>}
     </Card>
   </div>;

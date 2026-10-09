@@ -3,18 +3,19 @@ import type { UsageRecord, User } from '../src/types.js';
 
 import { IMAGE_COST, normalizeImageResolution, imageSizeFor } from '../src/shared/imageSpecs.js';
 export const PPT_RESOLUTION_COST = IMAGE_COST;
+export const PROMPT_OPTIMIZE_COST = 1;
 export const normalizeResolution = normalizeImageResolution;
 export function resolutionCost(value: unknown): number { return IMAGE_COST[normalizeResolution(value)]; }
 export const resolutionImageSize = imageSizeFor;
 
 type CreditResult = { ok: true; credits: number } | { ok: false; error: string; credits: number };
 
-function addUsage(userId: string, username: string, credits: number, detail: string) {
+function addUsage(userId: string, username: string, credits: number, detail: string, type: UsageRecord['type'] = 'slide_image') {
   const record: UsageRecord = {
     id: 'use_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     userId,
     username,
-    type: 'slide_image',
+    type,
     detail,
     credits,
     createdAt: Date.now(),
@@ -129,7 +130,7 @@ export function refundImageCredits(userId: string, payment: Extract<ImageChargeR
  * 分开两次写既多付一次整库序列化成本，也会在两次写之间留下崩溃窗口
  * （余额已扣但没有任何流水，事后无法对账）。
  */
-export function chargeCredits(userId: string, amount: number, detail: string): CreditResult {
+export function chargeCredits(userId: string, amount: number, detail: string, type: UsageRecord['type'] = 'slide_image'): CreditResult {
   const cost = Math.max(0, Math.floor(Number(amount) || 0));
   return db.transaction(() => {
     const user = db.getUserById(userId);
@@ -140,13 +141,17 @@ export function chargeCredits(userId: string, amount: number, detail: string): C
     }
     const updated = db.updateUser(userId, { credits: balance - cost });
     if (!updated) return { ok: false, error: '扣减点数失败，请重试', credits: balance };
-    if (cost > 0) addUsage(userId, user.username, -cost, detail);
+    if (cost > 0) addUsage(userId, user.username, -cost, detail, type);
     return { ok: true, credits: updated.credits || 0 };
   });
 }
 
 /** AI 调用失败时退回已预扣的积分，并保留一条可审计流水。 */
-export function refundCredits(userId: string, amount: number, detail: string): number {
+export function chargePromptOptimize(userId: string, detail: string): CreditResult {
+  return chargeCredits(userId, PROMPT_OPTIMIZE_COST, detail, 'optimize_prompt');
+}
+
+export function refundCredits(userId: string, amount: number, detail: string, type: UsageRecord['type'] = 'slide_image'): number {
   const refund = Math.max(0, Math.floor(Number(amount) || 0));
   return db.transaction(() => {
     if (!refund) return Math.max(0, Math.floor(Number(db.getUserById(userId)?.credits) || 0));
@@ -155,7 +160,7 @@ export function refundCredits(userId: string, amount: number, detail: string): n
     const updated = db.updateUser(userId, { credits: Math.max(0, Math.floor(Number(user.credits) || 0)) + refund });
     // 余额更新失败时不记流水，避免出现「流水显示已退款、余额却未变」的对账不一致。
     if (!updated) return Math.max(0, Math.floor(Number(user.credits) || 0));
-    addUsage(userId, user.username, refund, detail);
+    addUsage(userId, user.username, refund, detail, type);
     return updated.credits || 0;
   });
 }

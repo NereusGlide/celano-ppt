@@ -23,10 +23,10 @@ function displayMembershipPlan(plan: MembershipPlanConfig): DisplayPlan {
 
 // 接口不可用时的兜底目录，与后端默认套餐保持一致。
 const DEFAULT_MEMBERSHIP_PLANS: MembershipPlanConfig[] = [
-  { id: 'celano-basic', name: '基础会员', price: '¥29', renewalPrice: 29, points: 300, note: '适合轻度创作与日常出图', accent: 'blue', benefits: ['无水印 · PNG 无损', '失败免费重试'], discount2k: 9, discount4k: 18, enabled: true },
-  { id: 'celano-pro', name: '专业会员', price: '¥79', renewalPrice: 79, points: 850, note: '适合稳定高频的视觉创作', accent: 'teal', recommended: true, benefits: ['优先生成队列', '批量生成（一次 4 张）'], discount2k: 9, discount4k: 16, enabled: true },
-  { id: 'celano-premium', name: '尊享会员', price: '¥199', renewalPrice: 199, points: 2400, note: '适合重度个人创作者', accent: 'violet', benefits: ['极速生成通道', '批量生成（一次 20 张）'], discount2k: 8, discount4k: 14, enabled: true },
-  { id: 'celano-flagship', name: '旗舰会员', price: '¥399', renewalPrice: 399, points: 5000, note: '适合专业商用与团队生产', accent: 'gold', benefits: ['极速 + 最高并发', '批量生成（一次 100 张）'], discount2k: 7, discount4k: 12, enabled: true },
+  { id: 'celano-basic', name: '基础会员', price: '¥29', renewalPrice: 29, points: 300, note: '适合轻度创作与日常出图', accent: 'blue', benefits: ['无水印 · PNG 无损', '失败免费重试'], discount2k: 4, discount4k: 9, enabled: true },
+  { id: 'celano-pro', name: '专业会员', price: '¥79', renewalPrice: 79, points: 850, note: '适合稳定高频的视觉创作', accent: 'teal', recommended: true, benefits: ['优先生成队列', '批量生成（一次 4 张）'], discount2k: 4, discount4k: 8, enabled: true },
+  { id: 'celano-premium', name: '尊享会员', price: '¥199', renewalPrice: 199, points: 2400, note: '适合重度个人创作者', accent: 'violet', benefits: ['极速生成通道', '批量生成（一次 20 张）'], discount2k: 3, discount4k: 7, enabled: true },
+  { id: 'celano-flagship', name: '旗舰会员', price: '¥399', renewalPrice: 399, points: 5000, note: '适合专业商用与团队生产', accent: 'gold', benefits: ['极速 + 最高并发', '批量生成（一次 100 张）'], discount2k: 3, discount4k: 6, enabled: true },
 ];
 
 const rechargePlans: RechargePlan[] = [
