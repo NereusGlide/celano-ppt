@@ -88,6 +88,24 @@ test('参考与Logo上传按扩展和真实图片格式校验，HTML及SVG参考
   }
 });
 
+test('风格参考文档只接受PDF/PPTX且拒绝伪装文件，不改变普通正文参考', async t => {
+  const request = await host(t);
+  for (const filename of ['style.txt', 'style.docx', 'style.ppt', 'bad.pdf', 'bad.pptx']) {
+    const res = await request('/api/upload-reference?style=true', 'POST', upload(filename, 'invalid', 'application/octet-stream'));
+    assert.equal(res.status, 400, filename);
+  }
+  for (const [filename, bytes] of [['style.pdf', Buffer.from('%PDF-1.7')], ['style.pptx', Buffer.from([0x50, 0x4b, 3, 4])]] as const) {
+    const res = await request('/api/upload-reference?style=true', 'POST', upload(filename, bytes, 'application/octet-stream'));
+    assert.equal(res.status, 200);
+    const { file } = await res.json();
+    assert.equal(file.parseStatus, 'pending');
+    assert.equal((await request(file.url, 'GET', undefined, false)).status, 401);
+    assert.equal((await request(file.url)).status, 200);
+  }
+  const normal = await request('/api/upload-reference', 'POST', upload('notes.txt', '普通正文', 'text/plain'));
+  assert.equal(normal.status, 200);
+});
+
 test('SVG Logo保留显示且独立sandbox禁脚本，文档和历史HTML仅附件下载', async t => {
   const request = await host(t);
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><script>alert(1)</script><rect width="20" height="20" fill="red"/></svg>';

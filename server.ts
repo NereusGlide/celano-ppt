@@ -282,12 +282,12 @@ function saveLegacyUpload(userId: string, file: MultipartFile) {
 
 // 参考文件元数据：上传后暂存文件名/类型/磁盘路径，供独立的「正文分析」步骤按 id 定位。
 // 分析完成后即删除；超过容量上限时淘汰最旧的一半，避免长期残留。
-const referenceMeta = new Map<string, { userId: string; filename: string; contentType: string; full: string; at: number }>();
+const referenceMeta = new Map<string, { userId: string; filename: string; contentType: string; full: string; style?: boolean; at: number }>();
 const REFERENCE_META_LIMIT = 2000;
 const REFERENCE_IMAGE_EXT = /\.(png|jpe?g|webp)$/i;
 const REFERENCE_TEXT_EXT = /\.(txt|md|markdown|csv|json)$/i;
 const REFERENCE_DOC_EXT = /\.(pdf|docx?|pptx?|xlsx?)$/i;
-function rememberReferenceMeta(id: string, entry: { userId: string; filename: string; contentType: string; full: string }) {
+function rememberReferenceMeta(id: string, entry: { userId: string; filename: string; contentType: string; full: string; style?: boolean }) {
   if (referenceMeta.size >= REFERENCE_META_LIMIT) {
     const keys = [...referenceMeta.keys()].sort((a, b) => referenceMeta.get(a)!.at - referenceMeta.get(b)!.at);
     for (const k of keys.slice(0, Math.ceil(REFERENCE_META_LIMIT / 2))) referenceMeta.delete(k);
@@ -647,6 +647,11 @@ app.post('/api/upload-reference', async (req, res) => {
     const file = await readMultipartFile(req, ['file', 'reference'], 110 * 1024 * 1024);
     if (!file) return jsonError(res, 400, '未找到参考文件，请使用 multipart/form-data 上传');
     const name = file.filename.toLowerCase();
+    const style = req.query.style === 'true';
+    if (file.data.length > 100 * 1024 * 1024) return jsonError(res, 413, '单个参考文件不能超过 100MB');
+    if (style && !/\.(png|jpe?g|webp|pdf|pptx)$/i.test(name)) return jsonError(res, 400, '风格参考仅支持 PNG、JPEG、WebP、PDF 或 PPTX');
+    if (style && /\.pdf$/i.test(name) && !file.data.subarray(0, 5).equals(Buffer.from('%PDF-'))) return jsonError(res, 400, 'PDF 文件格式无效');
+    if (style && /\.pptx$/i.test(name) && !file.data.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 3, 4]))) return jsonError(res, 400, 'PPTX 文件格式无效');
     if (/\.svg$/i.test(name)) return jsonError(res, 400, '参考图片暂不支持 SVG，请转换为 PNG、JPEG 或 WebP');
     const isImage = REFERENCE_IMAGE_EXT.test(name);
     const isText = REFERENCE_TEXT_EXT.test(name);
@@ -658,7 +663,7 @@ app.post('/api/upload-reference', async (req, res) => {
     const saved = saveLegacyUpload(user.id, file);
     // 图片作为视觉风格参考，无需正文分析；其余文件登记元数据，待前端触发异步分析。
     const parseStatus: 'image' | 'pending' = isImage ? 'image' : 'pending';
-    if (!isImage) rememberReferenceMeta(saved.id, { userId: user.id, filename: file.filename, contentType: file.contentType, full: saved.full });
+    if (!isImage) rememberReferenceMeta(saved.id, { userId: user.id, filename: file.filename, contentType: file.contentType, full: saved.full, style });
     res.json({
       success: true,
       file: { id: saved.id, name: file.filename.slice(0, 160), size: file.data.length, type: file.contentType, parseStatus, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension }
@@ -679,11 +684,15 @@ app.post('/api/references/analyze', async (req, res) => {
   const runExtraction = async (onProgress?: (percent: number, phase: string) => void) => {
     const data = fs.existsSync(meta.full) ? fs.readFileSync(meta.full) : Buffer.alloc(0);
     if (!data.length) throw new Error('参考文件已不存在，请重新上传');
-    const extraction = await extractReferenceFile({ filename: meta.filename, contentType: meta.contentType, data }, meta.full, db.getPlanningConfig(), onProgress);
-    // 正文已提取进 store.json，磁盘原件立即删除以释放空间（图片型不走此流程）。
-    if (extraction.parseStatus === 'ready') { try { fs.unlinkSync(meta.full); } catch { /* 删除失败不阻塞 */ } }
+    const extraction = await extractReferenceFile({ filename: meta.filename, contentType: meta.contentType, data }, meta.full, db.getPlanningConfig(), onProgress, { style: meta.style === true || req.body?.style === true });
+    // 只交接受鉴权保护的页面 URL，避免 base64 挤爆跨页面 sessionStorage。
+    const styleImages = extraction.styleImages?.map(image => {
+      const saved = saveLegacyUpload(user.id, { field: 'file', filename: 'style-page.jpg', contentType: 'image/jpeg', data: dataUrlBytes(image.dataUrl) });
+      return { name: image.name, url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + saved.id + saved.extension };
+    });
+    if (extraction.parseStatus === 'ready' || styleImages?.length) { try { fs.unlinkSync(meta.full); } catch { /* 删除失败不阻塞 */ } }
     referenceMeta.delete(id);
-    return extraction;
+    return { ...extraction, styleImages };
   };
   // 渐进模式：后台执行，前端轮询 GET /api/references/progress 拿真实百分比
   if ((req.body || {}).poll === true) {

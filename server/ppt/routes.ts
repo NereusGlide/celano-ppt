@@ -235,7 +235,7 @@ pptRouter.get('/decks/:id/slides/:slideId/image', (req, res) => {
   const deck = ownDeck(req, res, user);
   if (!deck) return;
   const slide = deck.slides.find(s => s.id === String(req.params.slideId || ''));
-  if (!slide || slide.status !== 'done') {
+  if (!slide || !slide.storageKey) {
     res.status(404).json({ success: false, error: '页面图片不存在' });
     return;
   }

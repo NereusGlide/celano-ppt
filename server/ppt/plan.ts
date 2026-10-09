@@ -29,8 +29,23 @@ export const PPT_PLAN_EFFORT = 'xhigh';
 /** 规划改为一次性输出全部页数（页数上限 100），不再分批；分批会引入「第 N 页」序号污染标题。 */
 export const PLAN_BATCH_SIZE = 100;
 
+const productReferencePattern = /商品|产品|\bproduct\b|\bpackaging\b/i;
+const productExclusionPattern = /(?:不要|无需|无须|避免|禁止|不得|不)(?:再|额外|任何|在本页)?(?:展示|呈现|加入|添加|放入|包含|使用|出现)[^。！？!?；;，,]{0,8}(?:商品|产品)|(?:不需要|排除|去掉|移除|删除)(?:上传的|参考的|此|该)?(?:商品|产品)|(?:商品|产品)[^。！？!?；;，,]{0,8}(?:不要出现|不出现|不展示)|\b(?:no|without|exclude)\s+(?:the\s+)?(?:product|packaging)\b|\b(?:do not|don't)\s+(?:show|include|add|use)\s+(?:the\s+)?(?:product|packaging)\b/i;
+
+/** 历史计划按单页内容兜底判断，不使用整套主题让所有页面携带商品。 */
+export function shouldUseProductReference(input: { slide: PptSlidePlan; productReferenceAvailable: boolean; editInstruction?: string }): boolean {
+  if (!input.productReferenceAvailable) return false;
+  const { slide } = input;
+  const content = [slide.title, slide.subtitle, slide.summary, slide.imagePrompt, ...slide.bullets, input.editInstruction].filter(Boolean).join('；');
+  if (productExclusionPattern.test(content)) return false;
+  if (input.editInstruction && productReferencePattern.test(input.editInstruction)) return true;
+  if (typeof slide.productReference === 'boolean') return slide.productReference;
+  if (slide.pageType === 'agenda' || slide.pageType === 'conclusion') return false;
+  return productReferencePattern.test(content);
+}
+
 /** 内容编排（逐页规划）提示词：先输出整套提案结构与逐页画面描述。 */
-export function buildPlanPrompts(input: { topic: string; pageCount: number; references?: string; faithfulReference?: boolean; batch?: { from: number; to: number; total: number; planned: Array<string | { title: string; pageType?: string; summary?: string }> } }) {
+export function buildPlanPrompts(input: { topic: string; pageCount: number; references?: string; faithfulReference?: boolean; productReference?: boolean; batch?: { from: number; to: number; total: number; planned: Array<string | { title: string; pageType?: string; summary?: string }> } }) {
   const total = input.batch?.total ?? input.pageCount;
   const system = [
     '你负责把用户目标整理成可直接生成图片版演示文稿的内容方向。本次是原生生图模式。',
@@ -40,6 +55,7 @@ export function buildPlanPrompts(input: { topic: string; pageCount: number; refe
     'JSON 结构包含 deck_title, deck_subtitle, visual_direction, palette, slides；slides 至少提供 title 和 image_prompt，subtitle、bullets、summary、page_type 都可按内容需要提供或留空。',
     '不要为排版、版式、配图、字体、配色、镜头、构图、页面类型、文字数量或视觉风格设置规则；image_prompt 只描述本页与主题相关的内容和自然延伸方向，把完整页面设计交给 Image 原生完成。',
     input.faithfulReference ? '用户已选择整套视觉风格参考，Image 将从中提炼并固定统一主视觉（配色、字体气质、装饰语言）。你只规划主题内容，不另创视觉风格；为各页提供准确且多样的 page_type（封面 cover、目录 agenda、结尾 conclusion，其余按内容选择），确保各页内容结构与排版需求不重复。每页聚焦一个主要信息，避免过量文案。' : '',
+    input.productReference ? '用户上传了商品参考图。请逐页输出布尔字段 product_reference：仅需要展示商品原型的页面设置 true，其余设置 false。依据本页内容判断，不要因为整套主题涉及商品就让所有页面包含商品；目录、背景、数据、流程等不需要展示商品的页面不额外加入商品。明确不含商品的用户要求必须遵守。' : '',
   ].join('');
   const plannedContext = input.batch?.planned?.length
     ? input.batch.planned.map(item => typeof item === 'string' ? item : item.title).join('、')
@@ -102,6 +118,7 @@ export function parseSlidePlan(text: string, pageCount: number, options?: { cove
       summary: cleanPlanText(slide.summary, 500) || undefined,
       pageType,
       imagePrompt: cleanPlanText(slide.image_prompt, 1200) || undefined,
+      ...(typeof slide.product_reference === 'boolean' ? { productReference: slide.product_reference } : {}),
     }];
   });
   if (!slides.length) throw new Error('规划结果为空，请稍后重试');
@@ -209,7 +226,7 @@ function cleanImagePrompt(text: string) {
 }
 
 /** 原生单页提示词：原始需求与该页视觉分镜合并后直接生图。 */
-export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePlan; index: number; referenceCount?: number; faithfulReference?: boolean; referenceLabels?: string[]; styleHint?: string; styleAnalysis?: string; palette?: PptPalette; personReference?: boolean; productReference?: boolean; editInstruction?: string }) {
+export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePlan; index: number; referenceCount?: number; faithfulReference?: boolean; referenceLabels?: string[]; styleHint?: string; styleAnalysis?: string; palette?: PptPalette; personReference?: boolean; productReference?: boolean; excludeProduct?: boolean; editInstruction?: string }) {
   const { slide } = input;
   const content = [slide.title, slide.subtitle, slide.summary, ...slide.bullets].filter(Boolean).join('；');
   const lines = [
@@ -235,6 +252,7 @@ export function buildSlidePrompt(input: { deckPrompt: string; slide: PptSlidePla
     ].join('\n') : '排版、字体、配图、色彩、构图、材质、光影、镜头、信息层级和整体视觉风格全部由 Image 原生自主设计，选择最适合当前内容的表达方式，不套用预设模板。',
     input.personReference ? '本次为人物一致性模式：参考图中的人物是唯一人物原型，所有出现人物的画面都必须基于该人物延展生成，其五官、发型、体态、服饰与气质保持一致，不得更换为其他人物或擅自改动外貌。' : '',
     input.productReference ? '本次为商品一致性模式：参考图中的商品是唯一商品原型，所有涉及该商品的画面都必须严格复现其外观、材质、配色、细节与品牌标识，不得替换为其他商品，也不得擅自改动商品造型或样式。' : '',
+    input.excludeProduct ? '本页不需要商品主体：不要额外加入上传商品、商品图或产品包装；即使整套主题或其他参考画面涉及商品，也只表达本页计划内容。' : '',
     input.editInstruction?.trim() ? `本页修改要求：${input.editInstruction.trim()}` : '',
   ];
   return lines.filter(Boolean).join('\n');

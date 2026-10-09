@@ -69,6 +69,65 @@ test('文生图优化完成不等待余额刷新，账户切换时不回填旧�
   assert.equal(patches.length, 1);
 });
 
+test('PPT风格文档交接前三页鉴权图片URL，会员确认沿用报价', () => {
+  const source = read('src/main.tsx');
+  const images = source.slice(source.indexOf('function handoffReferenceImages'), source.indexOf('function handoffRequestKey'));
+  const cost = source.slice(source.indexOf('function generationCost'), source.indexOf('function queuedPresentation'));
+  const context = evaluate(`${images}\n${cost}\nmodule.exports = { handoffReferenceImages, generationCost };`, { PPT_RESOLUTION_COST: { '2K': 5, '4K': 10 } });
+  const api = (context.module as any).exports;
+  const refs = api.handoffReferenceImages({ referenceFiles: [{ name: '视觉风格参考：版式.pdf', type: 'application/pdf', styleImages: [1, 2, 3, 4].map(page => ({ name: `版式.pdf · 第${page}页`, url: `/api/legacy-uploads/owner/page${page}.jpg` })) }, { name: '商品参考：商品.png', type: 'image/png', url: '/api/legacy-uploads/owner/product.png' }] });
+  assert.equal(refs.length, 4);
+  assert.match(refs[0].name, /^视觉风格参考：/);
+  assert.equal(refs[2].url, '/api/legacy-uploads/owner/page3.jpg');
+  assert.equal(api.generationCost({ slideCount: 4, resolution: '4K', estimatedPerSlide: 6 }).total, 24);
+  assert.equal(api.generationCost({ slideCount: 4, resolution: '4K', estimatedPerSlide: 999 }).total, 40);
+});
+
+test('PPT参考图读取失败明确中断，卸载取消素材读取而不静默丢图', async () => {
+  const source = read('src/workspace/WorkspaceApp.tsx');
+  const body = source.slice(source.indexOf('async function materializeHandoffImages'), source.indexOf('const EMPTY_PAGE'));
+  const context = evaluate(`${body}\nmodule.exports = materializeHandoffImages;`, { window: { location: { origin: 'https://example.test' } }, fetch: async () => new Response('denied', { status: 403 }) });
+  const materialize = (context.module as any).exports;
+  await assert.rejects(materialize([{ name: '商品', url: '/api/legacy-uploads/owner/ref.png' }]), /商品.*403.*任务未提交/);
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(materialize([{ name: '商品', url: '/api/legacy-uploads/owner/ref.png' }], controller.signal), /abort/i);
+});
+
+test('PPT批注按账号作品恢复，空首屏不会覆写缓存且不采用过期图片覆盖', () => {
+  const source = read('src/workspace/WorkspaceApp.tsx');
+  const normalize = source.slice(source.indexOf('function normalizeAnnotations'), source.indexOf('async function materializeHandoffImages'));
+  const body = source.slice(source.indexOf('  function buildDeckPages'), source.indexOf('  // 打开工作台'));
+  const saved = [{ id: 'slide', annotations: [{ kind: 'box', x: 10, y: 10, width: 20, height: 20, instruction: '保留批注' }], instruction: '更换背景', imageUrl: 'data:old' }];
+  const requested: string[] = [];
+  const ref = { current: '' };
+  const context = evaluate(`${normalize}\n${body}\nmodule.exports = buildDeckPages;`, { DEFAULT_MARK_WIDTH: 8, STORAGE_KEY: 'old', currentUser: { id: 'owner' }, pagesDeckId: ref, annotationStorageKey: (owner: string, id: string) => `${owner}:${id}`, localStorage: { getItem: (key: string) => { requested.push(key); return JSON.stringify(saved); } } });
+  const pages = (context.module as any).exports({ id: 'deck', slides: [{ id: 'slide', plan: { title: '新标题' }, imageUrl: '/api/new-image' }] });
+  assert.equal(requested[0], 'owner:deck');
+  assert.equal(pages[0].annotations[0].instruction, '保留批注');
+  assert.equal(pages[0].imageUrl, '/api/new-image');
+  assert.equal(ref.current, 'deck');
+  assert.match(source, /pagesDeckId\.current !== deck\.id \|\| !pages\.length/);
+  assert.match(source, /if \(!alive \|\| ownerRef\.current !== owner\) return;[\s\S]*const created = await createPptDeck/);
+});
+
+test('PPT编辑保存重试不再次调用付费模型且优化迟到结果不覆盖新主题', async () => {
+  const source = read('src/workspace/WorkspaceApp.tsx');
+  const body = source.slice(source.indexOf('  const retryEditSave'), source.indexOf('  const sendEdit'));
+  let saves = 0;
+  const busy = { current: false };
+  const context = evaluate(`${body}\nmodule.exports = retryEditSave;`, {
+    pendingEdit: { deckId: 'deck', pageId: 'slide', image: 'data:new' }, editBusy: busy, currentUser: { id: 'owner' },
+    setSending: () => {}, setEditError: () => {}, setDeck: () => {}, setPendingEdit: () => {}, setPages: () => {}, setEditNotice: () => {},
+    isCurrentWork: () => true, replacePptSlideImage: async () => { saves++; return { deck: { slides: [] } }; },
+    workspaceEditPage: () => { throw new Error('must not generate again'); },
+  });
+  await (context.module as any).exports();
+  assert.equal(saves, 1); assert.equal(busy.current, false);
+  assert.match(read('src/home/HomeApp.tsx'), /life\.active && topicRef\.current === original/);
+  assert.match(source, /generation !== libraryGeneration\.current/);
+  assert.match(source, /presentations\/.*\/download/);
+});
+
 test('显式hash深链接优先于pathname，根hash可从深链接返回首页', () => {
   const source = read('src/main.tsx').match(/function currentRoute\(\) \{[\s\S]*?\n\}/)![0];
   const context = evaluate(source, { window: { location: { pathname: '/image', hash: '#/prompts' } } });
