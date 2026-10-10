@@ -173,6 +173,39 @@ test('商品页包含商品参考，非商品页不发送商品封面或商品�
   assert.match(requests[1].prompt, /不要额外加入上传商品/);
 });
 
+test('风格商品人物混合参考及单图兼容均保持职责独立', async t => {
+  const user = fixtureUser(100);
+  const deckId = 'ppt-reference-roles-' + sequence;
+  const refs = [
+    { id: 'style', name: '视觉风格参考：版式', storageKey: 'user-' + user.id + '/deck-' + deckId + '/style.png', marker: 3 },
+    { id: 'product', name: '商品参考：原型', storageKey: 'user-' + user.id + '/deck-' + deckId + '/product.png', marker: 2 },
+    { id: 'person', name: '人物参考：模特', storageKey: 'user-' + user.id + '/deck-' + deckId + '/person.png', marker: 1 },
+  ];
+  for (const ref of refs) writeFixtureImage(ref.storageKey, 2048, 1152, ref.marker);
+  fixtureDeck(user, deckId, [], refs);
+  t.after(() => cleanupFixture(user, deckId));
+  t.mock.method(db, 'resolveImageConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-image' }));
+  const requests: Array<{ markers: number[]; prompt: string }> = [];
+  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => {
+    const form = init.body as FormData;
+    const images = [...form.getAll('image'), ...form.getAll('image[]')] as Blob[];
+    const contents = await Promise.all(images.map(image => image.arrayBuffer()));
+    requests.push({ markers: contents.map(bytes => Buffer.from(bytes)[15]), prompt: String(form.get('prompt') || '') });
+    if (requests.length === 1) return Response.json({ error: { message: 'multiple images not supported, only one image' } }, { status: 400 });
+    return Response.json({ data: [{ b64_json: pngDataUrl().split(',')[1] }] });
+  });
+  assert.ok('id' in await appendSlide(user.id, deckId, { ...basePlan, title: '商品展示', productReference: true }));
+  assert.ok('id' in await appendSlide(user.id, deckId, { ...basePlan, title: '行业数据', productReference: false }));
+  assert.deepEqual(requests[0].markers, [1, 2, 3]);
+  assert.match(requests[0].prompt, /输入参考图3：视觉风格参考：版式；仅提供颜色、形式、排版、结构/);
+  assert.deepEqual(requests[1].markers, [1]);
+  assert.match(requests[1].prompt, /输入参考图1：人物参考：模特；仅提供人物原型/);
+  assert.doesNotMatch(requests[1].prompt, /商品一致性模式|本次为风格延申模式|输入参考图2/);
+  assert.deepEqual(requests[2].markers, [1, 3]);
+  assert.match(requests[2].prompt, /输入参考图2：视觉风格参考：版式；仅提供颜色、形式、排版、结构/);
+  assert.doesNotMatch(requests[2].prompt, /商品一致性模式|输入参考图\d：商品参考/);
+});
+
 test('暂停初始占位规划后继续会重新发起真实规划并生成图片', async t => {
   const user = fixtureUser(100);
   const deckId = 'ppt-resume-planning-' + sequence;
