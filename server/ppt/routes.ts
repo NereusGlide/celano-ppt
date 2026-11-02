@@ -83,7 +83,7 @@ pptRouter.post('/decks', (req, res) => {
     requestKey: typeof body.requestKey === 'string' ? body.requestKey : req.get('Idempotency-Key') || undefined,
     resolution: body.resolution === '2K' || body.resolution === '4K' ? body.resolution : '2K',
     referencesText: typeof body.referencesText === 'string' ? body.referencesText : '',
-    referenceImages: Array.isArray(body.referenceImages) ? body.referenceImages as { name: string; dataUrl: string }[] : [],
+    referenceImages: Array.isArray(body.referenceImages) ? body.referenceImages as { name: string; dataUrl?: string; url?: string }[] : [],
     logo: body.logo && typeof body.logo === 'object' ? body.logo as any : undefined,
   });
   if (!('id' in result)) {

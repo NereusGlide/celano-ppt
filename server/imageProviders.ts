@@ -2,7 +2,7 @@ import { imageSizeFor, IMAGE_QUALITY, pixelResolution, MAX_IMAGE_BYTES } from '.
 import type { ThirdPartyApiConfig } from '../src/types.js';
 import { assertNative16x9, assertRequestedImageSize, dataUrlBytes } from './ppt/imageDimensions.js';
 import { withChineseTextAccuracy } from './imagePrompt.js';
-import { fetchPublicImage, readLimitedBody } from './remoteImages.js';
+import { fetchPublicImage, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS, readLimitedBody } from './remoteImages.js';
 
 export type ProviderModelList = { success: boolean; message: string; models: string[]; latencyMs?: number };
 
@@ -114,7 +114,7 @@ export async function generateImageEdit(
     let parsed: URL;
     try { parsed = new URL(remoteUrl); } catch { throw new Error('图像编辑接口返回了无效图片地址'); }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('图像编辑接口返回了不支持的图片地址');
-    const imageResp = await fetchPublicImage(remoteUrl);
+    const imageResp = await fetchPublicImage(remoteUrl, undefined, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS);
     if (!imageResp.ok) { await imageResp.body?.cancel(); throw new Error('下载图像编辑结果失败 HTTP ' + imageResp.status); }
     const contentType = String(imageResp.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(contentType)) {

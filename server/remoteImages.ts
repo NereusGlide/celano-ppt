@@ -112,6 +112,9 @@ function requestPublicImage(url: URL, signal: AbortSignal): Promise<Response> {
   });
 }
 
+/** 4K 结果先在上游生成完，再经临时 URL 归档。下载超时与画布一致，避免 120s 默认值丢掉已成功的图。 */
+export const IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS = 600_000;
+
 /** 用户提交的远程图不能访问本机/内网；每次重定向都重新验证目标。 */
 export async function fetchPublicImage(raw: string, signal?: AbortSignal, timeoutMs = 120_000): Promise<Response> {
   let current = raw;

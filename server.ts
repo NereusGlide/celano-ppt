@@ -24,10 +24,10 @@ import { clearUserSessionCookie, getUserSession, setUserSessionCookie } from './
 import { touchUser } from './server/presence.js';
 import { requireUser as requireUserSession } from './server/sessionGuard.js';
 import { generateImageEdit } from './server/imageProviders.js';
-import { withImageSlot } from './server/ppt/imageSlots.js';
+import { imageSlotSnapshot, withImageSlot } from './server/ppt/imageSlots.js';
 import { assertNative16x9, dataUrlBytes, readImageDimensions } from './server/ppt/imageDimensions.js';
 import { chargeCredits, refundCredits, memberImageCost } from './server/billing.js';
-import { fetchPublicImage, readLimitedBody } from './server/remoteImages.js';
+import { fetchPublicImage, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS, readLimitedBody } from './server/remoteImages.js';
 import type { User } from './src/types.js';
 
 dotenv.config();
@@ -112,10 +112,20 @@ app.use(express.raw({ type: 'multipart/form-data', limit: '120mb' }));
 // 全局档：宽松，只用于阻断脚本化爬取；
 // 认证档 / 兑换档：加严并只统计失败请求，正常用户不受影响。
 const limiterBase = { standardHeaders: 'draft-7' as const, legacyHeaders: false };
+function isLightweightStatusGet(req: express.Request): boolean {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const path = String(req.originalUrl || '').split('?')[0];
+  return path === '/api/health'
+    || path === '/api/references/progress'
+    || path === '/api/ppt/decks'
+    || /^\/api\/ppt\/decks\/[^/]+$/.test(path);
+}
 app.use('/api', rateLimit({
   ...limiterBase,
   windowMs: 5 * 60 * 1000,
   limit: 400,
+  // 多文件分析会每秒轮询进度；任务状态同样是短轮询。这些 GET 不占 400/5min 额度。
+  skip: req => isLightweightStatusGet(req),
   message: { success: false, error: '请求过于频繁，请稍后再试' },
 }));
 app.use(['/api/auth/login', '/api/auth/register', '/api/auth/password'], rateLimit({
@@ -672,8 +682,18 @@ app.get('/api/jobs/stream', (req, res) => {
   }, 15000);
   req.on('close', () => clearInterval(timer));
 });
-app.get('/api/queue/metrics', (_req, res) => res.json({ success: true, metrics: { pending: 0, processing: 0, concurrency: 2 } }));
-app.post('/api/queue/concurrency', (_req, res) => res.json({ success: true, metrics: { pending: 0, processing: 0, concurrency: 2 } }));
+function health(_req: express.Request, res: express.Response) {
+  res.json({ ok: true });
+}
+app.get('/health', health);
+app.get('/api/health', health);
+function queueMetrics() {
+  const slots = imageSlotSnapshot();
+  return { pending: slots.waiting, processing: slots.busy, concurrency: slots.slots };
+}
+app.get('/api/queue/metrics', (_req, res) => res.json({ success: true, metrics: queueMetrics() }));
+// 并发上限是进程内常量，这个接口只回读真实占用，不接受客户端改槽位数。
+app.post('/api/queue/concurrency', (_req, res) => res.json({ success: true, metrics: queueMetrics() }));
 app.post('/api/upload-reference', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -855,7 +875,7 @@ app.post('/api/workspace/edit-page', (req, res) => {
       // 统一转成受校验的 data URL，避免前端把远程 URL 当成本地图片保存而失败。
       let result = generated;
       if (!/^data:image\/(png|jpeg|webp);base64,/.test(result)) {
-        const remote = await fetchPublicImage(result);
+        const remote = await fetchPublicImage(result, undefined, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS);
         if (!remote.ok) { await remote.body?.cancel(); throw new Error('下载修改结果失败 HTTP ' + remote.status); }
         const mime = String(remote.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
         if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') { await remote.body?.cancel(); throw new Error('修改结果不是支持的图片格式'); }

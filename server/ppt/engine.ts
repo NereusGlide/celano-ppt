@@ -12,7 +12,7 @@ import { db } from '../db.js';
 import { chargeCredits, editCostFor, normalizeResolution, resolutionImageSize, refundCredits, memberImageCost } from '../billing.js';
 import { chatText, editImage, generateImage } from './aiClient.js';
 import { GLOBAL_IMAGE_SLOTS, withImageSlot } from './imageSlots.js';
-import { fetchPublicImage, readLimitedBody } from '../remoteImages.js';
+import { fetchPublicImage, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS, readLimitedBody } from '../remoteImages.js';
 import { assertNative16x9, assertPptImageSize, dataUrlBytes, readImageDimensions, type ImageDimensions } from './imageDimensions.js';
 import { analyzeReferences, analyzeStyleReferences, MAX_REFERENCE_TEXT, planningReferenceContext } from './referenceAnalysis.js';
 import {
@@ -89,16 +89,28 @@ function imageExtensionFromDataUrl(dataUrl: string): 'png' | 'jpg' | 'webp' {
   return imageExtensionFromMime(mime);
 }
 
-function loadImageDataUrl(storageKey: string): string | null {
+const imageDataCache = new Map<string, Promise<string | null>>();
+
+function forgetImageData(storageKey: string) {
+  if (storageKey) imageDataCache.delete(storageKey);
+}
+
+/** 同一封面/参考图会被多页复用。按 storageKey 异步读一次并缓存，避免每页同步 base64。 */
+function loadImageDataUrl(storageKey: string): Promise<string | null> {
+  const cached = imageDataCache.get(storageKey);
+  if (cached) return cached;
   const full = imageFullPath(storageKey);
-  if (!full || !fs.existsSync(full)) return null;
-  try {
+  if (!full) return Promise.resolve(null);
+  const pending = fs.promises.readFile(full).then(bytes => {
     const ext = path.extname(storageKey).toLowerCase();
     const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
-    return 'data:' + mime + ';base64,' + fs.readFileSync(full).toString('base64');
-  } catch {
+    return 'data:' + mime + ';base64,' + bytes.toString('base64');
+  }).catch(() => {
+    imageDataCache.delete(storageKey);
     return null;
-  }
+  });
+  imageDataCache.set(storageKey, pending);
+  return pending;
 }
 
 /** 页面图片磁盘路径（供路由读取原图）。 */
@@ -113,6 +125,7 @@ export function slideImagePath(deck: PptDeck, slideId: string): string {
 export function removeDeckImageFiles(deck: PptDeck): void {
   for (const image of [...deck.slides, ...deck.referenceImages]) {
     if (!image.storageKey) continue;
+    forgetImageData(image.storageKey);
     const full = imageFullPath(image.storageKey);
     if (full) { try { fs.unlinkSync(full); } catch { /* 文件可能已不存在 */ } }
   }
@@ -139,14 +152,14 @@ export function logoImagePath(deck: PptDeck): string {
   return full.startsWith(root) && fs.existsSync(full) ? full : '';
 }
 
-function patchSlide(deckId: string, slideId: string, patch: Partial<PptDeckSlide>) {
+function patchSlide(deckId: string, slideId: string, patch: Partial<PptDeckSlide>, options?: { persist?: boolean }) {
   const fresh = db.getPptDeck(deckId);
   if (!fresh) return;
   const idx = fresh.slides.findIndex(s => s.id === slideId);
   if (idx === -1) return;
   const slides = fresh.slides.slice();
   slides[idx] = { ...slides[idx], ...patch };
-  db.updatePptDeck(deckId, { slides });
+  db.updatePptDeck(deckId, { slides }, options);
 }
 
 /**
@@ -245,6 +258,7 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
   let meta: { subtitle: string; visualDirection: string; palette: PptPalette } = { subtitle: '', visualDirection: DEFAULT_PPT_VISUAL_DIRECTION, palette: { ...DEFAULT_PPT_PALETTE } };
   const planModel = planning?.modelName?.trim() || PPT_PLAN_MODEL;
   const planEffort = planning?.reasoningEffort || PPT_PLAN_EFFORT;
+  const planStarted = Date.now();
   console.log('[ppt] 开始规划:', deckId, '页数:', deck.pageCount, '模型:', planning?.apiKey ? planModel : '(未配置)', 'effort:', planEffort);
   let usedFallback = false;
   let planningWarning = '';
@@ -252,18 +266,19 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
   if (planning && planning.apiKey) {
     try {
       if (deck.referencesText.trim()) {
+        const analysisStarted = Date.now();
         db.updatePptDeck(deckId, { referenceAnalysisStatus: 'analyzing', referenceAnalysis: undefined, referenceAnalysisProgress: undefined });
         referenceAnalysis = await analyzeReferences(planning, deck.prompt, deck.referencesText, controller.signal, (done, total) => {
-          if (isCurrent()) db.updatePptDeck(deckId, { referenceAnalysisProgress: { done, total } });
+          if (isCurrent()) db.updatePptDeck(deckId, { referenceAnalysisProgress: { done, total } }, { persist: false });
         });
         if (!isCurrent()) return false;
         db.updatePptDeck(deckId, { referenceAnalysisStatus: 'done', referenceAnalysis });
+        console.log('[ppt] 参考分析完成:', deckId, '耗时ms:', Date.now() - analysisStarted);
       }
       // 风格参考图分析：用视觉模型反推每张图值得借鉴的设计点，供渲染阶段综合延申（最多取前 3 张）
       const styleRefs = deck.referenceImages.filter(ref => ref.name.startsWith('视觉风格参考：'));
       if (styleRefs.length && !deck.styleAnalysis) {
-        const styleUrls = styleRefs
-          .map(ref => ref.storageKey ? loadImageDataUrl(ref.storageKey) : null)
+        const styleUrls = (await Promise.all(styleRefs.map(ref => ref.storageKey ? loadImageDataUrl(ref.storageKey) : Promise.resolve(null))))
           .filter((url): url is string => Boolean(url))
           .slice(0, 3);
         if (styleUrls.length) {
@@ -283,7 +298,7 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
       for (let from = 1; from <= deck.pageCount; from += batched ? PLAN_BATCH_SIZE : deck.pageCount) {
         if (!isCurrent()) return false;
         batchIndex += 1;
-        if (isCurrent()) db.updatePptDeck(deckId, { planningProgress: { batch: batchIndex, totalBatches } });
+        if (isCurrent()) db.updatePptDeck(deckId, { planningProgress: { batch: batchIndex, totalBatches } }, { persist: false });
         const to = batched ? Math.min(deck.pageCount, from + PLAN_BATCH_SIZE - 1) : deck.pageCount;
         const prompts = buildPlanPrompts({
           topic: deck.prompt,
@@ -361,7 +376,7 @@ async function planDeck(deckId: string, token: number): Promise<boolean> {
     })),
     stage: 'rendering',
   });
-  console.log('[ppt] 规划完成:', deckId, '页数:', planned.length);
+  console.log('[ppt] 规划完成:', deckId, '页数:', planned.length, '耗时ms:', Date.now() - planStarted);
   return true;
 }
 
@@ -375,7 +390,8 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
   const slide = deck.slides.find(s => s.id === slideId);
   if (!slide) return;
   const index = deck.slides.findIndex(s => s.id === slideId);
-  patchSlide(deckId, slideId, { status: 'generating', error: undefined });
+  patchSlide(deckId, slideId, { status: 'generating', error: undefined }, { persist: false });
+  const pageStarted = Date.now();
   let writtenKey: string | undefined;
   try {
     const imageConfig = db.resolveImageConfig(deck.resolution);
@@ -387,42 +403,42 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     const useProduct = shouldUseProductReference({ slide: slide.plan, productReferenceAvailable: productRefs.length > 0, editInstruction: instruction });
     const faithfulReference = styleRefs.length > 0;
     const cover = deck.slides[0];
-    const addCover = () => {
+    const addCover = async () => {
       // 历史封面可能已强制带入商品；非商品页不以它作为视觉锚点。
       if (!useProduct && productRefs.length > 0) return;
       if (references.length >= MAX_REFERENCE_IMAGES) return;
       if (cover && cover.id !== slide.id && cover.status === 'done' && cover.storageKey) {
-        const dataUrl = loadImageDataUrl(cover.storageKey);
+        const dataUrl = await loadImageDataUrl(cover.storageKey);
         if (dataUrl) { references.push(dataUrl); referenceLabels.push('已生成封面，仅辅助系列一致性'); }
       }
     };
-    const addReference = (ref: PptReferenceImage) => {
-      const dataUrl = ref.storageKey ? loadImageDataUrl(ref.storageKey) : null;
+    const addReference = async (ref: PptReferenceImage) => {
+      const dataUrl = ref.storageKey ? await loadImageDataUrl(ref.storageKey) : null;
       if (dataUrl) { references.push(dataUrl); referenceLabels.push(ref.name); }
     };
     // 人物策略保持不变，商品仅在本页需要展示时纳入。
-    for (const ref of personRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
-    if (useProduct) for (const ref of productRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; addReference(ref); }
+    for (const ref of personRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; await addReference(ref); }
+    if (useProduct) for (const ref of productRefs) { if (references.length >= MAX_REFERENCE_IMAGES) break; await addReference(ref); }
     if (faithfulReference) {
       // 原始模版排在人物/商品之后：多图接口失败时，单图重试仍保留一致素材。
       const offset = index % styleRefs.length;
       for (let i = 0; i < styleRefs.length; i++) {
         if (references.length >= MAX_REFERENCE_IMAGES) break;
-        addReference(styleRefs[(offset + i) % styleRefs.length]);
+        await addReference(styleRefs[(offset + i) % styleRefs.length]);
       }
-      addCover();
+      await addCover();
       for (const ref of deck.referenceImages.filter(ref => !ref.name.startsWith('视觉风格参考：') && !ref.name.startsWith('人物参考：') && !ref.name.startsWith('商品参考：'))) {
         if (references.length >= MAX_REFERENCE_IMAGES) break;
-        addReference(ref);
+        await addReference(ref);
       }
     } else {
-      addCover();
+      await addCover();
       const offset = index * Math.max(1, MAX_REFERENCE_IMAGES - references.length);
       for (let i = 0; i < deck.referenceImages.length; i++) {
         if (references.length >= MAX_REFERENCE_IMAGES) break;
         const ref = deck.referenceImages[(offset + i) % deck.referenceImages.length];
         if (ref.name.startsWith('人物参考：') || ref.name.startsWith('商品参考：')) continue; // 已排在最前
-        addReference(ref);
+        await addReference(ref);
       }
     }
     const refs = references.slice(0, MAX_REFERENCE_IMAGES);
@@ -475,7 +491,7 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
       saveDataUrlImage(storageKey, dataUrl);
       writtenKey = storageKey;
     } else {
-      const resp = await fetchPublicImage(dataUrl, signal);
+      const resp = await fetchPublicImage(dataUrl, signal, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS);
       if (!resp.ok) { await resp.body?.cancel(); throw new Error('下载生成图片失败 HTTP ' + resp.status); }
       const contentType = String(resp.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
       if (contentType !== 'image/png' && contentType !== 'image/jpeg' && contentType !== 'image/webp') {
@@ -500,10 +516,11 @@ async function renderSlide(deckId: string, slideId: string, instruction?: string
     db.transaction(() => patchSlide(deckId, slideId, { status: 'done', error: undefined, storageKey, width: dimensions.width, height: dimensions.height, updatedAt: Date.now(), deliveredCredits: Math.max(0, (completed.chargedCredits || 0) - (completed.refundedCredits || 0)) }));
     writtenKey = undefined;
     if (slide.storageKey && slide.storageKey !== storageKey) {
+      forgetImageData(slide.storageKey);
       const previous = imageFullPath(slide.storageKey);
       if (previous) try { fs.rmSync(previous, { force: true }); } catch { /* 旧图清理不影响新图交付。 */ }
     }
-    console.log('[ppt] 页面生成完成:', deckId, slideId);
+    console.log('[ppt] 页面生成完成:', deckId, slideId, '耗时ms:', Date.now() - pageStarted);
   } catch (err: any) {
     // 停止后立即继续时，旧请求不能覆盖新一轮任务的状态。
     if (rt.runToken !== token) return;
@@ -651,9 +668,41 @@ export type PptStartInput = {
   requestKey?: string;
   resolution?: '2K' | '4K';
   referencesText?: string;
-  referenceImages?: { name: string; dataUrl: string }[];
+  referenceImages?: { name: string; dataUrl?: string; url?: string }[];
   logo?: LogoConfig;
 };
+
+/** 只接受当前用户自己的 legacy 上传，realpath 必须落在该用户目录内。 */
+function ownedLegacyUpload(userId: string, raw: string): string {
+  if (!userId || /[\\/]/.test(userId) || userId.includes('..')) return '';
+  const match = /^\/api\/legacy-uploads\/([^/]+)\/([^/?#]+)$/i.exec(String(raw || ''));
+  if (!match) return '';
+  let userSegment = '';
+  let filename = '';
+  try {
+    userSegment = decodeURIComponent(match[1]);
+    filename = decodeURIComponent(match[2]);
+  } catch { return ''; }
+  if (userSegment !== userId || !filename || filename !== path.basename(filename) || filename === '.' || filename === '..') return '';
+  const ext = path.extname(filename).toLowerCase();
+  if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) return '';
+  const root = path.resolve(process.cwd(), 'data', 'legacy-uploads', 'user-' + userId);
+  const full = path.resolve(root, filename);
+  if (!full.startsWith(root + path.sep)) return '';
+  try {
+    const rootReal = fs.realpathSync(root);
+    const real = fs.realpathSync(full);
+    if (real !== rootReal && !real.startsWith(rootReal + path.sep)) return '';
+    return real;
+  } catch { return ''; }
+}
+
+function assertReferenceBytes(bytes: Buffer) {
+  const size = readImageDimensions(bytes);
+  if (bytes.length > 6 * 1024 * 1024 || size.width < 1 || size.height < 1 || size.width > 32768 || size.height > 32768 || size.width * size.height > 100_000_000) {
+    throw new Error('尺寸无效或文件过大');
+  }
+}
 
 /** 新建生成任务并启动。 */
 export function startDeck(userId: string, input: PptStartInput): PptDeck | { error: string } {
@@ -668,13 +717,25 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
   if (!prompt || prompt.length > 4000) return { error: '请输入 1–4000 字的主题或需求' };
   if (Array.isArray(input.referenceImages) && input.referenceImages.length > 18) return { error: '参考图片最多 18 张' };
   const refs = Array.isArray(input.referenceImages) ? input.referenceImages : [];
+  const prepared: { name: string; dataUrl?: string; sourcePath?: string }[] = [];
   for (const item of refs) {
     try {
-      if (!item || typeof item.dataUrl !== 'string' || item.dataUrl.length > 8_388_710) throw new Error('格式无效或超过 6MB');
-      const bytes = dataUrlBytes(item.dataUrl);
-      const size = readImageDimensions(bytes);
-      if (bytes.length > 6 * 1024 * 1024 || size.width < 1 || size.height < 1 || size.width > 32768 || size.height > 32768 || size.width * size.height > 100_000_000) throw new Error('尺寸无效或文件过大');
-    } catch { return { error: '参考图片格式或像素尺寸无效，请使用 6MB 以内的 PNG、JPEG 或 WebP' }; }
+      if (!item || typeof item !== 'object') throw new Error('格式无效');
+      const name = String(item.name || '参考图').slice(0, 60);
+      if (typeof item.dataUrl === 'string' && item.dataUrl) {
+        if (item.dataUrl.length > 8_388_710) throw new Error('格式无效或超过 6MB');
+        assertReferenceBytes(dataUrlBytes(item.dataUrl));
+        prepared.push({ name, dataUrl: item.dataUrl });
+      } else if (typeof item.url === 'string' && item.url) {
+        const sourcePath = ownedLegacyUpload(userId, item.url);
+        if (!sourcePath) throw new Error('不属于当前账号');
+        assertReferenceBytes(fs.readFileSync(sourcePath));
+        prepared.push({ name, sourcePath });
+      } else throw new Error('格式无效');
+    } catch (error) {
+      if (error instanceof Error && error.message === '不属于当前账号') return { error: '参考图片必须是当前账号已上传的文件' };
+      return { error: '参考图片格式或像素尺寸无效，请使用 6MB 以内的 PNG、JPEG 或 WebP' };
+    }
   }
   const pageCount = Number(input.pageCount);
   if (String(input.referencesText || '').length > MAX_REFERENCE_TEXT) return { error: '参考资料内容超过分析上限，请拆分上传' };
@@ -695,14 +756,23 @@ export function startDeck(userId: string, input: PptStartInput): PptDeck | { err
   const concurrency = 6;
   const id = 'deck_' + Date.now() + '_' + nanoid();
   const referenceImages: PptReferenceImage[] = [];
-  for (let i = 0; i < refs.length; i++) {
-    const item = refs[i];
+  for (let i = 0; i < prepared.length; i++) {
+    const item = prepared[i];
     // 已在扣费前验证全部参考图，保存失败时不创建缺失素材的任务。
-    const ext = item.dataUrl.match(/^data:image\/(png|jpeg|webp);/)?.[1] === 'jpeg' ? 'jpg' : (item.dataUrl.match(/^data:image\/(png|jpeg|webp);/)?.[1] || 'png');
+    const fromData = item.dataUrl?.match(/^data:image\/(png|jpeg|webp);/)?.[1];
+    const fromFile = item.sourcePath ? path.extname(item.sourcePath).toLowerCase().replace(/^\./, '') : '';
+    const ext = (fromData || fromFile) === 'jpeg' ? 'jpg' : (fromData || fromFile || 'png');
     const storageKey = 'user-' + userId + '/deck-' + id + '/ref-' + i + '.' + ext;
     try {
-      saveDataUrlImage(storageKey, item.dataUrl);
-      referenceImages.push({ id: 'ref_' + i, name: String(item.name || '参考图').slice(0, 60), storageKey });
+      if (item.sourcePath) {
+        const full = imageFullPath(storageKey);
+        if (!full) throw new Error('非法存储路径');
+        ensureDir(full);
+        fs.copyFileSync(item.sourcePath, full);
+      } else {
+        saveDataUrlImage(storageKey, item.dataUrl || '');
+      }
+      referenceImages.push({ id: 'ref_' + i, name: item.name, storageKey });
     } catch {
       const directory = imageFullPath('user-' + userId + '/deck-' + id);
       if (directory) fs.rmSync(directory, { recursive: true, force: true });
@@ -1082,7 +1152,6 @@ export function deckView(deck: PptDeck) {
     planningWarning: deck.planningWarning,
     referenceAnalysisStatus: deck.referenceAnalysisStatus,
     referenceAnalysisProgress: deck.referenceAnalysisProgress,
-    referenceAnalysis: deck.referenceAnalysis,
     logo: deck.logo,
     referenceImages: deck.referenceImages.map(r => ({ id: r.id, name: r.name })),
     slides: deck.slides.map(s => ({

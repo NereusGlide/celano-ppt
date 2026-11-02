@@ -11,6 +11,7 @@ import { assertRequestedImageSize, assertRequestedNativeImageSize, dataUrlBytes,
 import { withChineseTextAccuracy } from './imagePrompt.js';
 import { chatText } from './ppt/aiClient.js';
 import { fetchPublicImage, readLimitedBody } from './remoteImages.js';
+import { generatedImageFile, storeGeneratedImage } from './canvasGenerated.js';
 
 /**
  * 画布代理令牌：iframe 与服务端之间的第二道校验（第一道是 requireUser 的会话校验）。
@@ -59,6 +60,15 @@ function imageQuote(fields: Record<string, unknown>, editing: boolean, user?: Us
 /** Infinite Canvas uses the host's cookie session and server-held model credentials. */
 export function createCanvasRouter(requireUser: (req: express.Request, res: express.Response) => User | null) {
   const router = express.Router();
+  router.get('/generated/:id', (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const image = generatedImageFile(user.id, String(req.params.id || ''));
+    if (!image) { res.sendStatus(404); return; }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.type(image.mime).sendFile(image.full);
+  });
   router.post('/quote', (req, res) => {
     const user = requireUser(req, res);
     if (!user) return;
@@ -249,7 +259,7 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
             item.width = dimensions.width;
             item.height = dimensions.height;
             item.requested_size = fields.size;
-            item.url = 'data:' + mime + ';base64,' + bytes.toString('base64');
+            item.url = await storeGeneratedImage(user.id, bytes, mime);
             delete item.b64_json;
           }
           const completed = Array.isArray(result.data) ? result.data.filter((item: any) => item?.url || item?.b64_json).length : 0;

@@ -138,6 +138,11 @@ test('canvas proxy keeps credentials server-side, quotes preset prices and refun
     assert.equal(output.width, 1672);
     assert.equal(output.height, 941);
     assert.equal(output.requested_size, '2048x1152');
+    assert.match(output.url, /^\/api\/canvas\/generated\/[a-f0-9]{32}$/);
+    assert.equal((await fetch(base + output.url.slice('/api/canvas'.length))).status, 401);
+    const downloaded = await fetch(base + output.url.slice('/api/canvas'.length), { headers: { Cookie: 'test-session' } });
+    assert.equal(downloaded.status, 200);
+    assert.match(downloaded.headers.get('content-type') || '', /^image\/png/);
     assert.equal(seen.n, undefined);
     assert.equal(seen.output_format, undefined);
     assert.equal(credits, 80);
