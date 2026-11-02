@@ -17,7 +17,7 @@
     "prestart": "node scripts/ensure-canvas.mjs",
     "postinstall": "cd integrations/infinite-canvas/web && npm ci --include=dev",
     "test:canvas": "node scripts/run-tests.mjs server/canvasRoutes.test.ts server/canvasAssetRoutes.test.ts",
-    "test:image": "node scripts/run-tests.mjs server/imageSpecs.test.ts server/ppt/aiClient.test.ts server/ppt/engine.test.ts server/ppt/referenceAnalysis.test.ts server/ppt/promptOptimization.test.ts server/ppt/referenceFiles.test.ts server/canvasRoutes.test.ts server/canvasAssetRoutes.test.ts src/workspace/draw.test.ts src/services/imageGeneration.test.ts",
+    "test:image": "node scripts/run-tests.mjs server/imageSpecs.test.ts server/pptxExport.test.ts server/ppt/aiClient.test.ts server/ppt/engine.test.ts server/ppt/referenceAnalysis.test.ts server/ppt/promptOptimization.test.ts server/ppt/referenceFiles.test.ts server/canvasRoutes.test.ts server/canvasAssetRoutes.test.ts src/workspace/draw.test.ts src/services/imageGeneration.test.ts",
     "test:server": "node scripts/run-tests.mjs"
   },
   "dependencies": {
