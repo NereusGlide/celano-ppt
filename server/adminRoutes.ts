@@ -838,7 +838,7 @@ adminRouter.post('/image-configs/:resolution/test', requireAdmin, async (req, re
     }
     const started = Date.now();
     try {
-      const dataUrl = await withImageSlot(() => generateImage(provider, TEST_IMAGE_PROMPT, size, undefined, 300_000));
+      const dataUrl = await withImageSlot(() => generateImage(provider, TEST_IMAGE_PROMPT, size, undefined, 300_000), { priority: 'background' });
       const buffer = dataUrlBytes(dataUrl);
       // 报告上游实际返回的像素，而不是假定值 —— 这正是「真实出图」相对
       // 只读模型列表的价值所在（尺寸策略变化会在这里暴露）。

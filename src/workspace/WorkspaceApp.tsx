@@ -62,34 +62,28 @@ function normalizeAnnotations(raw: any[]): Annotation[] {
   return list.map((a, i) => ({ ...a, number: i + 1 }));
 }
 
-async function materializeHandoffImages(raw: any[], signal?: AbortSignal): Promise<Array<{ name: string; dataUrl: string }>> {
-  const result: Array<{ name: string; dataUrl: string }> = [];
+async function materializeHandoffImages(raw: any[], signal?: AbortSignal): Promise<Array<{ name: string; dataUrl?: string; url?: string }>> {
+  const result: Array<{ name: string; dataUrl?: string; url?: string }> = [];
   if (Array.isArray(raw) && raw.length > 18) throw new Error('参考图片最多 18 张');
   for (const item of Array.isArray(raw) ? raw : []) {
-    signal?.throwIfAborted();
-    const source = typeof item?.dataUrl === 'string' ? item.dataUrl : typeof item?.url === 'string' ? item.url : '';
-    if (!source) throw new Error('参考图地址缺失，任务未提交');
+    const name = String(item?.name || '参考图片').slice(0, 80);
     try {
-      let dataUrl = source;
-      if (!/^data:image\/(png|jpeg|webp);base64,/i.test(source)) {
-        const parsed = new URL(source, window.location.origin);
-        if (parsed.origin !== window.location.origin) throw new Error('参考图必须来自当前站点');
-        const response = await fetch(parsed.toString(), { credentials: 'same-origin', signal });
-        if (!response.ok) throw new Error('下载参考图失败 HTTP ' + response.status);
-        const blob = await response.blob();
-        if (!['image/png', 'image/jpeg', 'image/webp'].includes(blob.type.toLowerCase()) || blob.size > 6 * 1024 * 1024) throw new Error('参考图格式无效或超过 6MB');
-        dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ''));
-          reader.onerror = () => reject(new Error('读取参考图失败'));
-          reader.readAsDataURL(blob);
-        });
+      signal?.throwIfAborted();
+      const source = typeof item?.dataUrl === 'string' ? item.dataUrl : typeof item?.url === 'string' ? item.url : '';
+      if (!source) throw new Error('参考图地址缺失，任务未提交');
+      if (/^data:image\/(png|jpeg|webp);base64,/i.test(source)) {
+        if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(source) || source.length > 8_388_710) throw new Error('参考图格式无效或超过 6MB');
+        result.push({ name, dataUrl: source });
+        continue;
       }
-      if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(dataUrl) || dataUrl.length > 8_388_710) throw new Error('参考图格式无效或超过 6MB');
-      result.push({ name: String(item?.name || '参考图片').slice(0, 80), dataUrl });
+      const parsed = new URL(source, window.location.origin);
+      if (parsed.origin !== window.location.origin || parsed.search || parsed.hash || !/^\/api\/legacy-uploads\/[^/]+\/[^/]+$/i.test(parsed.pathname)) {
+        throw new Error('参考图必须是当前站点已上传的图片');
+      }
+      result.push({ name, url: parsed.pathname });
     } catch (error) {
       if (signal?.aborted) throw error;
-      throw new Error(`${String(item?.name || '参考图片')}：${error instanceof Error ? error.message : '参考图读取失败'}，任务未提交`);
+      throw new Error(`${name}：${error instanceof Error ? error.message : '参考图读取失败'}，任务未提交`);
     }
   }
   return result;
@@ -364,6 +358,13 @@ export const WorkspaceApp: React.FC = () => {
   const refundedCredits = deck?.refundedCredits || 0;
   const spentCredits = Math.max(0, (deck?.chargedCredits || 0) - refundedCredits);
   const concurrency = deck?.concurrency || 0;
+  const elapsedSec = deck ? Math.max(0, Math.floor((nowMs - (deck.startedAt || nowMs)) / 1000)) : 0;
+  const stageLabel = !deck ? '任务后台'
+    : deck.referenceAnalysisStatus === 'analyzing' ? `参考分析 · 已 ${elapsedSec} 秒`
+    : deck.running && deck.stage === 'planning' ? `规划中 · 已 ${elapsedSec} 秒`
+    : deck.running ? `生成中 ${doneCount}/${totalSlides || '…'} · 已 ${elapsedSec} 秒`
+    : deck.finished ? '已完成'
+    : '已暂停';
 
   function buildDeckPages(value: PptDeckView): PageData[] {
     let saved: any[] = [];
@@ -477,12 +478,17 @@ export const WorkspaceApp: React.FC = () => {
     if (deck) sessionStorage.setItem('celano_active_deck', deck.id);
   }, [deck?.id]);
 
-  // 规划阶段每秒刷新一次「已耗时」显示，避免看起来像卡住
+  // 规划、参考分析和逐页生成都显示已耗时，避免看起来像卡住
   useEffect(() => {
-    if (!deck || deck.stage !== 'planning') return;
+    if (!deck?.running) return;
     const timer = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [deck?.stage]);
+  }, [deck?.id, deck?.running]);
+
+  // 规划一开始就打开任务后台。用户随后手动关掉时，同一阶段不再强制打开。
+  useEffect(() => {
+    if (deck?.running && deck.stage === 'planning') setTaskPanelOpen(true);
+  }, [deck?.id, deck?.stage, deck?.running]);
 
   // 任务进行中轮询刷新
   useEffect(() => {
@@ -779,7 +785,7 @@ export const WorkspaceApp: React.FC = () => {
             title="任务后台：查看当前生成任务的状态与进度"
           >
             <span className="ws-task-dot" aria-hidden="true" />
-            <span>{deck?.running ? `生成中 ${doneCount}/${totalSlides || '…'}` : deck?.finished ? '已完成' : deck ? '已暂停' : '任务后台'}</span>
+            <span>{stageLabel}</span>
           </button>
           <button className="ws-button ws-ghost" disabled={exporting || !!pendingEdit || !!deck?.running || appending || sending || !pages.some(p => p.imageUrl)} title={pages.some(p => p.imageUrl) ? '将已生成页面导出为 PPTX' : '生成页面后可导出 PPTX'} onClick={() => void exportPptx()}><Download size={14} /> {exporting ? '导出中…' : '下载 PPTX'}</button>
         </div>

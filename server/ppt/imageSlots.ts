@@ -5,7 +5,24 @@
 export const GLOBAL_IMAGE_SLOTS = 6;
 
 let imageBusy = 0;
-const imageWaiters: Array<() => void> = [];
+type ImageWaiter = { resolve: () => void; background: boolean };
+const imageWaiters: ImageWaiter[] = [];
+
+function enqueueImageWaiter(background: boolean): Promise<void> {
+  return new Promise(resolve => {
+    const waiter = { resolve, background };
+    if (!background) {
+      const firstBackground = imageWaiters.findIndex(item => item.background);
+      if (firstBackground >= 0) { imageWaiters.splice(firstBackground, 0, waiter); return; }
+    }
+    imageWaiters.push(waiter);
+  });
+}
+
+/** 当前占用与排队。队列指标用它，不再返回写死的 concurrency。 */
+export function imageSlotSnapshot() {
+  return { busy: imageBusy, waiting: imageWaiters.length, slots: GLOBAL_IMAGE_SLOTS };
+}
 
 /**
  * 占用一个上游并发位。
@@ -17,10 +34,14 @@ const imageWaiters: Array<() => void> = [];
  * 现在释放时若有等待者，计数保持不变、把位置直接移交给队首，
  * 队列严格 FIFO，新请求只能排在队尾。
  */
-export async function withImageSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (imageBusy >= GLOBAL_IMAGE_SLOTS) {
+export async function withImageSlot<T>(fn: () => Promise<T>, options?: { priority?: 'user' | 'background' }): Promise<T> {
+  const background = options?.priority === 'background';
+  // 管理端真实出图测试走 background：留出最后一路给用户，并排在用户等待者后面。
+  const blocked = imageBusy >= GLOBAL_IMAGE_SLOTS - (background ? 1 : 0)
+    || (background && imageWaiters.some(item => !item.background));
+  if (blocked) {
     // 被唤醒即意味着已经拿到移交过来的位置，无需再次检查计数。
-    await new Promise<void>(resolve => imageWaiters.push(resolve));
+    await enqueueImageWaiter(background);
   } else {
     imageBusy += 1;
   }
@@ -28,7 +49,7 @@ export async function withImageSlot<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } finally {
     const next = imageWaiters.shift();
-    if (next) next(); // 位置移交给队首，imageBusy 保持不变
+    if (next) next.resolve(); // 位置移交给队首，imageBusy 保持不变
     else imageBusy -= 1;
   }
 }

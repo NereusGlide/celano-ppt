@@ -7,6 +7,7 @@ import { db } from './db.js';
 import type { User } from '../src/types.js';
 import type { CanvasAsset } from '../src/services/canvasAssets.js';
 import { dataUrlBytes, readImageDimensions } from './ppt/imageDimensions.js';
+import { readGeneratedImage } from './canvasGenerated.js';
 
 const directory = path.resolve('data/canvas-assets');
 function publicAsset(asset: ReturnType<typeof db.getCanvasAssets>[number]) {
@@ -46,9 +47,19 @@ export function createCanvasAssetRouter(requireUser: (req: express.Request, res:
         data = { content: input.data.content };
       } else {
         if (input.imageData) {
-          const mime = /^data:(image\/(?:png|jpeg|webp));base64,/.exec(input.imageData)?.[1];
-          if (!mime) throw new Error('请上传 PNG、JPEG 或 WebP 图片');
-          const bytes = dataUrlBytes(input.imageData);
+          let mime = '';
+          let bytes: Buffer;
+          if (typeof input.imageData === 'string' && input.imageData.startsWith('/api/canvas/generated/')) {
+            const generated = readGeneratedImage(user.id, input.imageData);
+            if (!generated) throw new Error('生成图片已失效，请重新生成');
+            mime = generated.mime;
+            bytes = generated.bytes;
+            if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime)) throw new Error('请上传 PNG、JPEG 或 WebP 图片');
+          } else {
+            mime = /^data:(image\/(?:png|jpeg|webp));base64,/.exec(input.imageData)?.[1] || '';
+            if (!mime) throw new Error('请上传 PNG、JPEG 或 WebP 图片');
+            bytes = dataUrlBytes(input.imageData);
+          }
           if (bytes.length > MAX_IMAGE_BYTES) throw new Error('图片文件过大');
           const dimensions = readImageDimensions(bytes);
           if (!dimensions) throw new Error('无法识别图片尺寸');

@@ -8,7 +8,7 @@ import type { PlanningModelConfig, TextModelCallConfig, ThirdPartyApiConfig } fr
 import { normalizePlanningModelName } from '../planningModel.js';
 import { assertPptImageSize, dataUrlBytes } from './imageDimensions.js';
 import { withChineseTextAccuracy } from '../imagePrompt.js';
-import { fetchPublicImage, readLimitedBody } from '../remoteImages.js';
+import { fetchPublicImage, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS, readLimitedBody } from '../remoteImages.js';
 
 export type TextMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 export type VisionContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
@@ -79,7 +79,8 @@ async function materializeImage(item: any, signal: AbortSignal | undefined, cont
   let remote: URL;
   try { remote = new URL(value); } catch { throw new Error('图像接口返回了无效图片地址'); }
   if (remote.protocol !== 'http:' && remote.protocol !== 'https:') throw new Error('图像接口返回了不支持的图片地址');
-  const response = await fetchPublicImage(remote.href, signal);
+  // 生图 POST 已经结束。这里只下载结果；失败直接抛出，不得重新提交付费生成。
+  const response = await fetchPublicImage(remote.href, signal, IMAGE_RESULT_DOWNLOAD_TIMEOUT_MS);
   if (!response.ok) { await response.body?.cancel(); throw new Error('下载图像结果失败 HTTP ' + response.status); }
   const mime = String(response.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
   if (mime !== 'image/png' && mime !== 'image/jpeg' && mime !== 'image/webp') { await response.body?.cancel(); throw new Error('图像接口返回的不是支持的图片格式'); }

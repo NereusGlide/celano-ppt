@@ -360,3 +360,51 @@ test('deleting pages and decks respects ownership, synchronizes page counts and 
   assert.equal(deck, undefined, 'removing the last page removes its work from the library');
   assert.equal(refunded, 10, 'already refunded pages must not be refunded twice');
 });
+
+test('进度心跳不落盘，列表视图也不回传参考分析正文', () => {
+  const user = fixtureUser();
+  const deck = fixtureDeck(user, 'progress-persist-' + sequence, [{ id: 's', plan: basePlan, status: 'idle' }]);
+  const updated = db.updatePptDeck(deck.id, { planningProgress: { batch: 1, totalBatches: 1 }, referenceAnalysisProgress: { done: 1, total: 3 } }, { persist: false });
+  assert.equal(updated?.planningProgress?.batch, 1);
+  assert.equal(updated?.referenceAnalysisProgress?.done, 1);
+  db.updatePptDeck(deck.id, { referenceAnalysis: '不应出现在轮询响应里的长正文', referenceAnalysisStatus: 'done' });
+  const view = deckView(db.getPptDeck(deck.id)!);
+  assert.equal(view.referenceAnalysisStatus, 'done');
+  assert.equal(view.referenceAnalysisProgress?.done, 1);
+  assert.equal('referenceAnalysis' in view, false);
+  assert.equal(db.getPptDeck(deck.id)?.referenceAnalysis?.includes('长正文'), true);
+  cleanupFixture(user, deck.id);
+});
+
+test('创建任务时复制当前账号的已上传参考图，并拒绝其他路径', async t => {
+  const user = fixtureUser(100);
+  const deckId = { current: '' };
+  t.after(() => { if (deckId.current) stopDeck(user.id, deckId.current); cleanupFixture(user, deckId.current || 'missing'); });
+  t.mock.method(db, 'resolveImageConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-image' }));
+  t.mock.method(db, 'getPlanningConfig', () => ({ baseUrl: 'https://mock.invalid/v1', apiKey: 'mock', modelName: 'mock-text', reasoningEffort: 'auto' }));
+  t.mock.method(globalThis, 'fetch', async (_url: unknown, init: RequestInit) => new Promise((_resolve, reject) => {
+    if (init.signal?.aborted) { reject(new Error('任务已停止')); return; }
+    init.signal?.addEventListener('abort', () => reject(new Error('任务已停止')), { once: true });
+  }));
+  const bytes = Buffer.from(pngDataUrl().split(',')[1], 'base64');
+  const filename = 'owned-ref.png';
+  const dir = path.resolve(process.cwd(), 'data', 'legacy-uploads', 'user-' + user.id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, filename), bytes);
+  const creditsBefore = db.getUserById(user.id)?.credits;
+  const foreign = startDeck(user.id, { prompt: '越权参考', pageCount: 1, concurrency: 6, resolution: '2K', referenceImages: [{ name: '商品参考：别人', url: '/api/legacy-uploads/someone-else/' + filename }] });
+  assert.equal('id' in foreign, false);
+  assert.match(String((foreign as { error: string }).error), /当前账号/);
+  const traversal = startDeck(user.id, { prompt: '路径穿越', pageCount: 1, concurrency: 6, resolution: '2K', referenceImages: [{ name: '商品参考：穿越', url: '/api/legacy-uploads/' + user.id + '/' + encodeURIComponent('../store.json') }] });
+  assert.equal('id' in traversal, false);
+  assert.equal(db.getUserById(user.id)?.credits, creditsBefore);
+  const started = startDeck(user.id, { prompt: '交接参考', pageCount: 1, concurrency: 6, resolution: '2K', referenceImages: [{ name: '商品参考：商品', url: '/api/legacy-uploads/' + encodeURIComponent(user.id) + '/' + filename }] });
+  assert.equal('id' in started, true);
+  if (!('id' in started)) return;
+  deckId.current = started.id;
+  const storageKey = started.referenceImages[0]?.storageKey;
+  if (!storageKey) throw new Error('参考图未复制');
+  const copied = path.resolve(process.cwd(), 'data', 'images', storageKey);
+  assert.deepEqual(fs.readFileSync(copied), bytes);
+  stopDeck(user.id, started.id);
+});

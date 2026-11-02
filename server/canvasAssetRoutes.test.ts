@@ -7,6 +7,7 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { db } from './db.js';
 import { createCanvasAssetRouter } from './canvasAssetRoutes.js';
+import { storeGeneratedImage } from './canvasGenerated.js';
 import type { User } from '../src/types.js';
 
 test('shared canvas assets persist images and text, isolate accounts and preserve inserted images on deletion', async t => {
@@ -47,4 +48,39 @@ test('shared canvas assets persist images and text, isolate accounts and preserv
     assert.equal((await fetch(base + '/image', { method: 'DELETE', headers })).status, 200);
     assert.equal((await fetch(base + '/image', { method: 'PUT', headers, body: JSON.stringify({ kind: 'image', title: 'Stale tab', imageData }) })).status, 409);
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('saving a canvas asset can reference an owned generated image url', async t => {
+  const stored: any[] = [];
+  t.mock.method(db, 'getCanvasAssets', (userId: string) => stored.filter(asset => asset.userId === userId && !asset.deletedAt));
+  t.mock.method(db, 'getCanvasAsset', (userId: string, id: string, includeDeleted = false) => stored.find(asset => asset.userId === userId && asset.id === id && (includeDeleted || !asset.deletedAt)));
+  t.mock.method(db, 'putCanvasAsset', (asset: any) => { const index = stored.findIndex(item => item.userId === asset.userId && item.id === asset.id); if (index < 0) stored.push(asset); else stored[index] = asset; return asset; });
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'celano-assets-url-'));
+  const app = express(); app.use(express.json());
+  app.use('/assets', createCanvasAssetRouter((req, res) => {
+    const user = req.headers.cookie;
+    if (!user) { res.sendStatus(401); return null; }
+    return { id: user } as User;
+  }, directory));
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}/assets`;
+  const headers = { Cookie: 'A', 'Content-Type': 'application/json' };
+  const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1e0AAAAASUVORK5CYII=', 'base64');
+  try {
+    const owned = await storeGeneratedImage('A', bytes, 'image/png');
+    const saved = await fetch(base + '/from-url', { method: 'PUT', headers, body: JSON.stringify({ kind: 'image', title: 'From url', imageData: owned }) });
+    assert.equal(saved.status, 200);
+    const payload = await saved.json();
+    assert.equal(payload.asset.data.dataUrl, '/api/canvas/assets/from-url/image');
+    assert.equal(payload.asset.data.width, 1);
+    assert.equal(payload.asset.data.mimeType, 'image/png');
+    const foreign = await storeGeneratedImage('B', bytes, 'image/png');
+    const stolen = await fetch(base + '/stolen', { method: 'PUT', headers, body: JSON.stringify({ kind: 'image', title: 'Stolen', imageData: foreign }) });
+    assert.equal(stolen.status, 400);
+    assert.match((await stolen.json()).error, /失效/);
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

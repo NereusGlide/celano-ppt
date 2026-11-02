@@ -114,3 +114,27 @@ test('image generation survives view unsubscription, deduplicates submissions an
     if (channelDescriptor) Object.defineProperty(globalThis, 'BroadcastChannel', channelDescriptor); else delete (globalThis as any).BroadcastChannel;
   }
 });
+
+test('文生图保存引用服务端短地址，而不是把 data URL 再传回去', async t => {
+  const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: new EventTarget() });
+  t.after(() => { if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor); else delete (globalThis as { window?: unknown }).window; });
+  let saveFields: any;
+  t.mock.method(globalThis, 'fetch', async (input: any, init: any) => {
+    const url = String(input);
+    if (url === '/api/canvas/config') return Response.json({ proxyToken: 'token', channels: [{ id: 'celano-image', models: [{ name: 'image-model' }] }] });
+    if (url.includes('/images/generations')) return Response.json({ data: [{ url: '/api/canvas/generated/abc123', width: 1672, height: 941, mimeType: 'image/png' }] });
+    if (url.startsWith('/api/canvas/assets/') && init?.method === 'PUT') {
+      saveFields = JSON.parse(init.body);
+      return Response.json({ asset: { id: saveFields.id, data: { dataUrl: url + '/image', mimeType: 'image/png' } } });
+    }
+    throw new Error('Unexpected request ' + url);
+  });
+  const id = startImageGeneration('short-url-owner', { ...defaultImageDraft(), prompt: '海报' });
+  try {
+    const job = await settled(id);
+    assert.equal(job.phase, 'done');
+    assert.equal(saveFields.imageData, '/api/canvas/generated/abc123');
+    assert.equal(job.image?.url, '/api/canvas/assets/' + id + '/image');
+  } finally { forgetImageJob(id); }
+});

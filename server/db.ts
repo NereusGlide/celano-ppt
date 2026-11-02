@@ -682,7 +682,7 @@ class Database {
     return deck;
   }
 
-  updatePptDeck(id: string, updates: Partial<PptDeck>): PptDeck | null {
+  updatePptDeck(id: string, updates: Partial<PptDeck>, options?: { persist?: boolean }): PptDeck | null {
     const idx = this.data.pptDecks.findIndex(d => d.id === id);
     if (idx === -1) return null;
     const current = this.data.pptDecks[idx];
@@ -690,6 +690,9 @@ class Database {
     // 首次全部完成时记录完成时间，作为 7 天保留期起点（后续编辑不再刷新）
     if (updates.finished === true && !current.finished) next.finishedAt = Date.now();
     this.data.pptDecks[idx] = next;
+    // 进度心跳只改内存，避免每次段落/批次都同步重写整份 store.json。
+    // 扣费、退款、完成态不传 persist:false，并继续放在 transaction() 里一次落盘。
+    if (options?.persist === false && this.saveDepth === 0) return next;
     this.save();
     return this.data.pptDecks[idx];
   }

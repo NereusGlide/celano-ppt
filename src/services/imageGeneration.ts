@@ -88,6 +88,7 @@ export async function saveImageGeneration(id: string) {
   if (!job?.image) return;
   update(id, { phase: 'saving', error: undefined });
   try {
+    // 服务端物化后返回鉴权短地址。这里引用该地址保存，不再把整张 data URL 传回。
     const saved = await saveCanvasAsset({ id, expectedOwnerId: job.userId, kind: 'image', title: job.input.prompt.trim().slice(0, 60), note: job.input.prompt, imageData: job.image.url, tags: ['文生图', job.input.resolution, job.input.ratio], data: { width: job.image.width, height: job.image.height }, metadata: { source: 'text-image' } });
     const assetId = saved.asset.id || id;
     update(id, { phase: 'done', assetId, image: { ...job.image, url: saved.asset.data.dataUrl || job.image.url, mimeType: saved.asset.data.mimeType || job.image.mimeType } });

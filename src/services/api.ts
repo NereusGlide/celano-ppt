@@ -21,7 +21,7 @@ export interface CreatePptDeckPayload {
   requestKey?: string;
   resolution?: '2K' | '4K';
   referencesText?: string;
-  referenceImages?: { name: string; dataUrl: string }[];
+  referenceImages?: { name: string; dataUrl?: string; url?: string }[];
   logo?: import('../types.js').LogoConfig;
 }
 

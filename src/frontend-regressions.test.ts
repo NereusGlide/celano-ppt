@@ -86,9 +86,17 @@ test('PPT风格文档交接前三页鉴权图片URL，会员确认沿用报价',
 test('PPT参考图读取失败明确中断，卸载取消素材读取而不静默丢图', async () => {
   const source = read('src/workspace/WorkspaceApp.tsx');
   const body = source.slice(source.indexOf('async function materializeHandoffImages'), source.indexOf('const EMPTY_PAGE'));
-  const context = evaluate(`${body}\nmodule.exports = materializeHandoffImages;`, { window: { location: { origin: 'https://example.test' } }, fetch: async () => new Response('denied', { status: 403 }) });
+  let downloads = 0;
+  const context = evaluate(`${body}\nmodule.exports = materializeHandoffImages;`, { window: { location: { origin: 'https://example.test' } }, fetch: async () => { downloads += 1; return new Response('denied', { status: 403 }); } });
   const materialize = (context.module as any).exports;
-  await assert.rejects(materialize([{ name: '商品', url: '/api/legacy-uploads/owner/ref.png' }]), /商品.*403.*任务未提交/);
+  const passed = await materialize([{ name: '商品', url: '/api/legacy-uploads/owner/ref.png' }]);
+  assert.equal(passed.length, 1);
+  assert.equal(passed[0].name, '商品');
+  assert.equal(passed[0].url, '/api/legacy-uploads/owner/ref.png');
+  assert.equal(passed[0].dataUrl, undefined);
+  assert.equal(downloads, 0);
+  await assert.rejects(materialize([{ name: '商品', url: 'https://evil.test/ref.png' }]), /商品.*任务未提交/);
+  await assert.rejects(materialize([{ name: '商品', url: '/api/other/ref.png' }]), /商品.*任务未提交/);
   const controller = new AbortController(); controller.abort();
   await assert.rejects(materialize([{ name: '商品', url: '/api/legacy-uploads/owner/ref.png' }], controller.signal), /abort/i);
 });

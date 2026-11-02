@@ -27,17 +27,32 @@ async function ocrPdf(savedPath: string, onProgress?: ReferenceProgressFn): Prom
     if (!files.length) throw new Error('OCR 图片转换失败');
     if (files.length > 80) throw new Error('参考文件页数过多（超过 80 页），请拆分上传');
     onProgress?.(12, `OCR 识别（共 ${files.length} 页）`);
-    const parts: string[] = [];
+    const OCR_CONCURRENCY = 2;
+    const parts = new Array<string>(files.length);
+    let cursor = 0;
     let done = 0;
-    for (const file of files) {
-      const out = (await runFile('tesseract', [path.join(tmpDir, file), '-', '-l', 'chi_sim+eng', '--psm', '6'], { ...commandOptions, timeout: 90_000 })).stdout;
-      const clean = out.replace(/\f/g, '').replace(/\s+$/gm, '').trim();
-      if (clean) parts.push(clean);
-      done++;
-      onProgress?.(12 + Math.round(done / files.length * 86), `OCR 识别 ${done}/${files.length} 页`);
-      if (parts.join('\n').length > MAX_REFERENCE_TEXT) break;
+    let collected = 0;
+    const worker = async () => {
+      for (;;) {
+        if (collected > MAX_REFERENCE_TEXT) return;
+        const index = cursor++;
+        if (index >= files.length) return;
+        const out = (await runFile('tesseract', [path.join(tmpDir, files[index]), '-', '-l', 'chi_sim+eng', '--psm', '6'], { ...commandOptions, timeout: 90_000 })).stdout;
+        const clean = out.replace(/\f/g, '').replace(/\s+$/gm, '').trim();
+        parts[index] = clean;
+        if (clean) collected += clean.length;
+        done++;
+        onProgress?.(12 + Math.round(done / files.length * 86), `OCR 识别 ${done}/${files.length} 页`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(OCR_CONCURRENCY, files.length) }, () => worker()));
+    const ordered: string[] = [];
+    for (const part of parts) {
+      if (!part) continue;
+      ordered.push(part);
+      if (ordered.join('\n').length > MAX_REFERENCE_TEXT) break;
     }
-    return parts.join('\n\n');
+    return ordered.join('\n\n');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
