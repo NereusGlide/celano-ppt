@@ -482,19 +482,22 @@ function exportIdsFromRequest(req: express.Request): string[] {
   return [...new Set([...bodyIds, ...queryIds].map(id => String(id || '').trim()).filter(Boolean))].slice(0, 20);
 }
 
-async function imageDataForExport(slide: any, deck?: any): Promise<string> {
+type ExportImageInput = { path: string } | { data: string };
+
+// 远程旧图才需要下载。本地文件只解析路径，4 足够且不会把准备阶段铺得过开。
+const EXPORT_IMAGE_PREPARE_CONCURRENCY = 4;
+
+/**
+ * 本地页面图把磁盘路径交给 pptxgenjs。库按原始字节打进 pptx，不转码、不缩放。
+ * 旧作品没有本地文件时，data URL 与远程图仍使用下载到的原始字节，不重新压缩。
+ */
+async function imageInputForExport(slide: any, deck?: any): Promise<ExportImageInput> {
   if (deck) {
     const file = slideImagePath(deck, slide.id);
-    if (file) {
-      const ext = path.extname(file).toLowerCase();
-      const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
-      // 4K 页面图片可达数十 MB，同步 readFileSync 会逐页阻塞事件循环，
-      // 导出期间整个进程的其它请求都被拖住。改为异步读取。
-      return 'data:' + mime + ';base64,' + (await fs.promises.readFile(file)).toString('base64');
-    }
+    if (file) return { path: file };
   }
   const source = String(slide.imageUrl || '').trim();
-  if (/^data:image\/(png|jpeg|webp);base64,/.test(source)) return source;
+  if (/^data:image\/(png|jpeg|webp);base64,/.test(source)) return { data: source };
   if (!/^https?:\/\//i.test(source)) throw new Error('页面图片不存在');
   const response = await fetchPublicImage(source);
   if (!response.ok) { await response.body?.cancel(); throw new Error('下载作品图片失败 HTTP ' + response.status); }
@@ -502,7 +505,22 @@ async function imageDataForExport(slide: any, deck?: any): Promise<string> {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime)) { await response.body?.cancel(); throw new Error('作品图片格式不受支持'); }
   const bytes = await readLimitedBody(response);
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('作品图片过大');
-  return 'data:' + mime + ';base64,' + bytes.toString('base64');
+  return { data: 'data:' + mime + ';base64,' + bytes.toString('base64') };
+}
+
+async function mapWithLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  if (!items.length) return results;
+  let next = 0;
+  const workers = Math.min(Math.max(1, limit), items.length);
+  await Promise.all(Array.from({ length: workers }, async () => {
+    for (;;) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]);
+    }
+  }));
+  return results;
 }
 
 async function exportSelectedPresentations(req: express.Request, res: express.Response, ids: string[]) {
@@ -524,37 +542,53 @@ async function exportSelectedPresentations(req: express.Request, res: express.Re
     items.push({ kind: 'presentation', value: presentation });
   }
 
+  const started = Date.now();
   try {
     const pptx = new PptxGenJS();
     pptx.defineLayout({ name: 'CELANO_16_9', width: PPT_PAGE_WIDTH, height: PPT_PAGE_HEIGHT });
     pptx.layout = 'CELANO_16_9';
     pptx.author = 'CELANO PPT';
     pptx.title = items.length === 1 ? String(items[0].value.title || '演示文稿') : 'CELANO 合并作品';
-    let pageCount = 0;
+    const jobs: { deck?: any; slide: any }[] = [];
     for (const item of items) {
       const deck = item.kind === 'deck' ? item.value : undefined;
       const slides = Array.isArray(item.value.slides) ? item.value.slides : [];
-      for (const slide of slides) {
-        const data = await imageDataForExport(slide, deck);
-        const page = pptx.addSlide();
-        page.addImage({ data, x: 0, y: 0, w: PPT_PAGE_WIDTH, h: PPT_PAGE_HEIGHT });
-        if (deck?.logo?.enabled) {
-          const logoFile = logoImagePath(deck);
-          if (logoFile) {
-            const logoSize = deck.logo.size === 'sm' ? 0.8 : deck.logo.size === 'lg' ? 1.45 : 1.1;
-            const margin = 0.42;
-            const position = deck.logo.position || 'top-right';
-            const x = position.endsWith('left') ? margin : PPT_PAGE_WIDTH - margin - logoSize;
-            const y = position.startsWith('bottom') ? 7.5 - margin - logoSize * 0.55 : margin;
-            page.addImage({ path: logoFile, x, y, w: logoSize, h: logoSize * 0.55, transparency: Math.round((1 - Math.min(1, Math.max(0.1, Number(deck.logo.opacity) || 0.9))) * 100) });
-          }
-        }
-        pageCount += 1;
-      }
+      for (const slide of slides) jobs.push({ deck, slide });
     }
+    const readStarted = Date.now();
+    const images = await mapWithLimit(jobs, EXPORT_IMAGE_PREPARE_CONCURRENCY, job => imageInputForExport(job.slide, job.deck));
+    const readMs = Date.now() - readStarted;
+    images.forEach((image, index) => {
+      const deck = jobs[index].deck;
+      const page = pptx.addSlide();
+      page.addImage({ ...image, x: 0, y: 0, w: PPT_PAGE_WIDTH, h: PPT_PAGE_HEIGHT });
+      if (deck?.logo?.enabled) {
+        const logoFile = logoImagePath(deck);
+        if (logoFile) {
+          const logoSize = deck.logo.size === 'sm' ? 0.8 : deck.logo.size === 'lg' ? 1.45 : 1.1;
+          const margin = 0.42;
+          const position = deck.logo.position || 'top-right';
+          const x = position.endsWith('left') ? margin : PPT_PAGE_WIDTH - margin - logoSize;
+          const y = position.startsWith('bottom') ? 7.5 - margin - logoSize * 0.55 : margin;
+          page.addImage({ path: logoFile, x, y, w: logoSize, h: logoSize * 0.55, transparency: Math.round((1 - Math.min(1, Math.max(0.1, Number(deck.logo.opacity) || 0.9))) * 100) });
+        }
+      }
+    });
+    const pageCount = images.length;
     if (!pageCount) return jsonError(res, 409, '作品没有可导出的页面图片');
+    const writeStarted = Date.now();
     const output = await pptx.write({ outputType: 'nodebuffer' });
+    const finished = Date.now();
     const buffer = Buffer.isBuffer(output) ? output : Buffer.from(output as Uint8Array);
+    // 只记耗时和体积。本地原图在 write 阶段按路径读入，readMs 是准备输入的时间。
+    console.log('[pptx-export] ' + JSON.stringify({
+      id: ids.join(','),
+      pageCount,
+      readMs,
+      writeMs: finished - writeStarted,
+      bufferBytes: buffer.length,
+      totalMs: finished - started,
+    }));
     const filename = (items.length === 1 ? String(items[0].value.title || '演示文稿') : 'CELANO-合并文稿').replace(/[\\/:*?"<>|\r\n]+/g, '_').slice(0, 80) + '.pptx';
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
