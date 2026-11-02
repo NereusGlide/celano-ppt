@@ -7,7 +7,7 @@ import { optimizeImagePrompt } from '../services/api.js';
 import { fetchCurrentUser } from '../services/account.js';
 import { IMAGE_SIZE_PRESETS, imageSizeFor, type ImageResolution } from '../shared/imageSpecs.js';
 import { getMembershipCatalogVersion, isActiveMember, memberImageCost, remainingFreeDaily, subscribeMembershipCatalog } from '../shared/membership.js';
-import { getImageDraft, getImageJobs, setImageDraft, startImageGeneration, subscribeImageJobs, type ImageDraft } from '../services/imageGeneration.js';
+import { getImageDraft, getImageJobs, resumePersistedImageJobs, setImageDraft, startImageGeneration, subscribeImageJobs, type ImageDraft } from '../services/imageGeneration.js';
 import '../styles/image.css';
 
 export const ImageApp: React.FC = () => {
@@ -31,6 +31,7 @@ export const ImageApp: React.FC = () => {
     setConfirm(null); setNotice('');
   }, [owner]);
   useEffect(() => { if (draft.owner === owner) setImageDraft(owner, draft.input); }, [draft, owner]);
+  useEffect(() => { if (authReady && currentUser) resumePersistedImageJobs(); }, [authReady, currentUser?.id]);
   const { prompt, ratio, resolution, reference } = draft.input;
   useEffect(() => {
     if (!reference) { setReferenceUrl(''); return; }

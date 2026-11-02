@@ -12,6 +12,7 @@ import { withChineseTextAccuracy } from './imagePrompt.js';
 import { chatText } from './ppt/aiClient.js';
 import { fetchPublicImage, readLimitedBody } from './remoteImages.js';
 import { generatedImageFile, storeGeneratedImage } from './canvasGenerated.js';
+import { cancelImageJob, finishImageJob, getImageJob, readClientJobId, reserveImageJob, type ImageJob, type ImageJobView } from './imageJobs.js';
 
 /**
  * 画布代理令牌：iframe 与服务端之间的第二道校验（第一道是 requireUser 的会话校验）。
@@ -57,6 +58,18 @@ function imageQuote(fields: Record<string, unknown>, editing: boolean, user?: Us
   return { count, unit, free, cost, size, resolution };
 }
 
+function canWrite(res: express.Response, clientGone: boolean) {
+  return !clientGone && !res.headersSent && !res.writableEnded && !res.destroyed;
+}
+
+function writeImageJobResponse(res: express.Response, record: ImageJobView, clientGone: boolean) {
+  if (!canWrite(res, clientGone)) return;
+  try {
+    if (record.status === 'succeeded') res.json(record.result ?? { data: [] });
+    else res.status(record.httpStatus || 502).json({ error: { message: record.error || '画布模型请求失败' } });
+  } catch { /* 浏览器已经断开，结果留在任务里 */ }
+}
+
 /** Infinite Canvas uses the host's cookie session and server-held model credentials. */
 export function createCanvasRouter(requireUser: (req: express.Request, res: express.Response) => User | null) {
   const router = express.Router();
@@ -68,6 +81,22 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.type(image.mime).sendFile(image.full);
+  });
+  router.get('/image/jobs/:id', (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const job = getImageJob(String(req.params.id || ''), user.id);
+    if (!job) { res.status(404).json({ error: { message: '生成任务不存在或已过期' } }); return; }
+    res.json({ id: job.id, status: job.status, ...(job.error ? { error: { message: job.error } } : {}), ...(job.status === 'succeeded' ? { result: job.result } : {}) });
+  });
+  router.post('/image/jobs/:id/cancel', (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const id = String(req.params.id || '');
+    const outcome = cancelImageJob(id, user.id);
+    if (outcome === 'missing') { res.status(404).json({ error: { message: '生成任务不存在或已过期' } }); return; }
+    const job = getImageJob(id, user.id);
+    res.json({ id, status: outcome === 'cancelling' ? 'cancelled' : (job?.status || 'finished') });
   });
   router.post('/quote', (req, res) => {
     const user = requireUser(req, res);
@@ -139,8 +168,16 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
     let paymentSnapshot: Extract<ImageChargeResult, { ok: true }> | undefined;
     let requestedCount = 0;
     let localEditOriginalSize: string | undefined;
+    let clientJobId: string | undefined;
+    let activeJob: ImageJob | undefined;
+    let clientGone = false;
     const controller = new AbortController();
-    res.on('close', () => { if (!res.writableEnded) controller.abort(); });
+    // 文本流仍然跟随连接；生图任务不能因为切后台 / 关标签 / nginx 499 被取消。
+    res.on('close', () => {
+      if (res.writableEnded) return;
+      clientGone = true;
+      if (!imageRequest) controller.abort();
+    });
     try {
       let body: FormData | string;
       let fields: Record<string, unknown>;
@@ -151,6 +188,9 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
         if (fields.expectedOwnerId && fields.expectedOwnerId !== user.id) { res.status(409).json({ error: { message: '登录账号已改变，请重新提交生成' } }); return; }
         delete fields.expectedOwnerId;
         form.delete('expectedOwnerId');
+        clientJobId = readClientJobId(fields.celanoJobId);
+        delete fields.celanoJobId;
+        form.delete('celanoJobId');
         if (fields.local_edit === 'true') {
           if (endpoint !== '/images/edits') throw new Error('局部修改只能使用图片修改接口');
           const original = form.get('image') || form.get('image[]');
@@ -187,6 +227,8 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
         fields = { ...req.body };
         if (fields.expectedOwnerId && fields.expectedOwnerId !== user.id) { res.status(409).json({ error: { message: '登录账号已改变，请重新提交生成' } }); return; }
         delete fields.expectedOwnerId;
+        clientJobId = readClientJobId(fields.celanoJobId);
+        delete fields.celanoJobId;
         if (fields.local_edit) throw new Error('局部修改需要上传原图和 PNG 蒙版');
         delete fields.original_size;
         if (imageRequest) {
@@ -211,17 +253,32 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
       const count = Number(fields.n ?? 1);
       if (!Number.isSafeInteger(count) || count < 1 || count > 100) { res.status(400).json({ error: { message: '生成数量须为 1–100 的整数' } }); return; }
       if (imageRequest) {
+        const jobId = clientJobId || crypto.randomUUID();
+        const reserved = reserveImageJob(jobId, user.id);
+        if ('conflict' in reserved) { res.status(404).json({ error: { message: '生成任务不存在或已过期' } }); return; }
+        if (!reserved.created) {
+          writeImageJobResponse(res, await reserved.job.done, clientGone);
+          return;
+        }
+        activeJob = reserved.job;
         const editing = endpoint === '/images/edits';
         const { resolution, size } = imageQuote(fields, editing, user);
         const payment = chargeImageCredits(user.id, resolution === '4K' ? '4K' : '2K', count, '智能画布：' + (editing ? '图片修改' : '图片生成') + ' ' + count + ' 张 · ' + resolution + ' · ' + size, editing);
-        if (!payment.ok) { res.status(402).json({ error: { message: payment.error } }); return; }
+        if (!payment.ok) {
+          finishImageJob(activeJob, { status: 'failed', error: payment.error, httpStatus: 402 });
+          res.status(402).json({ error: { message: payment.error } });
+          return;
+        }
         paymentSnapshot = payment;
         requestedCount = count;
       }
       const base = config.baseUrl.replace(/\/+$/, '');
       const url = base.endsWith(endpoint) ? base : (base.endsWith('/v1') ? base : base + '/v1') + endpoint;
+      const upstreamSignal = activeJob
+        ? AbortSignal.any([activeJob.abort.signal, AbortSignal.timeout(600_000)])
+        : AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]);
       const forward = async () => {
-        const response = await fetch(url, { method: 'POST', headers, body, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(600_000)]) });
+        const response = await fetch(url, { method: 'POST', headers, body, signal: upstreamSignal });
         if (!response.ok) {
           const errorText = (await response.text()).slice(0, 600);
           let message = errorText;
@@ -245,7 +302,7 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
             } else {
               // 4K 图片可能先在上游完成生成，再经过临时 URL 归档；给下载阶段
               // 与前端生图请求相同的长超时，避免上游已计费而画布丢失结果。
-              const image = await fetchPublicImage(String(item.url), controller.signal, 600_000);
+              const image = await fetchPublicImage(String(item.url), upstreamSignal, 600_000);
               if (!image.ok) { await image.body?.cancel(); throw new Error('下载生图结果失败'); }
               mime = (image.headers.get('content-type') || '').split(';')[0];
               if (!['image/png', 'image/jpeg', 'image/webp'].includes(mime)) { await image.body?.cancel(); throw new Error('生图结果格式无效'); }
@@ -267,22 +324,32 @@ export function createCanvasRouter(requireUser: (req: express.Request, res: expr
           if (paymentSnapshot && completed < count) {
             refundImageCredits(user.id, paymentSnapshot, count, completed);
           }
-          // 结算完成，不再让响应异常触发第二次退款。
+          // 结算完成，不再让响应异常触发第二次退款。结果先留给任务，再尝试写回当前连接。
           paymentSnapshot = undefined;
-          res.json(result);
+          return result;
         } else {
           res.setHeader('Content-Type', response.headers.get('content-type') || 'application/json');
           if (!response.body) throw new Error('文本接口返回为空');
           await pipeline(Readable.fromWeb(response.body as any), res);
         }
       };
-      if (imageRequest) await withImageSlot(forward); else await forward();
+      if (imageRequest) {
+        const result = await withImageSlot(forward);
+        if (activeJob) finishImageJob(activeJob, { status: 'succeeded', result, httpStatus: 200 });
+        if (canWrite(res, clientGone)) {
+          try { res.json(result); } catch { /* 连接已断开，完成后从任务领取 */ }
+        }
+      } else await forward();
     } catch (error) {
+      const cancelled = Boolean(activeJob?.abort.signal.aborted);
       if (paymentSnapshot) {
         refundImageCredits(user.id, paymentSnapshot, requestedCount);
         paymentSnapshot = undefined;
       }
-      if (!res.headersSent && !res.destroyed) res.status(502).json({ error: { message: error instanceof Error ? error.message : '画布模型请求失败' } });
+      const message = cancelled ? '请求已取消' : (error instanceof Error ? error.message : '画布模型请求失败');
+      const status = (error as { statusCode?: number }).statusCode || (cancelled ? 499 : 502);
+      if (activeJob?.status === 'running') finishImageJob(activeJob, { status: cancelled ? 'cancelled' : 'failed', error: message, httpStatus: status });
+      if (canWrite(res, clientGone)) res.status(status).json({ error: { message } });
     }
   });
   return router;

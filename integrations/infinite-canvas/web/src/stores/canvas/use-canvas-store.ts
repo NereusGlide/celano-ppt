@@ -44,7 +44,23 @@ const CANVAS_STORE_KEY = "infinite-canvas:canvas_store";
 type PersistedCanvasState = Pick<CanvasStore, "projects" | "deletedProjects">;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let queuedPersistState: PersistedCanvasState | null = null;
+let queuedImageJobKey = "";
 let canvasStorageReadFailed = false;
+
+function pendingImageJobKey(state: PersistedCanvasState) {
+    const ids: string[] = [];
+    for (const project of state.projects) {
+        for (const node of project.nodes) {
+            const metadata = node.metadata;
+            if (!metadata) continue;
+            if (metadata.status === "loading" && metadata.generationJobId) ids.push(metadata.generationJobId);
+            for (const image of metadata.images || []) {
+                if (image.status === "loading" && image.generationJobId) ids.push(image.generationJobId);
+            }
+        }
+    }
+    return ids.sort().join("\n");
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -55,7 +71,7 @@ function isOptionalString(value: unknown) {
 }
 
 function isNodeResult(value: unknown) {
-    return isRecord(value) && typeof value.id === "string" && typeof value.status === "string" && typeof value.content === "string" && isOptionalString(value.storageKey);
+    return isRecord(value) && typeof value.id === "string" && typeof value.status === "string" && typeof value.content === "string" && isOptionalString(value.storageKey) && isOptionalString(value.generationJobId);
 }
 
 function isCanvasNode(value: unknown) {
@@ -63,7 +79,7 @@ function isCanvasNode(value: unknown) {
     if (value.metadata === undefined) return true;
     const metadata = value.metadata;
     if (!isRecord(metadata)) return false;
-    return isOptionalString(metadata.content) && isOptionalString(metadata.storageKey)
+    return isOptionalString(metadata.content) && isOptionalString(metadata.storageKey) && isOptionalString(metadata.generationJobId)
         && (metadata.references === undefined || Array.isArray(metadata.references) && metadata.references.every((url) => typeof url === "string"))
         && (metadata.images === undefined || Array.isArray(metadata.images) && metadata.images.every(isNodeResult))
         && (metadata.texts === undefined || Array.isArray(metadata.texts) && metadata.texts.every(isNodeResult));
@@ -115,11 +131,17 @@ const canvasStorage: PersistStorage<CanvasStore> = {
         canvasStorageReadFailed = false;
         if (queuedPersistState && queuedPersistState.projects === nextState.projects && queuedPersistState.deletedProjects === nextState.deletedProjects) return;
         queuedPersistState = nextState;
+        const nextJobKey = pendingImageJobKey(nextState);
+        const urgent = nextJobKey.length > 0 && nextJobKey !== queuedImageJobKey;
+        queuedImageJobKey = nextJobKey;
         if (saveTimer) clearTimeout(saveTimer);
-        saveTimer = setTimeout(() => {
+        const write = () => {
             saveTimer = null;
             void localForageStorage.setItem(name, JSON.stringify(value));
-        }, 400);
+        };
+        // 生成任务编号必须马上落盘，避免切后台时 400ms 防抖还没写完。
+        if (urgent) write();
+        else saveTimer = setTimeout(write, 400);
     },
     removeItem: (name) => localForageStorage.removeItem(name),
 };

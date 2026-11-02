@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultImageDraft, forgetImageJob, getImageJobs, saveImageGeneration, startImageGeneration, subscribeImageJobs } from './imageGeneration.js';
+import { defaultImageDraft, forgetImageJob, getImageJobs, resumePersistedImageJobs, saveImageGeneration, startImageGeneration, subscribeImageJobs } from './imageGeneration.js';
 
 test('参考图生成发送multipart编辑参数，保留所有画质比例和账号边界', async t => {
   let fields: FormData | undefined;
@@ -19,6 +19,7 @@ test('参考图生成发送multipart编辑参数，保留所有画质比例和�
     assert.equal(fields.get('size'), '2160x3840');
     assert.equal(fields.get('quality'), 'high');
     assert.equal(fields.get('expectedOwnerId'), 'reference-owner');
+    assert.equal(fields.get('celanoJobId'), id);
     assert.ok(fields.get('image') instanceof File);
   } finally { forgetImageJob(id); }
 });
@@ -40,7 +41,7 @@ async function settled(id: string) {
   const complete = () => getImageJobs().find(job => job.id === id && ['done', 'failed'].includes(job.phase));
   if (complete()) return complete()!;
   return new Promise<NonNullable<ReturnType<typeof complete>>>((resolve, reject) => {
-    const timeout = setTimeout(() => { stop(); reject(new Error('image job did not settle')); }, 2000);
+    const timeout = setTimeout(() => { stop(); reject(new Error('image job did not settle')); }, 6000);
     const stop = subscribeImageJobs(() => { const job = complete(); if (job) { clearTimeout(timeout); stop(); resolve(job); } });
   });
 }
@@ -89,6 +90,7 @@ test('image generation survives view unsubscription, deduplicates submissions an
     assert.equal(generationHeaders.Authorization, 'Bearer test-proxy-token');
     assert.equal(saveCount, 1);
     assert.equal(generationFields.expectedOwnerId, 'owner-A');
+    assert.equal(generationFields.celanoJobId, id);
     assert.equal(generationFields.resolution, '2K');
     assert.equal(generationFields.size, '2048x1152');
     assert.equal(saveFields.expectedOwnerId, 'owner-A');
@@ -137,4 +139,56 @@ test('文生图保存引用服务端短地址，而不是把 data URL 再传回�
     assert.equal(saveFields.imageData, '/api/canvas/generated/abc123');
     assert.equal(job.image?.url, '/api/canvas/assets/' + id + '/image');
   } finally { forgetImageJob(id); }
+});
+
+test('a dropped generation keeps the same server job and a reopened page claims it without posting again', async t => {
+  const storage = new Map<string, string>();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const previousChannel = Object.getOwnPropertyDescriptor(globalThis, 'BroadcastChannel');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: new EventTarget() });
+  Object.defineProperty(globalThis, 'BroadcastChannel', { configurable: true, value: undefined });
+  const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); }, removeItem: (key: string) => { storage.delete(key); } } });
+  t.after(() => {
+    if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage); else delete (globalThis as { localStorage?: unknown }).localStorage;
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow); else delete (globalThis as { window?: unknown }).window;
+    if (previousChannel) Object.defineProperty(globalThis, 'BroadcastChannel', previousChannel); else delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+  });
+  let posts = 0;
+  let polls = 0;
+  const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
+  t.mock.method(globalThis, 'fetch', async (input: any, init: any) => {
+    const url = String(input);
+    if (url === '/api/canvas/config') return json({ proxyToken: 'token', channels: [{ id: 'celano-image', models: [{ name: 'image-model' }] }] });
+    if (url.includes('/images/generations')) {
+      posts++;
+      assert.equal(JSON.parse(init.body).celanoJobId.length > 8, true);
+      throw new TypeError('Failed to fetch');
+    }
+    if (url.includes('/api/canvas/image/jobs/')) {
+      polls++;
+      if (polls === 1) return json({ id: 'pending', status: 'running' });
+      return json({ id: 'pending', status: 'succeeded', result: { data: [{ url: '/api/canvas/generated/kept', width: 1672, height: 941, mimeType: 'image/png' }] } });
+    }
+    if (url.startsWith('/api/canvas/assets/') && init?.method === 'PUT') return json({ asset: { id: JSON.parse(init.body).id, data: { dataUrl: url + '/image', mimeType: 'image/png' } } });
+    throw new Error('Unexpected request ' + url);
+  });
+  const id = startImageGeneration('disconnect-owner', { ...defaultImageDraft(), prompt: '断线后继续' });
+  try {
+    const job = await settled(id);
+    assert.equal(job.phase, 'done');
+    assert.equal(posts, 1);
+    assert.equal(polls, 2);
+    assert.equal(job.image?.url, '/api/canvas/assets/' + id + '/image');
+  } finally { forgetImageJob(id); }
+
+  posts = 0;
+  polls = 0;
+  storage.set('celano.image.pendingJobs', JSON.stringify([{ id: 'resume-job-1', userId: 'disconnect-owner', startedAt: 1, prompt: '回来领取', resolution: '4K', ratio: '16:9' }]));
+  resumePersistedImageJobs();
+  const resumed = await settled('resume-job-1');
+  assert.equal(resumed.phase, 'done');
+  assert.equal(posts, 0, 'resuming a disconnected job must not start another paid generation');
+  assert.ok(polls >= 1);
+  forgetImageJob('resume-job-1');
 });

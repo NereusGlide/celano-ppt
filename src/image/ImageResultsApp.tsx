@@ -5,7 +5,7 @@ import { DeleteConfirmation } from '../components/DeleteConfirmation.js';
 import { useAuth } from '../context/AuthContext.js';
 import { deleteCanvasAsset, fetchCanvasAssets, type CanvasAsset } from '../services/canvasAssets.js';
 import { fetchCurrentUser } from '../services/account.js';
-import { forgetImageJob, getImageJobs, saveImageGeneration, setImageDraft, subscribeImageJobs, type ImageJob } from '../services/imageGeneration.js';
+import { forgetImageJob, getImageJobs, resumePersistedImageJobs, saveImageGeneration, setImageDraft, subscribeImageJobs, type ImageJob } from '../services/imageGeneration.js';
 import { subscribeLibraryChanges } from '../shared/libraryEvents.js';
 import '../styles/image.css';
 import '../styles/image-results.css';
@@ -27,6 +27,7 @@ export const ImageResultsApp: React.FC = () => {
   const [now, setNow] = useState(Date.now());
   const allJobs = useSyncExternalStore(subscribeImageJobs, getImageJobs);
   const jobs = allJobs.filter(job => job.userId === currentUser?.id);
+  useEffect(() => { if (authReady && currentUser) resumePersistedImageJobs(); }, [authReady, currentUser?.id]);
   const pending = jobs.some(job => ['generating', 'saving'].includes(job.phase));
   useEffect(() => { if (!pending) return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [pending]);
   const completedJobs = jobs.filter(job => job.phase === 'done' || job.phase === 'failed').map(job => job.id + job.phase).join('|');
