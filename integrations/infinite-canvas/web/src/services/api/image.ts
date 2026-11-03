@@ -95,7 +95,9 @@ type GeminiPayload = {
     promptFeedback?: { blockReason?: string };
 };
 type GeminiStreamState = { buffer: string; text: string; toolCalls: ResponseToolCall[]; error?: string };
-type RequestOptions = { signal?: AbortSignal; editMaskDataUrl?: string; originalSize?: string };
+type RequestOptions = { signal?: AbortSignal; editMaskDataUrl?: string; originalSize?: string; jobId?: string };
+export const IMAGE_JOB_CANCEL = "user-cancel";
+export const IMAGE_JOB_DETACH = "detach";
 
 const QUALITY_BASE: Record<string, number> = {
     low: 2048,
@@ -343,6 +345,104 @@ function withSystemPrompt(config: AiConfig, prompt: string) {
 
 function aiApiUrl(config: AiConfig, path: string) {
     return buildApiUrl(config.baseUrl, path);
+}
+
+function celanoImageRoot(baseUrl: string) {
+    return baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/i, "");
+}
+
+function isCelanoImageApi(baseUrl: string) {
+    return /\/api\/canvas\/image$/i.test(celanoImageRoot(baseUrl));
+}
+
+function celanoJobUrl(baseUrl: string, jobId: string, suffix = "") {
+    return `${celanoImageRoot(baseUrl)}/jobs/${encodeURIComponent(jobId)}${suffix}`;
+}
+
+function isTransportFailure(error: unknown) {
+    if (axios.isCancel(error)) return true;
+    if (axios.isAxiosError(error)) return !error.response;
+    return error instanceof TypeError;
+}
+
+function delay(ms: number, signal?: AbortSignal) {
+    return new Promise<void>((resolve) => {
+        if (signal?.aborted) {
+            resolve();
+            return;
+        }
+        const timer = setTimeout(() => {
+            signal?.removeEventListener("abort", onAbort);
+            resolve();
+        }, ms);
+        const onAbort = () => {
+            clearTimeout(timer);
+            resolve();
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
+    });
+}
+
+/** 用户主动停止才通知服务端取消；切后台或页面退出只断开这次等待。 */
+export function cancelCelanoImageJob(jobId: string, baseUrl = "/api/canvas/image") {
+    if (!jobId || !isCelanoImageApi(baseUrl)) return;
+    void fetch(celanoJobUrl(baseUrl, jobId, "/cancel"), { method: "POST", credentials: "same-origin", keepalive: true }).catch(() => undefined);
+}
+
+function throwIfImageJobAborted(signal: AbortSignal | undefined, baseUrl: string, jobId: string | undefined) {
+    if (!signal?.aborted) return;
+    if (signal.reason !== IMAGE_JOB_DETACH && jobId) cancelCelanoImageJob(jobId, baseUrl);
+    throw new Error(apiText("requestCanceled"));
+}
+
+async function pollCelanoImageJob(baseUrl: string, jobId: string, signal?: AbortSignal): Promise<ImageApiResponse> {
+    const deadline = Date.now() + IMAGE_REQUEST_TIMEOUT_MS;
+    const url = celanoJobUrl(baseUrl, jobId);
+    while (Date.now() < deadline) {
+        throwIfImageJobAborted(signal, baseUrl, jobId);
+        let response;
+        try {
+            response = await axios.get(url, { withCredentials: true, timeout: 20_000, signal, validateStatus: () => true });
+        } catch (error) {
+            throwIfImageJobAborted(signal, baseUrl, jobId);
+            if (isTransportFailure(error)) {
+                await delay(1500, signal);
+                continue;
+            }
+            throw new Error(readAxiosError(error, apiText("requestFailed")));
+        }
+        if (response.status === 404) throw new Error("生成任务不存在或已过期，请重新生成");
+        if (response.status === 401 || response.status === 403) throw new Error(apiText("authenticationFailed"));
+        if (response.status >= 500) {
+            await delay(1500, signal);
+            continue;
+        }
+        const body = response.data || {};
+        if (body.status === "running") {
+            await delay(1500, signal);
+            continue;
+        }
+        if (body.status === "succeeded") return body.result as ImageApiResponse;
+        throw new Error(body.error?.message || (body.status === "cancelled" ? apiText("requestCanceled") : apiText("requestFailed")));
+    }
+    throw new Error(apiText("imageTimeout"));
+}
+
+export async function claimCelanoImageJob(jobId: string, baseUrl = "/api/canvas/image", signal?: AbortSignal) {
+    const images = parseImagePayload(await pollCelanoImageJob(baseUrl, jobId, signal));
+    const image = images[0];
+    if (!image) throw new Error(apiText("requestFailed"));
+    return image;
+}
+
+async function runCelanoImagePost<T>(baseUrl: string, jobId: string | undefined, signal: AbortSignal | undefined, send: () => Promise<T>, restore: (payload: ImageApiResponse) => T): Promise<T> {
+    try {
+        return await send();
+    } catch (error) {
+        throwIfImageJobAborted(signal, baseUrl, jobId);
+        if (jobId && isCelanoImageApi(baseUrl) && isTransportFailure(error)) return restore(await pollCelanoImageJob(baseUrl, jobId, signal));
+        throw new Error(readAxiosError(error, apiText("requestFailed")));
+    }
 }
 
 function aiHeaders(config: AiConfig, contentType?: string) {
@@ -755,7 +855,8 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
     const quality = normalizeQuality(config.quality);
     const requestSize = resolveRequestSize(quality, config.size);
     const background = normalizeBackground(config.background);
-    try {
+    const jobId = isCelanoImageApi(requestConfig.baseUrl) ? (options?.jobId || nanoid()) : undefined;
+    return runCelanoImagePost(requestConfig.baseUrl, jobId, options?.signal, async () => {
         const response = await axios.post<ImageApiResponse>(
             aiApiUrl(requestConfig, "/images/generations"),
             {
@@ -765,6 +866,7 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 ...(quality ? { quality } : {}),
                 ...(requestSize ? { size: requestSize } : {}),
                 ...(background ? { background } : {}),
+                ...(jobId ? { celanoJobId: jobId } : {}),
                 // gpt-image models reject response_format; they always return b64.
                 ...(/gpt-image/.test(requestConfig.model) ? {} : { response_format: "b64_json" }),
                 output_format: IMAGE_OUTPUT_FORMAT,
@@ -775,11 +877,8 @@ export async function requestGeneration(config: AiConfig, prompt: string, option
                 timeout: IMAGE_REQUEST_TIMEOUT_MS,
             },
         );
-        const images = await parseImagePayload(response.data);
-        return images;
-    } catch (error) {
-        throw new Error(readAxiosError(error, apiText("requestFailed")));
-    }
+        return parseImagePayload(response.data);
+    }, (payload) => parseImagePayload(payload));
 }
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], options?: RequestOptions) {
@@ -855,14 +954,13 @@ export async function requestEdit(config: AiConfig, prompt: string, references: 
         formData.set("local_edit", "true");
         formData.set("original_size", options.originalSize);
     }
+    const jobId = isCelanoImageApi(requestConfig.baseUrl) ? (options?.jobId || nanoid()) : undefined;
+    if (jobId) formData.set("celanoJobId", jobId);
 
-    try {
+    return runCelanoImagePost(requestConfig.baseUrl, jobId, options?.signal, async () => {
         const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal, timeout: IMAGE_REQUEST_TIMEOUT_MS });
-        const images = await parseImagePayload(response.data);
-        return images;
-    } catch (error) {
-        throw new Error(readAxiosError(error, apiText("requestFailed")));
-    }
+        return parseImagePayload(response.data);
+    }, (payload) => parseImagePayload(payload));
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {

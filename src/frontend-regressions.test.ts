@@ -188,16 +188,19 @@ test('提示词页卸载取消延迟导航，复制Promise稍后完成不会创�
   assert.equal(timers.size, 0); assert.equal(location.hash, '#/prompts');
 });
 
-test('画布卸载或切换项目取消全部生成请求并清空登记', () => {
+test('画布卸载或切换项目只断开本地等待并清空登记，不标成用户取消', () => {
   const source = read(canvas + 'pages/canvas/project.tsx');
   const cleanup = source.match(/useEffect\(\(\) => \(\) => \{\s*generationRequestsRef[\s\S]*?\}, \[projectId\]\);/);
-  assert.ok(cleanup, '生成请求必须在项目生命周期结束时取消');
+  assert.ok(cleanup, '生成请求必须在项目生命周期结束时断开本地等待');
   const controllers = [new AbortController(), new AbortController()];
   const requests = new Map(controllers.map((controller, id) => [String(id), { controller }]));
   const pollIds = new Set(['one']);
   let unmount: () => void = () => {};
-  evaluate(cleanup[0], { projectId: 'test', generationRequestsRef: { current: requests }, videoPollIdsRef: { current: pollIds }, useEffect: (fn: () => () => void) => { unmount = fn(); } });
-  unmount(); assert.ok(controllers.every(controller => controller.signal.aborted)); assert.equal(requests.size, 0); assert.equal(pollIds.size, 0);
+  evaluate(cleanup[0], { projectId: 'test', IMAGE_JOB_DETACH: 'detach', generationRequestsRef: { current: requests }, videoPollIdsRef: { current: pollIds }, useEffect: (fn: () => () => void) => { unmount = fn(); } });
+  unmount();
+  assert.ok(controllers.every(controller => controller.signal.aborted && controller.signal.reason === 'detach'));
+  assert.equal(requests.size, 0);
+  assert.equal(pollIds.size, 0);
 });
 
 test('4K和参考图不展示2K文生图免费额度', () => {

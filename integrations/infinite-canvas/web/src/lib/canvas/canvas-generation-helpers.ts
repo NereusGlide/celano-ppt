@@ -127,23 +127,99 @@ export function hasResumableVideoTask(node: CanvasNodeData) {
     return node.type === CanvasNodeType.Video && Boolean(node.metadata?.videoTaskId) && !node.metadata?.content;
 }
 
+export function hasResumableImageJob(node: CanvasNodeData) {
+    if (node.metadata?.status !== "loading") return false;
+    if (node.metadata.generationJobId) return true;
+    return Boolean(node.metadata.images?.some((image) => image.status === "loading" && image.generationJobId));
+}
+
+const CANVAS_IMAGE_JOBS_KEY = "celano.canvasImageJobs";
+export type CanvasImageJobRef = { jobId: string; projectId: string; nodeId: string; imageId?: string; startedAt: number };
+
+function readCanvasImageJobs(): CanvasImageJobRef[] {
+    if (typeof localStorage === "undefined") return [];
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CANVAS_IMAGE_JOBS_KEY) || "[]");
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter((item) => item && typeof item.jobId === "string" && typeof item.projectId === "string" && typeof item.nodeId === "string");
+    } catch {
+        return [];
+    }
+}
+
+function writeCanvasImageJobs(items: CanvasImageJobRef[]) {
+    if (typeof localStorage === "undefined") return;
+    try { localStorage.setItem(CANVAS_IMAGE_JOBS_KEY, JSON.stringify(items.slice(-40))); } catch { /* 配额不足时仍可依赖画布缓存里的任务编号 */ }
+}
+
+export function rememberCanvasImageJob(ref: Omit<CanvasImageJobRef, "startedAt">) {
+    const items = readCanvasImageJobs().filter((item) => item.jobId !== ref.jobId);
+    items.push({ ...ref, startedAt: Date.now() });
+    writeCanvasImageJobs(items);
+}
+
+export function forgetCanvasImageJob(jobId: string) {
+    writeCanvasImageJobs(readCanvasImageJobs().filter((item) => item.jobId !== jobId));
+}
+
+export function hydrateImageJobIds(projectId: string, nodes: CanvasNodeData[]) {
+    const stored = readCanvasImageJobs().filter((item) => item.projectId === projectId);
+    if (!stored.length) return nodes;
+    return nodes.map((node) => {
+        const direct = stored.find((item) => item.nodeId === node.id && !item.imageId);
+        let imagesChanged = false;
+        const images = node.metadata?.images?.map((image) => {
+            if (image.generationJobId || image.status !== "loading") return image;
+            const match = stored.find((item) => item.nodeId === node.id && item.imageId === image.id);
+            if (!match) return image;
+            imagesChanged = true;
+            return { ...image, generationJobId: match.jobId };
+        });
+        const generationJobId = node.metadata?.generationJobId || (node.metadata?.status === "loading" ? direct?.jobId : undefined);
+        if (!imagesChanged && generationJobId === node.metadata?.generationJobId) return node;
+        return { ...node, metadata: { ...node.metadata, ...(generationJobId ? { generationJobId } : {}), ...(images ? { images } : {}) } };
+    });
+}
+
+export function listResumableImageJobs(nodes: CanvasNodeData[]) {
+    const jobs: Array<{ nodeId: string; imageId?: string; jobId: string }> = [];
+    for (const node of nodes) {
+        const imageJobs = (node.metadata?.images || []).filter((image) => image.status === "loading" && image.generationJobId);
+        if (imageJobs.length) {
+            imageJobs.forEach((image) => jobs.push({ nodeId: node.id, imageId: image.id, jobId: image.generationJobId! }));
+            continue;
+        }
+        if (node.metadata?.status === "loading" && node.metadata.generationJobId) jobs.push({ nodeId: node.id, jobId: node.metadata.generationJobId });
+    }
+    return jobs;
+}
+
 export function resetInterruptedGeneration(nodes: CanvasNodeData[]) {
-    return nodes.map((node) =>
-        node.metadata?.status === "loading"
-            ? hasResumableVideoTask(node)
-                ? node
-                : {
-                      ...node,
-                      metadata: {
-                          ...node.metadata,
-                          status: "error" as const,
-                          errorDetails: i18n.t("canvas.generation.interrupted"),
-                          images: node.metadata.images?.map((image) => (image.status === "loading" ? { ...image, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : image)),
-                          texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: i18n.t("canvas.generation.interrupted") } : text)),
-                      },
-                  }
-            : node,
-    );
+    const interrupted = i18n.t("canvas.generation.interrupted");
+    return nodes.map((node) => {
+        if (node.metadata?.status !== "loading") return node;
+        if (hasResumableVideoTask(node)) return node;
+        if (hasResumableImageJob(node)) {
+            return {
+                ...node,
+                metadata: {
+                    ...node.metadata,
+                    images: node.metadata.images?.map((image) => (image.status === "loading" && !image.generationJobId ? { ...image, status: "error" as const, errorDetails: interrupted } : image)),
+                    texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: interrupted } : text)),
+                },
+            };
+        }
+        return {
+            ...node,
+            metadata: {
+                ...node.metadata,
+                status: "error" as const,
+                errorDetails: interrupted,
+                images: node.metadata.images?.map((image) => (image.status === "loading" ? { ...image, status: "error" as const, errorDetails: interrupted } : image)),
+                texts: node.metadata.texts?.map((text) => (text.status === "loading" ? { ...text, status: "error" as const, errorDetails: interrupted } : text)),
+            },
+        };
+    });
 }
 
 export function isGenerationCanceled(error: unknown) {
