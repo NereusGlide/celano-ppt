@@ -308,6 +308,45 @@ test('画布拒绝会在hydrate或生成时抛错的嵌套字符串和集合元�
   assert.equal(await api.getItem('test'), null, '非字符串dataUrl会在hydrateAssistantImages中调用startsWith而崩溃');
 });
 
+test('手机壳用顶栏汉堡消费安全区，登录墙与画布竖屏提示覆盖 P0', () => {
+  const shell = read('src/kimi/KimiShellApp.tsx');
+  const css = read('src/styles/kimi-shell.css');
+  const auth = read('src/styles/auth.css');
+  const account = read('src/account/AccountCenterApp.tsx');
+  const hint = read(canvas + 'components/canvas/canvas-portrait-hint.tsx');
+  const globals = read(canvas + 'styles/globals.css');
+  const canvasHtml = read('integrations/infinite-canvas/web/index.html');
+  assert.match(shell, /className="kimi-nav-toggle"/);
+  assert.match(shell, /id="kimi-nav-drawer"/);
+  assert.match(shell, /aria-expanded=\{navOpen\}/);
+  assert.match(shell, /role="dialog"/);
+  for (const label of ['首页', 'PPT 生成', '文生图', '智能画布', '提示词库', '技术支持', '>登录<', '个人中心']) assert.match(shell, new RegExp(label));
+  assert.match(css, /@media \(max-width: 767px\)/);
+  assert.match(css, /safe-area-inset-top/);
+  assert.match(css, /safe-area-inset-bottom/);
+  assert.match(css, /safe-area-inset-left/);
+  assert.match(css, /safe-area-inset-right/);
+  assert.match(css, /\.kimi-nav-drawer-item[\s\S]*min-height: 44px/);
+  assert.match(css, /\.kimi-shell \.celano-card-arrow[\s\S]*position: static/);
+  assert.match(css, /\.kimi-shell \.celano-main-cta[\s\S]*min-height: 44px/);
+  assert.match(css, /\.kimi-shell \.pc-auth-state \.pc-button[\s\S]*min-height: 44px/);
+  assert.match(auth, /safe-area-inset-bottom/);
+  assert.match(auth, /\.cxauth-close,\s*\n\s*\.cxauth-legal-backdrop \.cxauth-close \{ width: 44px; height: 44px; \}/);
+  assert.match(auth, /\.cxauth-check \{ min-width: 44px; min-height: 44px; \}/);
+  assert.match(account, /pc-auth-actions/);
+  assert.match(account, />登录</);
+  assert.match(account, />注册</);
+  assert.match(account, /返回首页/);
+  assert.match(hint, /建议横屏创作或使用桌面完整编辑/);
+  assert.match(hint, /关闭提示/);
+  assert.match(globals, /canvas-portrait-hint/);
+  assert.match(globals, /overflow-x: auto/);
+  assert.match(globals, /safe-area-inset-bottom/);
+  assert.match(globals, /canvas-project-title/);
+  assert.match(canvasHtml, /viewport-fit=cover/);
+  assert.match(read(canvas + 'pages/canvas/project.tsx'), /<CanvasPortraitHint \/>/);
+});
+
 test('移动端忽略桌面展开偏好，抽屉初始关闭且不改存储', () => {
   const source = read(canvas + 'stores/use-canvas-side-panel-store.ts').split('type CanvasSidePanelStore')[0];
   const context = evaluate(source, { window: { innerWidth: 320 }, localStorage: { getItem: () => '1' } });

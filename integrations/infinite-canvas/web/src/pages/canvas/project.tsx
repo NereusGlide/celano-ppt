@@ -18,6 +18,7 @@ import { CanvasRefreshShell } from "@/components/canvas/canvas-refresh-shell";
 import { CanvasSelectionToolbar } from "@/components/canvas/canvas-selection-toolbar";
 import { CanvasSidePanel } from "@/components/canvas/canvas-side-panel";
 import { CanvasToolbar } from "@/components/canvas/canvas-toolbar";
+import { CanvasPortraitHint } from "@/components/canvas/canvas-portrait-hint";
 import { CanvasTopBar } from "@/components/canvas/canvas-top-bar";
 import { CanvasZoomControls } from "@/components/canvas/canvas-zoom-controls";
 import { InfiniteCanvas } from "@/components/canvas/infinite-canvas";
@@ -2596,6 +2597,7 @@ function InfiniteCanvasPage() {
             <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert}/>
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar title={currentProject?.title || t("canvas.projectPage.untitledCanvas")} titleDraft={titleDraft} isTitleEditing={titleEditing} onTitleDraftChange={setTitleDraft} onStartTitleEditing={startTitleEditing} onFinishTitleEditing={finishTitleEditing} onCancelTitleEditing={() => setTitleEditing(false)} canUndo={historyState.canUndo} canRedo={historyState.canRedo} onHome={() => window.parent.postMessage({ type: "celano-canvas-exit" }, window.location.origin)} onProjects={() => navigate("/canvas")} onCreateProject={createAndOpenProject} onDeleteProject={deleteCurrentProject} onExportProject={exportCurrentProject} onImportImage={() => handleUploadRequest()} onUndo={undoCanvas} onRedo={redoCanvas}/>
+                <CanvasPortraitHint />
 
                 <InfiniteCanvas containerRef={containerRef} viewport={viewport} tool={canvasTool} backgroundMode={backgroundMode} onViewportChange={(next) => {
             setViewport(next);

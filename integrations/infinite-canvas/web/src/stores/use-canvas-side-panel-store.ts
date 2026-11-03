@@ -31,7 +31,7 @@ type CanvasSidePanelStore = {
     panelClosing: boolean;
     setWidth: (width: number) => void;
     openPanel: () => void;
-    closePanel: () => void;
+    closePanel: (persist?: boolean) => void;
     togglePanel: () => void;
 };
 
@@ -45,9 +45,9 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
         if (typeof window !== "undefined") localStorage.setItem(OPEN_KEY, "1");
         set({ panelOpen: true, panelMounted: true, panelClosing: false });
     },
-    closePanel: () => {
+    closePanel: (persist = true) => {
         if (!get().panelMounted || get().panelClosing) return;
-        if (typeof window !== "undefined") localStorage.setItem(OPEN_KEY, "0");
+        if (persist && typeof window !== "undefined") localStorage.setItem(OPEN_KEY, "0");
         set({ panelOpen: false, panelClosing: true });
         setTimeout(() => {
             if (get().panelClosing) set({ panelMounted: false, panelClosing: false });
@@ -55,3 +55,14 @@ export const useCanvasSidePanelStore = create<CanvasSidePanelStore>((set, get) =
     },
     togglePanel: () => (get().panelOpen ? get().closePanel() : get().openPanel()),
 }));
+
+// Entering a phone portrait must not keep a wide-layout drawer over the canvas.
+// Closing here does not rewrite the desktop open preference.
+if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    const phonePortrait = window.matchMedia("(max-width: 768px) and (orientation: portrait)");
+    phonePortrait.addEventListener?.("change", () => {
+        if (!phonePortrait.matches) return;
+        const state = useCanvasSidePanelStore.getState();
+        if (state.panelOpen) state.closePanel(false);
+    });
+}

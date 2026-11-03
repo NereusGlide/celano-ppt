@@ -746,3 +746,168 @@
   .kimi-shell .membership-content { padding-top: 72px; }
 }
 
+/* ================= 手机壳 P0：安全区 + 顶栏汉堡 + 首页触控 =================
+   <768 导航收成 Logo + 汉堡（方案 A）。桌面 ≥768 仍平铺顶栏。
+   safe-area 在 inset 为 0 时不改变现有高度与边距。 */
+.kimi-shell.kimi-app {
+  box-sizing: border-box;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.kimi-shell .kimi-topnav {
+  box-sizing: border-box;
+  height: calc(58px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.kimi-shell .kimi-shell-stage {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  scroll-padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.kimi-nav-toggle,
+.kimi-nav-drawer,
+.kimi-nav-scrim { display: none; }
+.kimi-shell .pc-auth-state {
+  box-sizing: border-box;
+  padding: 32px 16px 24px;
+}
+.kimi-shell .pc-auth-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(280px, 100%);
+  margin: 16px auto 0;
+}
+.kimi-shell .pc-auth-state .pc-button {
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  font-size: 14px !important;
+}
+
+@media (max-width: 767px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .kimi-shell .kimi-topnav { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  .kimi-shell .kimi-topnav-brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 44px;
+    margin-right: 0;
+    justify-content: flex-start;
+  }
+  .kimi-shell .kimi-topnav-brand .kimi-brand-wordmark {
+    height: 18px;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: left center;
+  }
+  .kimi-nav-toggle {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    margin-left: auto;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--k-fg, var(--text-primary));
+    cursor: pointer;
+  }
+  .kimi-nav-toggle:hover,
+  .kimi-nav-toggle[aria-expanded="true"] { background: var(--k-hover, var(--ks-hover)); }
+  .kimi-shell .kimi-topnav-nav,
+  .kimi-shell .kimi-topnav > .kimi-btn-quiet,
+  .kimi-shell .kimi-topnav > .kimi-btn-outline,
+  .kimi-shell .kimi-topnav > .kimi-account-chip { display: none !important; }
+  .kimi-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, .5);
+    cursor: pointer;
+  }
+  .kimi-nav-drawer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: fixed;
+    z-index: 56;
+    top: calc(58px + env(safe-area-inset-top, 0px));
+    right: env(safe-area-inset-right, 0px);
+    bottom: 0;
+    left: env(safe-area-inset-left, 0px);
+    margin: 0;
+    padding: 8px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    background: var(--k-bg, var(--bg-canvas));
+    border-top: 1px solid var(--k-border, var(--border-subtle));
+  }
+  .kimi-nav-drawer-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--k-fg, var(--text-primary));
+    font-size: 15px;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+  }
+  .kimi-nav-drawer-item:hover,
+  .kimi-nav-drawer-item[aria-current="page"] { background: var(--k-hover, var(--ks-hover)); }
+  .kimi-shell .kimi-topnav { position: relative; z-index: 60; }
+}
+
+/* 手机竖屏与短横屏：能力卡文字与 CTA 纵向分开，主按钮抬到 44 */
+@media (max-width: 767px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .kimi-shell .celano-product-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: 0;
+    padding: 16px;
+  }
+  .kimi-shell .celano-product-card > div { width: 100%; min-width: 0; }
+  .kimi-shell .celano-product-card p { font-size: 14px; line-height: 1.5; margin-right: 0; }
+  .kimi-shell .celano-card-arrow {
+    position: static;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 16px;
+    padding: 0 12px;
+    box-sizing: border-box;
+    justify-content: center;
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    font-size: 14px;
+  }
+  .kimi-shell .celano-main-cta {
+    width: min(100%, 420px);
+    height: 44px;
+    min-height: 44px;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  .kimi-shell .celano-hero-actions { width: 100%; }
+}
+
+@media (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
+  .kimi-shell .celano-hero { padding: 16px 20px 12px; }
+  .kimi-shell .celano-hero h1 { font-size: 28px; line-height: 1.2; }
+  .kimi-shell .celano-hero-copy { margin: 8px auto 12px; }
+  .kimi-shell .celano-capability-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-bottom: 24px;
+  }
+}
+
