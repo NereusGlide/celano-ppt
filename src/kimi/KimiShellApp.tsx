@@ -11,15 +11,16 @@
  * 会员页与个人中心同属本外壳的页面，共用同一套 Logo、顶部导航、
  * 按钮与设计令牌，避免出现第二套视觉语言。
  */
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Home, Presentation, Image as ImageIcon, Workflow,
-  HelpCircle, Crown, LibraryBig,
+  HelpCircle, Crown, LibraryBig, Menu, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.js';
 import { membershipView } from '../shared/membership.js';
 import { avatarUrl } from '../shared/avatar.js';
 import { UserAuthModal } from '../components/UserAuthModal.js';
+import { useFocusTrap } from '../hooks/useFocusTrap.js';
 import '../styles/kimi-fonts.css';
 import '../styles/kimi.css';
 import '../styles/kimi-shell.css';
@@ -58,6 +59,15 @@ export const KimiShellApp: React.FC<{ initialPage?: PageKey }> = ({ initialPage 
   const membership = membershipView(currentUser);
   const [page, setPage] = useState<PageKey>(initialPage);
   const [authOpen, setAuthOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const drawerRef = useFocusTrap<HTMLElement>(navOpen, () => setNavOpen(false));
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)');
+    const closeIfDesktop = () => { if (!media.matches) setNavOpen(false); };
+    media.addEventListener('change', closeIfDesktop);
+    return () => media.removeEventListener('change', closeIfDesktop);
+  }, []);
 
   // 会员按钮文案：未登录 → 开通会员；已登录 → 当前版本（免费版或会员等级名）
   const membershipLabel = !currentUser ? '开通会员' : membership.name;
@@ -71,12 +81,25 @@ export const KimiShellApp: React.FC<{ initialPage?: PageKey }> = ({ initialPage 
     window.dispatchEvent(new Event('celano-shell-route'));
   };
 
+  const go = (key: PageKey) => { setNavOpen(false); switchPage(key); };
+  const openAuth = () => { setNavOpen(false); setAuthOpen(true); };
+
   return (
     <div className="kimi-app kimi-shell" data-theme="dark">
       <main className="kimi-main">
         <header className="kimi-topbar kimi-topnav">
-          <button className="kimi-topnav-brand" type="button" aria-label="返回首页" onClick={() => switchPage('home')}>
+          <button className="kimi-topnav-brand" type="button" aria-label="返回首页" onClick={() => go('home')}>
             <img src="/brand/celano-wordmark-white.png" alt="CELANO" className="kimi-brand-wordmark" />
+          </button>
+          <button
+            className="kimi-nav-toggle"
+            type="button"
+            aria-label={navOpen ? '关闭菜单' : '打开菜单'}
+            aria-expanded={navOpen}
+            aria-controls="kimi-nav-drawer"
+            onClick={() => setNavOpen(open => !open)}
+          >
+            {navOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           <nav className="kimi-topnav-nav" aria-label="主导航">
             {NAV.map(item => {
@@ -120,9 +143,51 @@ export const KimiShellApp: React.FC<{ initialPage?: PageKey }> = ({ initialPage 
               <span className="kimi-account-credits">{currentUser.credits ?? 0} 点</span>
             </button>
           ) : (
-            <button className="kimi-btn-outline" type="button" onClick={() => setAuthOpen(true)}>登录</button>
+            <button className="kimi-btn-outline" type="button" onClick={openAuth}>登录</button>
           )}
         </header>
+        {navOpen ? (
+          <>
+            <button className="kimi-nav-scrim" type="button" aria-label="关闭菜单" onClick={() => setNavOpen(false)} />
+            <nav id="kimi-nav-drawer" className="kimi-nav-drawer" ref={drawerRef} role="dialog" aria-modal="true" aria-label="移动导航">
+              {NAV.map(item => {
+                const Icon = item.icon;
+                const active = page === item.key || (page === 'image-results' && item.key === 'image') || (page === 'workspace' && item.key === 'ppt');
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className="kimi-nav-drawer-item"
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => go(item.key)}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+              {currentUser ? (
+                <button className="kimi-nav-drawer-item" type="button" aria-current={page === 'account' ? 'page' : undefined} onClick={() => go('account')}>
+                  <img className="kimi-account-avatar" src={avatarUrl(currentUser)} alt="" />
+                  <span>个人中心</span>
+                </button>
+              ) : (
+                <button className="kimi-nav-drawer-item" type="button" onClick={openAuth}>
+                  <span>登录</span>
+                </button>
+              )}
+              <button
+                className="kimi-nav-drawer-item"
+                type="button"
+                aria-current={page === 'membership' ? 'page' : undefined}
+                onClick={() => go(currentUser && membership.active ? 'account' : 'membership')}
+              >
+                <Crown size={18} />
+                <span>{membershipLabel}</span>
+              </button>
+            </nav>
+          </>
+        ) : null}
 
         <div className={`kimi-stage kimi-shell-stage${page === 'workspace' ? ' kimi-workspace-stage' : ''}`}>
           <Suspense fallback={<div className="kimi-shell-loading" role="status">正在加载页面…</div>}>

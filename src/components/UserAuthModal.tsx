@@ -12,6 +12,7 @@ import '../styles/auth.css';
 interface Props {
   onClose: () => void;
   onSuccess?: (mode: 'login' | 'register') => void;
+  initialTab?: 'login' | 'register';
 }
 
 const LEGAL_TEXT: Record<'terms' | 'privacy', { title: string; body: string }> = {
@@ -37,9 +38,9 @@ const LEGAL_TEXT: Record<'terms' | 'privacy', { title: string; body: string }> =
  *  · Esc 关闭 / 遮罩关闭 / 焦点锁（useFocusTrap）/ 关闭后归还焦点
  *  · label 关联、aria-invalid + aria-describedby 错误提示
  */
-export const UserAuthModal: React.FC<Props> = ({ onClose, onSuccess }) => {
+export const UserAuthModal: React.FC<Props> = ({ onClose, onSuccess, initialTab = 'login' }) => {
   const { login, register } = useAuth();
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'login' | 'register'>(initialTab);
 
   // 登录表单
   const [identifier, setIdentifier] = useState('');
@@ -223,6 +224,8 @@ export const UserAuthModal: React.FC<Props> = ({ onClose, onSuccess }) => {
         </div>
 
         {/* 副标题 */}
+        <p className="cxauth-scroll-hint">向下滚动可填写其余字段，底部按钮保持可点</p>
+
         <div className="cxauth-subhead">
           <h2 className="cxauth-sub-title" id={titleId}>
             {tab === 'login' ? '登录 CELANO 账号' : '注册 CELANO 账号'}

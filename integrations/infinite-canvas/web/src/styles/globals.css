@@ -619,7 +619,7 @@
 @media (max-width: 768px) {
     .canvas-project-page { position: relative; height: 100dvh; }
     .canvas-side-panel {
-        position: absolute;
+        position: absolute !important;
         inset: 0 auto 0 0;
         z-index: 70;
         max-width: calc(100% - 48px);
@@ -631,17 +631,60 @@
     .canvas-side-panel-resize { display: none; }
     .canvas-side-panel-dismiss { display: grid; place-items: center; margin-left: auto; width: 44px; height: 44px; flex: none; }
     .canvas-side-panel-backdrop { display: block; position: absolute; inset: 0; z-index: 65; background: rgb(0 0 0 / 32%); }
-    .canvas-top-bar { height: 60px; padding: 4px 8px; gap: 4px; background: var(--background); border-bottom: 1px solid var(--border); }
-    .canvas-top-bar > div { gap: 2px; }
-    .canvas-top-bar button.size-7 { width: 44px; height: 44px; flex: none; }
+    .canvas-top-bar {
+        top: 0;
+        box-sizing: border-box;
+        height: calc(60px + env(safe-area-inset-top, 0px));
+        padding: calc(4px + env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) 4px max(8px, env(safe-area-inset-left, 0px));
+        gap: 4px;
+        overflow: hidden;
+        background: var(--background);
+        border-bottom: 1px solid var(--border);
+    }
+    .canvas-top-bar > div { gap: 2px; min-width: 0; }
+    .canvas-top-bar > div:last-child { flex: none; }
+    .canvas-project-title { min-width: 0; flex: 1 1 auto; overflow: hidden; }
+    .canvas-project-title > button,
+    .canvas-project-title > input {
+        display: block;
+        width: 100%;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .canvas-top-bar button.size-7 { width: 44px !important; height: 44px !important; min-width: 44px !important; min-height: 44px !important; flex: none; }
     .canvas-top-bar > div:first-child > div:last-child button { max-width: 100%; min-height: 44px; font-size: 14px; }
     .canvas-top-bar input { font-size: 16px; min-height: 44px; }
     .canvas-top-bar [aria-label="快捷键"], .canvas-top-bar [aria-label="Keyboard shortcuts"] { display: none; }
-    .canvas-toolbar-dock { left: 8px !important; right: 8px !important; bottom: calc(8px + env(safe-area-inset-bottom)); }
-    .canvas-toolbar-scroll { width: 100%; height: 60px; justify-content: flex-start; padding: 4px; overscroll-behavior-x: contain; }
+    .canvas-toolbar-dock {
+        left: max(8px, env(safe-area-inset-left, 0px)) !important;
+        right: max(8px, env(safe-area-inset-right, 0px)) !important;
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        z-index: 50;
+    }
+    .canvas-toolbar-scroll {
+        width: 100%;
+        height: 60px;
+        justify-content: flex-start;
+        padding: 4px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x;
+        scrollbar-width: thin;
+    }
     .canvas-toolbar-dock button.ant-btn, .canvas-zoom-dock button.ant-btn { width: 44px !important; min-width: 44px !important; height: 44px !important; touch-action: manipulation; }
     .canvas-toolbar-dock > div.absolute { left: 50% !important; width: min(280px, calc(100vw - 32px)); max-height: calc(100dvh - 180px); overflow-y: auto; }
-    .canvas-zoom-dock { left: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); }
+    .canvas-zoom-dock {
+        left: max(8px, env(safe-area-inset-left, 0px));
+        right: auto;
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+        z-index: 45;
+        max-width: calc(100% - 16px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    }
+    .canvas-zoom-dock > div { max-width: 100%; }
     .canvas-zoom-dock > div { height: 52px; gap: 2px; padding: 2px 4px; }
     .canvas-zoom-dock input[type="range"] { width: 64px; min-height: 44px; }
     .canvas-zoom-dock button:last-child { display: none; }
@@ -660,6 +703,39 @@
     .canvas-project-library-content { padding: 24px 16px; }
     .canvas-side-panel button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
     .canvas-side-panel button.size-7 { width: 44px; height: 44px; }
+}
+.canvas-portrait-hint { display: none; }
+@media (max-width: 768px) and (orientation: portrait) {
+    .canvas-portrait-hint {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: absolute;
+        z-index: 40;
+        top: calc(68px + env(safe-area-inset-top, 0px));
+        left: max(12px, env(safe-area-inset-left, 0px));
+        right: max(12px, env(safe-area-inset-right, 0px));
+        margin: 0;
+        padding: 4px 4px 4px 12px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--background) 92%, transparent);
+        pointer-events: auto;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+    }
+    .canvas-portrait-hint p { flex: 1; margin: 0; font-size: 14px; line-height: 1.4; }
+    .canvas-portrait-hint button {
+        width: 44px;
+        height: 44px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-radius: 10px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+    }
 }
 @media (max-width: 480px) {
     .canvas-top-bar > div:first-child { gap: 0; }

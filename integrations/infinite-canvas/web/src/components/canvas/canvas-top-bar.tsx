@@ -100,7 +100,7 @@ export function CanvasTopBar({
                         </button>
                     </Dropdown>
 
-                    <div ref={titleRef} className="flex min-w-0 items-center gap-2">
+                    <div ref={titleRef} className="canvas-project-title flex min-w-0 flex-1 items-center gap-2">
                         {isTitleEditing ? (
                             <input
                                 autoFocus
